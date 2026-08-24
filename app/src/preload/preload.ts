@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { BuildResult, MakereleaseApi, ReleaseFormData, SeedState } from '../shared/types';
+import { BuildResult, MakereleaseApi, PublishToWebResult, ReleaseFormData, SeedState } from '../shared/types';
 
 const api: MakereleaseApi = {
   loadSeedState: (): Promise<SeedState> => ipcRenderer.invoke('loadSeedState'),
@@ -7,6 +7,9 @@ const api: MakereleaseApi = {
   checkCodeAvailability: (code: string): Promise<{ exists: boolean }> =>
     ipcRenderer.invoke('checkCodeAvailability', code),
   buildRelease: (form: ReleaseFormData): Promise<BuildResult> => ipcRenderer.invoke('buildRelease', form),
+  pickImage: (): Promise<string | null> => ipcRenderer.invoke('pickImage'),
+  publishToWeb: (code: string, archivePath: string, imagePath: string): Promise<PublishToWebResult> =>
+    ipcRenderer.invoke('publishToWeb', code, archivePath, imagePath),
 };
 
 contextBridge.exposeInMainWorld('api', api);

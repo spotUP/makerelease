@@ -1,7 +1,7 @@
 import { dialog, ipcMain } from 'electron';
 import * as path from 'path';
-import { BuildResult, ReleaseFormData, SeedState } from '../shared/types';
-import { fetchSeed, checkCodeExists, publishRelease } from './releases-client';
+import { BuildResult, PublishToWebResult, ReleaseFormData, SeedState } from '../shared/types';
+import { fetchSeed, checkCodeExists, publishRelease, publishToWeb as publishToWebClient } from './releases-client';
 import { generateOutputs } from './nfo-generator';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
@@ -77,4 +77,20 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
       releaseNumber: published.releaseNumber,
     };
   });
+
+  ipcMain.handle('pickImage', async (): Promise<string | null> => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle(
+    'publishToWeb',
+    async (_event, code: string, archivePath: string, imagePath: string): Promise<PublishToWebResult> => {
+      return publishToWebClient(releasesConfig, code, archivePath, imagePath);
+    },
+  );
 }

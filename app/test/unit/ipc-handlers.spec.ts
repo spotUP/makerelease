@@ -11,6 +11,7 @@ vi.mock('../../src/main/releases-client', () => ({
   fetchSeed: vi.fn(),
   checkCodeExists: vi.fn(),
   publishRelease: vi.fn(),
+  publishToWeb: vi.fn(),
 }));
 
 vi.mock('../../src/main/nfo-generator', () => ({
@@ -31,6 +32,7 @@ vi.mock('../../src/main/fs-helpers', () => ({
 }));
 
 import { registerIpcHandlers } from '../../src/main/ipc-handlers';
+import * as electron from 'electron';
 import * as releasesClient from '../../src/main/releases-client';
 import * as nfoGenerator from '../../src/main/nfo-generator';
 import * as staging from '../../src/main/staging';
@@ -154,5 +156,26 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.loadSeedState();
 
     expect(result.configWarning).toBeUndefined();
+  });
+
+  it('pickImage opens a file dialog restricted to image types and returns the chosen path', async () => {
+    (electron.dialog.showOpenDialog as any).mockResolvedValue({ canceled: false, filePaths: ['/tmp/cover.png'] });
+    const result = await handlers.pickImage();
+    expect(result).toBe('/tmp/cover.png');
+    const dialogArgs = (electron.dialog.showOpenDialog as any).mock.calls[0][0];
+    expect(dialogArgs.filters).toEqual([{ name: 'Images', extensions: ['png', 'jpg', 'jpeg', 'gif'] }]);
+  });
+
+  it('pickImage returns null when the dialog is canceled', async () => {
+    (electron.dialog.showOpenDialog as any).mockResolvedValue({ canceled: true, filePaths: [] });
+    const result = await handlers.pickImage();
+    expect(result).toBeNull();
+  });
+
+  it('publishToWeb delegates to the releases-client function with the right args', async () => {
+    (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    expect(result).toEqual({ archiveUrl: 'a', wordpressPostUrl: 'b' });
+    expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
   });
 });
