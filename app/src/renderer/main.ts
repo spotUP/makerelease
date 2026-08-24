@@ -27,9 +27,18 @@ const buildBtn = $<HTMLButtonElement>('build-btn');
 const buildStatus = $<HTMLDivElement>('build-status');
 const form = $<HTMLFormElement>('release-form');
 
+const publishSection = $<HTMLElement>('publish-section');
+const pickImageBtn = $<HTMLButtonElement>('pick-image-btn');
+const selectedImageDiv = $<HTMLDivElement>('selected-image');
+const publishBtn = $<HTMLButtonElement>('publish-btn');
+const publishStatus = $<HTMLDivElement>('publish-status');
+
 const memberlist = new MemberlistTable(membersTbody);
 let nextReleaseNumber = 0;
 let selectedPaths: string[] = [];
+let lastBuiltCode: string | null = null;
+let lastBuiltArchivePath: string | null = null;
+let selectedImagePath: string | null = null;
 
 attachCreatorsAutocomplete(entryCreatorsInput, entryCreatorsSuggestions, () => memberlist.getMembers());
 
@@ -154,11 +163,47 @@ form.addEventListener('submit', async (e) => {
     const result = await window.api.buildRelease(formData);
     buildStatus.textContent = `Built release ${result.releaseNumber}: ${result.archivePath}`;
     buildStatus.className = 'status ok';
+    lastBuiltCode = code;
+    lastBuiltArchivePath = result.archivePath;
+    publishSection.hidden = false;
+    publishBtn.disabled = !selectedImagePath;
   } catch (err) {
     buildStatus.textContent = `Build failed: ${err instanceof Error ? err.message : String(err)}`;
     buildStatus.className = 'status warn';
   } finally {
     buildBtn.disabled = false;
+  }
+});
+
+pickImageBtn.addEventListener('click', async () => {
+  const picked = await window.api.pickImage();
+  if (picked) {
+    selectedImagePath = picked;
+    selectedImageDiv.textContent = picked;
+    publishBtn.disabled = !lastBuiltArchivePath;
+  }
+});
+
+publishBtn.addEventListener('click', async () => {
+  if (!lastBuiltCode || !lastBuiltArchivePath || !selectedImagePath) return;
+  publishBtn.disabled = true;
+  publishStatus.textContent = 'Publishing...';
+  publishStatus.className = 'status';
+  try {
+    const result = await window.api.publishToWeb(lastBuiltCode, lastBuiltArchivePath, selectedImagePath);
+    publishStatus.textContent = `Published: ${result.wordpressPostUrl}`;
+    publishStatus.className = 'status ok';
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes('already published')) {
+      publishStatus.textContent = `Already published: ${message}`;
+      publishStatus.className = 'status warn';
+    } else {
+      publishStatus.textContent = `Publish failed: ${message}`;
+      publishStatus.className = 'status warn';
+    }
+  } finally {
+    publishBtn.disabled = false;
   }
 });
 

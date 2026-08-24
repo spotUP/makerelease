@@ -102,3 +102,5 @@ button.danger { background: var(--danger); color: var(--fg); }
 
 #selected-files-list { list-style: none; padding: 0; }
 #selected-files-list li { display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.85rem; }
+
+#publish-section[hidden] { display: none; }
