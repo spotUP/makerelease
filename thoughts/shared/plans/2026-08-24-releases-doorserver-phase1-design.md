@@ -169,7 +169,32 @@ increment `revision`. This is the fix for the concurrent-build race described
 in Context - two simultaneous `POST /releases` calls serialize through
 SQLite's write lock and get distinct, correctly-incremented numbers.
 
-Response: `{ "releaseNumber": 217, "revision": 43 }`.
+Response:
+
+```json
+{
+  "releaseNumber": 217,
+  "revision": 43,
+  "history": [
+    { "releaseNumber": 217, "filenames": "up-test0.lha", "title": "...",
+      "category": "Demo", "creators": "..." },
+    { "releaseNumber": 216, "filenames": "up-hypoc.lha", "title": "hypocrisy",
+      "category": "demo", "creators": "..." },
+    ...
+  ]
+}
+```
+
+`history` is the full, freshly-read history array (same shape as `/seed`'s
+`history` field) **including the just-inserted release** as its first entry,
+so the app's `nfo-generator.ts` always renders the NFO's "released so far"
+block from the authoritative post-insert state - not from whatever was
+cached in the renderer since the app was opened. This matches the old
+local-scan behavior exactly: `ipc-handlers.ts`'s `buildRelease` always
+re-scanned the local NFO fresh immediately before generating, rather than
+reusing `loadSeedState`'s earlier snapshot - the API-backed version preserves
+that same freshness guarantee, just from the server's perspective instead of
+the filesystem's.
 
 `400` on a `code` that already exists, or a missing required field.
 
