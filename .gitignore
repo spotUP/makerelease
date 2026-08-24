@@ -3,3 +3,5 @@ app/dist/
 app/dist-electron/
 app/release/
 .DS_Store
+thoughts/spot/
+thoughts/searchable/
