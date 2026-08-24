@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "description": "Up Rough release archive maker",
   "private": true,
+  "homepage": "https://www.uprough.net",
+  "author": {
+    "name": "Up Rough",
+    "email": "spotup@gmail.com"
+  },
   "main": "dist/main/main/index.js",
   "type": "commonjs",
   "scripts": {
@@ -27,12 +32,33 @@
   "build": {
     "appId": "net.uprough.makerelease",
     "productName": "Up Rough Release Maker",
+    "directories": {
+      "output": "release"
+    },
+    "publish": null,
     "files": [
       "dist/**/*",
       "assets/**/*"
     ],
     "mac": {
-      "target": "dir"
+      "target": [
+        { "target": "dmg", "arch": ["x64", "arm64"] },
+        { "target": "zip", "arch": ["x64", "arm64"] }
+      ]
+    },
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ]
+    },
+    "linux": {
+      "target": [
+        { "target": "AppImage", "arch": ["x64"] },
+        { "target": "deb", "arch": ["x64"] }
+      ],
+      "category": "Utility",
+      "maintainer": "Up Rough <spotup@gmail.com>"
     }
   }
 }
