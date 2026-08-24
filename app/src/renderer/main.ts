@@ -1,5 +1,7 @@
 import { ReleaseFormat, ReleaseFormData } from '../shared/types';
-import { MemberlistTable } from './memberlist-table';
+import { MemberlistTable } from './memberlist-table.js';
+import { attachOverwriteGrid, toGridText } from './diz-grid.js';
+import { attachCreatorsAutocomplete } from './creators-autocomplete.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -13,9 +15,12 @@ const membersTbody = $<HTMLTableSectionElement>('members-tbody');
 const addMemberBtn = $<HTMLButtonElement>('add-member-btn');
 const releaseNumberPreview = $<HTMLDivElement>('release-number-preview');
 const entryTitleInput = $<HTMLInputElement>('entry-title');
-const entryCategoryInput = $<HTMLInputElement>('entry-category');
+const entryCategoryInput = $<HTMLSelectElement>('entry-category');
 const entryCreatorsInput = $<HTMLInputElement>('entry-creators');
+const entryCreatorsSuggestions = $<HTMLUListElement>('entry-creators-suggestions');
 const dizBannerTextArea = $<HTMLTextAreaElement>('diz-banner-text');
+attachOverwriteGrid(dizBannerTextArea);
+
 const pickFilesBtn = $<HTMLButtonElement>('pick-files-btn');
 const selectedFilesList = $<HTMLUListElement>('selected-files-list');
 const buildBtn = $<HTMLButtonElement>('build-btn');
@@ -25,6 +30,8 @@ const form = $<HTMLFormElement>('release-form');
 const memberlist = new MemberlistTable(membersTbody);
 let nextReleaseNumber = 0;
 let selectedPaths: string[] = [];
+
+attachCreatorsAutocomplete(entryCreatorsInput, entryCreatorsSuggestions, () => memberlist.getMembers());
 
 function updateReleaseNumberPreview(): void {
   const code = codeInput.value.trim().toUpperCase() || 'XXXXX';
@@ -57,10 +64,18 @@ function renderSelectedFiles(): void {
 }
 
 async function init(): Promise<void> {
-  const seed = await window.api.loadSeedState();
-  memberlist.seed(seed.members);
-  nextReleaseNumber = seed.nextReleaseNumber;
-  updateReleaseNumberPreview();
+  try {
+    const seed = await window.api.loadSeedState();
+    memberlist.seed(seed.members);
+    nextReleaseNumber = seed.nextReleaseNumber;
+    dizBannerTextArea.value = toGridText(seed.currentDizText);
+    updateReleaseNumberPreview();
+  } catch (err) {
+    buildStatus.textContent = `Failed to load current members/release number: ${
+      err instanceof Error ? err.message : String(err)
+    }`;
+    buildStatus.className = 'status warn';
+  }
 }
 
 addMemberBtn.addEventListener('click', () => memberlist.addRow());

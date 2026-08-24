@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self';" />
   <title>Up Rough Release Maker</title>
   <link rel="stylesheet" href="style.css" />
 </head>
@@ -50,15 +50,30 @@
       <label for="entry-title">Title</label>
       <input type="text" id="entry-title" required autocomplete="off" placeholder="fleisch bitte ad 006" />
       <label for="entry-category">Category</label>
-      <input type="text" id="entry-category" required autocomplete="off" placeholder="intro (fjälldata 2023)" />
+      <select id="entry-category" required>
+        <option value="" disabled selected>Select a category&hellip;</option>
+        <option value="Demo">Demo</option>
+        <option value="Intro">Intro</option>
+        <option value="Musicdisk">Musicdisk</option>
+        <option value="Music">Music</option>
+        <option value="Graphics">Graphics</option>
+        <option value="ASCII">ASCII</option>
+        <option value="Tool">Tool</option>
+        <option value="Video">Video</option>
+        <option value="Science">Science</option>
+        <option value="Other">Other</option>
+      </select>
       <label for="entry-creators">Creator(s)</label>
-      <input type="text" id="entry-creators" required autocomplete="off" placeholder="nori k, mortimer twang, spot, qwan, exocet" />
+      <div class="autocomplete-wrap">
+        <input type="text" id="entry-creators" required autocomplete="off" placeholder="nori k, mortimer twang, spot, qwan, exocet" />
+        <ul id="entry-creators-suggestions" class="autocomplete-list" hidden></ul>
+      </div>
     </section>
 
     <section>
       <h2>6. Diz banner art</h2>
-      <label for="diz-banner-text">Paste your hand-made ASCII banner art (written verbatim to file_id.diz)</label>
-      <textarea id="diz-banner-text" rows="10" class="monospace" required></textarea>
+      <label for="diz-banner-text">Paste your hand-made ASCII banner art (written verbatim to file_id.diz, fixed 45x10 grid &mdash; typing overwrites in place)</label>
+      <textarea id="diz-banner-text" rows="10" cols="45" wrap="off" class="monospace diz-banner" spellcheck="false" required></textarea>
     </section>
 
     <section>
