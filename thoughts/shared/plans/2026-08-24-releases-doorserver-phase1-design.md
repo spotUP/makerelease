@@ -122,6 +122,7 @@ Replaces the app's local `repo-scanner.ts`. Response:
       "category": "demo", "creators": "flubba, goto80, bldzr, mortimer twang, spot" },
     ...
   ],
+  "currentDizText": "    _ _ __ ___    ____  _ _ __ _________\n   ...",
   "revision": 42
 }
 ```
@@ -132,6 +133,12 @@ number is assigned atomically by `POST /releases` at build time (see below).
 `release_number` order, so the app's `nfo-generator.ts` can still render the
 full "released so far" block exactly as it does today from locally-parsed
 data - only the data source changes, not the generation logic.
+
+`currentDizText` is the most recent release's raw `diz_text` column (the
+already-shipped diz overwrite-grid in the app seeds itself from this field on
+load, same behavior as today's local-file version - `toGridText()` pads or
+truncates it to the fixed 45x10 grid exactly as it already does). `null`
+when the catalog is empty.
 
 ### `GET /api/releases/manifest` (public)
 
