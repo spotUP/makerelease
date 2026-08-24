@@ -18,11 +18,6 @@ export function toAsciiSafe(input: string): string {
   return out;
 }
 
-export async function readLatin1(filePath: string): Promise<string> {
-  const buf = await fs.readFile(filePath);
-  return buf.toString('latin1');
-}
-
 export async function writeLatin1(filePath: string, text: string): Promise<void> {
   await fs.writeFile(filePath, Buffer.from(text, 'latin1'));
 }
