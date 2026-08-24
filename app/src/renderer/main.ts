@@ -54,6 +54,23 @@ function getSelectedFormat(): ReleaseFormat {
 }
 
 /**
+ * Resets everything related to the Publish section. Called at the start of
+ * every new build attempt so a previous release's stale state (its success
+ * message, its archive path wired to the Publish button, its picked cover
+ * image) can never silently carry over to a different release's code/build.
+ */
+function resetPublishState(): void {
+  lastBuiltCode = null;
+  lastBuiltArchivePath = null;
+  selectedImagePath = null;
+  selectedImageDiv.textContent = '';
+  publishSection.hidden = true;
+  publishStatus.textContent = '';
+  publishStatus.className = 'status';
+  publishBtn.disabled = true;
+}
+
+/**
  * ipcMain.handle only forwards an Error's `message` string across the IPC
  * boundary — Electron's structured-clone serialization strips any other
  * properties from a thrown Error. For the 409 "already published" case,
@@ -150,6 +167,11 @@ pickFilesBtn.addEventListener('click', async () => {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+
+  // A new build attempt starts here, whether it's for a brand-new code or a
+  // retry — any Publish state left over from a previous build must not
+  // linger (see resetPublishState's doc comment).
+  resetPublishState();
 
   const code = codeInput.value.trim().toUpperCase();
   if (!/^[A-Z0-9]{5}$/.test(code)) {
