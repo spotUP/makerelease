@@ -1,0 +1,77 @@
+import { MemberEntry, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
+import { ReleasesClientConfig } from './config';
+
+export class ReleasesApiError extends Error {}
+
+export interface SeedResponse {
+  members: MemberEntry[];
+  nextReleaseNumber: number;
+  history: ReleaseHistoryEntry[];
+  currentDizText: string | null;
+  revision: number;
+}
+
+export interface PublishResponse {
+  releaseNumber: number;
+  revision: number;
+  history: ReleaseHistoryEntry[];
+}
+
+async function getJson<T>(cfg: ReleasesClientConfig, path: string): Promise<T> {
+  let response: Response;
+  try {
+    response = await fetch(`${cfg.baseUrl}${path}`, { method: 'GET' });
+  } catch (err) {
+    throw new ReleasesApiError(`could not reach releases.uprough.net: ${(err as Error).message}`);
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ReleasesApiError(
+      `releases.uprough.net returned ${response.status}: ${(body as { error?: string }).error ?? 'unknown error'}`,
+    );
+  }
+  return body as T;
+}
+
+export async function fetchSeed(cfg: ReleasesClientConfig): Promise<SeedResponse> {
+  return getJson<SeedResponse>(cfg, '/api/releases/seed');
+}
+
+export async function checkCodeExists(cfg: ReleasesClientConfig, code: string): Promise<boolean> {
+  const result = await getJson<{ exists: boolean }>(cfg, `/api/releases/${encodeURIComponent(code)}/exists`);
+  return result.exists;
+}
+
+function toPublishBody(form: ReleaseFormData): Record<string, unknown> {
+  return {
+    code: form.code,
+    format: form.format,
+    releaseName: form.releaseName,
+    platformTag: form.platformTag,
+    releaseNotes: form.releaseNotesText,
+    news: form.newsText,
+    dizText: form.dizBannerText,
+    entryTitle: form.entryTitle,
+    entryCategory: form.entryCategory,
+    entryCreators: form.entryCreators,
+    members: form.members,
+  };
+}
+
+export async function publishRelease(cfg: ReleasesClientConfig, form: ReleaseFormData): Promise<PublishResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${cfg.baseUrl}/api/releases`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Release-Key': cfg.writeKey },
+      body: JSON.stringify(toPublishBody(form)),
+    });
+  } catch (err) {
+    throw new ReleasesApiError(`could not reach releases.uprough.net: ${(err as Error).message}`);
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ReleasesApiError((body as { error?: string }).error ?? `releases.uprough.net returned ${response.status}`);
+  }
+  return body as PublishResponse;
+}
