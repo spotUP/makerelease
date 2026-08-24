@@ -1,0 +1,36 @@
+{
+  "name": "makerelease",
+  "version": "0.1.0",
+  "description": "Up Rough release archive maker",
+  "private": true,
+  "main": "dist/main/main/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:preload": "tsc -p tsconfig.preload.json",
+    "build:renderer": "tsc -p tsconfig.renderer.json && mkdir -p dist/renderer/renderer && cp src/renderer/index.html src/renderer/style.css dist/renderer/renderer/",
+    "build": "npm run build:main && npm run build:preload && npm run build:renderer",
+    "start": "npm run build && electron .",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "test": "vitest run",
+    "dist": "npm run build && electron-builder"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  },
+  "build": {
+    "appId": "net.uprough.makerelease",
+    "productName": "Up Rough Release Maker",
+    "files": [
+      "dist/**/*",
+      "assets/**/*"
+    ],
+    "mac": {
+      "target": "dir"
+    }
+  }
+}

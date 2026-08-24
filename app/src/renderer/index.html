@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';" />
+  <title>Up Rough Release Maker</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>Up Rough Release Maker</h1>
+
+  <form id="release-form">
+    <section>
+      <h2>1. Filename code</h2>
+      <label for="code">5-character code (e.g. FB006) — becomes UP-&lt;CODE&gt;</label>
+      <input type="text" id="code" maxlength="5" required autocomplete="off" />
+      <div id="code-status" class="status"></div>
+    </section>
+
+    <section>
+      <h2>2. Release notes</h2>
+      <label for="release-name">Release name (as it appears after "Release named")</label>
+      <input type="text" id="release-name" required autocomplete="off" placeholder="'FLEISCH BITTE AD 006'" />
+      <label for="platform-tag">Platform tag (optional, shown in parentheses)</label>
+      <input type="text" id="platform-tag" autocomplete="off" placeholder="A1200" />
+      <label for="release-notes-text">Release notes</label>
+      <textarea id="release-notes-text" rows="6" required></textarea>
+    </section>
+
+    <section>
+      <h2>3. News</h2>
+      <label for="news-text">News</label>
+      <textarea id="news-text" rows="4"></textarea>
+    </section>
+
+    <section>
+      <h2>4. Members</h2>
+      <table id="members-table">
+        <thead>
+          <tr><th>Nickname</th><th>Role</th><th></th></tr>
+        </thead>
+        <tbody id="members-tbody"></tbody>
+      </table>
+      <button type="button" id="add-member-btn">Add member</button>
+    </section>
+
+    <section>
+      <h2>5. Release history entry</h2>
+      <div id="release-number-preview" class="status"></div>
+      <label for="entry-title">Title</label>
+      <input type="text" id="entry-title" required autocomplete="off" placeholder="fleisch bitte ad 006" />
+      <label for="entry-category">Category</label>
+      <input type="text" id="entry-category" required autocomplete="off" placeholder="intro (fjälldata 2023)" />
+      <label for="entry-creators">Creator(s)</label>
+      <input type="text" id="entry-creators" required autocomplete="off" placeholder="nori k, mortimer twang, spot, qwan, exocet" />
+    </section>
+
+    <section>
+      <h2>6. Diz banner art</h2>
+      <label for="diz-banner-text">Paste your hand-made ASCII banner art (written verbatim to file_id.diz)</label>
+      <textarea id="diz-banner-text" rows="10" class="monospace" required></textarea>
+    </section>
+
+    <section>
+      <h2>7. Files to include</h2>
+      <button type="button" id="pick-files-btn">Choose files/folders...</button>
+      <ul id="selected-files-list"></ul>
+    </section>
+
+    <section>
+      <h2>8. Archive format</h2>
+      <label><input type="radio" name="format" value="LHA" checked /> LHA</label>
+      <label><input type="radio" name="format" value="ZIP" /> ZIP</label>
+    </section>
+
+    <section>
+      <button type="submit" id="build-btn">Build release</button>
+      <div id="build-status" class="status"></div>
+    </section>
+  </form>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>
