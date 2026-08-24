@@ -4,7 +4,7 @@ export interface MemberEntry {
 }
 
 export interface ReleaseHistoryEntry {
-  releaseNumber: number;
+  releaseNumber: string;
   filenames: string;
   title: string;
   category: string;

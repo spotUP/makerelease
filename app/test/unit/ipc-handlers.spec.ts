@@ -50,7 +50,7 @@ describe('registerIpcHandlers', () => {
     (releasesClient.fetchSeed as any).mockResolvedValue({
       members: [{ nickname: 'spot', role: 'leader' }],
       nextReleaseNumber: 5,
-      history: [{ releaseNumber: 4, filenames: 'x', title: 't', category: 'c', creators: 'cr' }],
+      history: [{ releaseNumber: '4', filenames: 'x', title: 't', category: 'c', creators: 'cr' }],
       currentDizText: 'diz',
       revision: 9,
     });
@@ -58,7 +58,7 @@ describe('registerIpcHandlers', () => {
     expect(result).toEqual({
       members: [{ nickname: 'spot', role: 'leader' }],
       nextReleaseNumber: 5,
-      history: [{ releaseNumber: 4, filenames: 'x', title: 't', category: 'c', creators: 'cr' }],
+      history: [{ releaseNumber: '4', filenames: 'x', title: 't', category: 'c', creators: 'cr' }],
       currentDizText: 'diz',
       revision: 9,
     });
@@ -76,7 +76,7 @@ describe('registerIpcHandlers', () => {
     const callOrder: string[] = [];
     (releasesClient.publishRelease as any).mockImplementation(async () => {
       callOrder.push('publish');
-      return { releaseNumber: 7, revision: 3, history: [{ releaseNumber: 7, filenames: 'up-x.lha', title: 't', category: 'c', creators: 'cr' }] };
+      return { releaseNumber: 7, revision: 3, history: [{ releaseNumber: '7', filenames: 'up-x.lha', title: 't', category: 'c', creators: 'cr' }] };
     });
     (nfoGenerator.generateOutputs as any).mockImplementation(() => {
       callOrder.push('generate');
@@ -91,7 +91,7 @@ describe('registerIpcHandlers', () => {
 
     expect(callOrder).toEqual(['publish', 'generate']);
     expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(
-      [{ releaseNumber: 7, filenames: 'up-x.lha', title: 't', category: 'c', creators: 'cr' }],
+      [{ releaseNumber: '7', filenames: 'up-x.lha', title: 't', category: 'c', creators: 'cr' }],
       7,
       form,
     );

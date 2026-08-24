@@ -25,7 +25,7 @@ describe('renderMemberBlock', () => {
 describe('renderHistoryEntry', () => {
   it('renders the four-line label-padded block for a short entry', () => {
     const entry: ReleaseHistoryEntry = {
-      releaseNumber: 208,
+      releaseNumber: '208',
       filenames: 'up-fb006.lha',
       title: 'fleisch bitte ad 006',
       category: 'intro (fjälldata 2023)',
@@ -40,7 +40,7 @@ describe('renderHistoryEntry', () => {
 
   it('wraps a long creators line with 20-space continuation indent', () => {
     const entry: ReleaseHistoryEntry = {
-      releaseNumber: 204,
+      releaseNumber: '204',
       filenames: 'ds!up-a1.dms',
       title: 'asciiexpress issue #001',
       category: 'tool',
@@ -60,13 +60,21 @@ describe('renderHistoryEntry', () => {
 describe('renderHistoryBlock', () => {
   it('renders every entry uniformly and joins with a blank line, newest first', () => {
     const history: ReleaseHistoryEntry[] = [
-      { releaseNumber: 209, filenames: 'up-test0.lha', title: 'test', category: 'Demo', creators: 'spot' },
-      { releaseNumber: 208, filenames: 'up-fb006.lha', title: 'fleisch bitte ad 006', category: 'intro', creators: 'nori k' },
+      { releaseNumber: '209', filenames: 'up-test0.lha', title: 'test', category: 'Demo', creators: 'spot' },
+      { releaseNumber: '208', filenames: 'up-fb006.lha', title: 'fleisch bitte ad 006', category: 'intro', creators: 'nori k' },
     ];
     const block = renderHistoryBlock(history);
     expect(block.startsWith('        release 209 up-test0.lha')).toBe(true);
     expect(block).toContain('        release 208 up-fb006.lha');
     expect(block).toContain('\n\n        release 208');
+  });
+
+  it('renders a legacy non-numeric releaseNumber as an opaque string, unparsed', () => {
+    const history: ReleaseHistoryEntry[] = [
+      { releaseNumber: 'o99', filenames: 'up-legacy.lha', title: 'legacy import', category: 'intro', creators: 'unknown' },
+    ];
+    const block = renderHistoryBlock(history);
+    expect(block.startsWith('        release o99 up-legacy.lha')).toBe(true);
   });
 });
 
@@ -88,7 +96,7 @@ const sampleForm: ReleaseFormData = {
 describe('renderNfo', () => {
   it('embeds the release-notes line, banner, members, and history block', () => {
     const history: ReleaseHistoryEntry[] = [
-      { releaseNumber: 217, filenames: 'up-test0.lha', title: 'test release', category: 'Demo', creators: 'spot' },
+      { releaseNumber: '217', filenames: 'up-test0.lha', title: 'test release', category: 'Demo', creators: 'spot' },
     ];
     const nfo = renderNfo(history, sampleForm, 217);
     expect(nfo).toContain("Release named 'TEST RELEASE' (A1200) (UP-TEST0.LHA)");
@@ -105,7 +113,7 @@ describe('generateOutputs', () => {
     // the just-inserted release as history[0] (per POST /releases' response) —
     // generateOutputs no longer synthesizes an entry from releaseNumber itself.
     const history: ReleaseHistoryEntry[] = [
-      { releaseNumber: 42, filenames: 'up-test0.lha', title: 'test release', category: 'Demo', creators: 'spot' },
+      { releaseNumber: '42', filenames: 'up-test0.lha', title: 'test release', category: 'Demo', creators: 'spot' },
     ];
     const result = generateOutputs(history, 42, sampleForm);
     expect(result.releaseNumber).toBe(42);
