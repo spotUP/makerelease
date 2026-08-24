@@ -123,9 +123,15 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
 
   ipcMain.handle(
     'publishToWeb',
-    async (_event, code: string, archivePath: string, imagePath: string): Promise<PublishToWebOutcome> => {
+    async (
+      _event,
+      code: string,
+      archivePath: string,
+      imagePath: string,
+      embedImagePaths: string[],
+    ): Promise<PublishToWebOutcome> => {
       try {
-        const result = await publishToWebClient(releasesConfig, code, archivePath, imagePath);
+        const result = await publishToWebClient(releasesConfig, code, archivePath, imagePath, embedImagePaths);
         return { ok: true, ...result };
       } catch (err) {
         // Return a plain discriminated result rather than throwing: Electron

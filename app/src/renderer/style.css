@@ -104,3 +104,13 @@ button.danger { background: var(--danger); color: var(--fg); }
 #selected-files-list li { display: flex; justify-content: space-between; padding: 0.2rem 0; font-size: 0.85rem; }
 
 #publish-section[hidden] { display: none; }
+
+.media-embed-row {
+  display: flex;
+  gap: 0.4rem;
+  align-items: center;
+  margin-top: 0.4rem;
+}
+.media-embed-row select { flex: 0 0 auto; }
+.media-embed-row input[type="text"] { flex: 1 1 auto; width: auto; }
+.media-embed-row .status { flex: 1 1 auto; margin: 0; font-size: 0.8rem; }

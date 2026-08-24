@@ -226,14 +226,14 @@ describe('registerIpcHandlers', () => {
 
   it('publishToWeb delegates to the releases-client function and returns an ok:true outcome', async () => {
     (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(result).toEqual({ ok: true, archiveUrl: 'a', wordpressPostUrl: 'b' });
-    expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
   });
 
   it('publishToWeb returns an ok:false outcome for a plain (non-409) ReleasesApiError, not a thrown Error', async () => {
     (releasesClient.publishToWeb as any).mockRejectedValue(new ReleasesApiError('boom', { status: 500 }));
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(result).toEqual({ ok: false, message: 'boom', status: 500, wordpressPostUrl: undefined });
   });
 
@@ -244,7 +244,7 @@ describe('registerIpcHandlers', () => {
       new ReleasesApiError('already published', { status: 409, wordpressPostUrl: 'https://www.uprough.net/x/' }),
     );
 
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
 
     expect(result).toEqual({
       ok: false,
@@ -256,7 +256,7 @@ describe('registerIpcHandlers', () => {
 
   it('publishToWeb returns an ok:false outcome with just a message for a non-ReleasesApiError failure', async () => {
     (releasesClient.publishToWeb as any).mockRejectedValue(new Error('disk full'));
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(result).toEqual({ ok: false, message: 'disk full' });
   });
 

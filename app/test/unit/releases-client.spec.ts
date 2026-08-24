@@ -184,7 +184,7 @@ describe('publishToWeb', () => {
     const body = { archiveUrl: 'https://www.uprough.net/releases/UP-AAAAA.LHA', wordpressPostUrl: 'https://www.uprough.net/x/' };
     (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
 
-    const result = await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+    const result = await publishToWeb(cfg, 'AAAAA', archivePath, imagePath, []);
 
     expect(result).toEqual(body);
     const [url, init] = (global.fetch as any).mock.calls[0];
@@ -201,7 +201,7 @@ describe('publishToWeb', () => {
     fs.writeFileSync('/tmp/mr-test-archive2.lha', 'a');
     fs.writeFileSync('/tmp/mr-test-image2.png', 'i');
     (global.fetch as any).mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: 'already published' }) });
-    await expect(publishToWeb(cfg, 'AAAAA', '/tmp/mr-test-archive2.lha', '/tmp/mr-test-image2.png')).rejects.toThrow(
+    await expect(publishToWeb(cfg, 'AAAAA', '/tmp/mr-test-archive2.lha', '/tmp/mr-test-image2.png', [])).rejects.toThrow(
       'already published',
     );
     fs.unlinkSync('/tmp/mr-test-archive2.lha');
@@ -217,7 +217,7 @@ describe('publishToWeb', () => {
     const body = { archiveUrl: 'https://www.uprough.net/releases/UP-AAAAA.LHA', wordpressPostUrl: 'https://www.uprough.net/x/' };
     (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
 
-    await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+    await publishToWeb(cfg, 'AAAAA', archivePath, imagePath, []);
 
     const [, init] = (global.fetch as any).mock.calls[0];
     const sentForm = init.body as FormData;
@@ -234,6 +234,34 @@ describe('publishToWeb', () => {
     fs.unlinkSync(imagePath);
   });
 
+  it('attaches embedImage fields in order when embedImagePaths is non-empty', async () => {
+    const archivePath = '/tmp/mr-test-archive5.lha';
+    const imagePath = '/tmp/mr-test-image5.png';
+    const embed1 = '/tmp/mr-test-embed1.png';
+    const embed2 = '/tmp/mr-test-embed2.png';
+    fs.writeFileSync(archivePath, 'a');
+    fs.writeFileSync(imagePath, 'i');
+    fs.writeFileSync(embed1, 'first embed');
+    fs.writeFileSync(embed2, 'second embed');
+
+    const body = { archiveUrl: 'https://x/UP-AAAAA.LHA', wordpressPostUrl: 'https://x/p/' };
+    (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
+
+    await publishToWeb(cfg, 'AAAAA', archivePath, imagePath, [embed1, embed2]);
+
+    const [, init] = (global.fetch as any).mock.calls[0];
+    const sentForm = init.body as FormData;
+    const embedEntries = sentForm.getAll('embedImage') as Blob[];
+    expect(embedEntries).toHaveLength(2);
+    expect(await embedEntries[0].text()).toBe('first embed');
+    expect(await embedEntries[1].text()).toBe('second embed');
+
+    fs.unlinkSync(archivePath);
+    fs.unlinkSync(imagePath);
+    fs.unlinkSync(embed1);
+    fs.unlinkSync(embed2);
+  });
+
   it('attaches status and wordpressPostUrl to the thrown ReleasesApiError on a 409 "already published" response', async () => {
     const archivePath = '/tmp/mr-test-archive4.lha';
     const imagePath = '/tmp/mr-test-image4.png';
@@ -248,7 +276,7 @@ describe('publishToWeb', () => {
 
     let caught: ReleasesApiError | undefined;
     try {
-      await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+      await publishToWeb(cfg, 'AAAAA', archivePath, imagePath, []);
     } catch (err) {
       caught = err as ReleasesApiError;
     }
@@ -276,7 +304,7 @@ describe('publishToWeb', () => {
 
     let caught: ReleasesApiError | undefined;
     try {
-      await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+      await publishToWeb(cfg, 'AAAAA', archivePath, imagePath, []);
     } catch (err) {
       caught = err as ReleasesApiError;
     }

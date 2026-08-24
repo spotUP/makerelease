@@ -13,6 +13,21 @@ export interface ReleaseHistoryEntry {
 
 export type ReleaseFormat = 'LHA' | 'ZIP';
 
+export interface CreditEntry {
+  role: string;
+  name: string;
+}
+
+// What's sent to the server at build time (POST /api/releases). An 'image'
+// entry carries no path here - the server only knows it by position among
+// the release's stored image-type embeds. The actual local file path lives
+// only in the renderer's own MediaEmbedsList state, captured separately at
+// build-success time for the later Publish step (see main.ts's
+// lastEmbedImagePaths) - never part of the wire format sent to the server.
+export type MediaEmbedFormEntry =
+  | { type: 'youtube'; caption: string; youtubeUrl: string }
+  | { type: 'image'; caption: string };
+
 export interface ReleaseFormData {
   code: string;
   format: ReleaseFormat;
@@ -26,6 +41,9 @@ export interface ReleaseFormData {
   entryCategory: string;
   entryCreators: string;
   selectedPaths: string[];
+  description: string;
+  credits: CreditEntry[];
+  mediaEmbeds: MediaEmbedFormEntry[];
 }
 
 export interface GeneratedOutputs {
@@ -101,6 +119,11 @@ export interface MakereleaseApi {
   checkCodeAvailability(code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
   pickImage(): Promise<string | null>;
-  publishToWeb(code: string, archivePath: string, imagePath: string): Promise<PublishToWebOutcome>;
+  publishToWeb(
+    code: string,
+    archivePath: string,
+    imagePath: string,
+    embedImagePaths: string[],
+  ): Promise<PublishToWebOutcome>;
   deleteRelease(code: string): Promise<DeleteReleaseOutcome>;
 }

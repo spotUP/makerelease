@@ -23,7 +23,9 @@
       <input type="text" id="release-name" required autocomplete="off" placeholder="'FLEISCH BITTE AD 006'" />
       <label for="platform-tag">Platform tag (optional, shown in parentheses)</label>
       <input type="text" id="platform-tag" autocomplete="off" placeholder="A1200" />
-      <label for="release-notes-text">Release notes</label>
+      <label for="description-text">Description (short — the first line of the WordPress post)</label>
+      <input type="text" id="description-text" required autocomplete="off" placeholder="Fleisch Bitte AD 006 released at Revision 2026." />
+      <label for="release-notes-text">Release notes (the WordPress post's main body, and the NFO's release notes)</label>
       <textarea id="release-notes-text" rows="6" required></textarea>
     </section>
 
@@ -71,19 +73,36 @@
     </section>
 
     <section>
-      <h2>6. Diz banner art</h2>
+      <h2>6. Credits (optional — for the WordPress post)</h2>
+      <table id="credits-table">
+        <thead>
+          <tr><th>Role</th><th>Name</th><th></th></tr>
+        </thead>
+        <tbody id="credits-tbody"></tbody>
+      </table>
+      <button type="button" id="add-credit-btn">Add credit</button>
+    </section>
+
+    <section>
+      <h2>7. Media embeds (optional — YouTube videos or images in the WordPress post)</h2>
+      <div id="media-embeds-container"></div>
+      <button type="button" id="add-media-embed-btn">Add media embed</button>
+    </section>
+
+    <section>
+      <h2>8. Diz banner art</h2>
       <label for="diz-banner-text">Paste your hand-made ASCII banner art (written verbatim to file_id.diz, fixed 45x10 grid &mdash; typing overwrites in place)</label>
       <textarea id="diz-banner-text" rows="10" cols="45" wrap="off" class="monospace diz-banner" spellcheck="false" required></textarea>
     </section>
 
     <section>
-      <h2>7. Files to include</h2>
+      <h2>9. Files to include</h2>
       <button type="button" id="pick-files-btn">Choose files/folders...</button>
       <ul id="selected-files-list"></ul>
     </section>
 
     <section>
-      <h2>8. Archive format</h2>
+      <h2>10. Archive format</h2>
       <label><input type="radio" name="format" value="LHA" checked /> LHA</label>
       <label><input type="radio" name="format" value="ZIP" /> ZIP</label>
     </section>
@@ -96,7 +115,7 @@
   </form>
 
   <section id="publish-section" hidden>
-    <h2>9. Publish to uprough.net</h2>
+    <h2>11. Publish to uprough.net</h2>
     <button type="button" id="pick-image-btn">Choose cover image...</button>
     <div id="selected-image" class="status"></div>
     <button type="button" id="publish-btn" disabled>Publish</button>

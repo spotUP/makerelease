@@ -81,6 +81,9 @@ function toPublishBody(form: ReleaseFormData): Record<string, unknown> {
     entryCategory: form.entryCategory,
     entryCreators: form.entryCreators,
     members: form.members,
+    description: form.description,
+    credits: form.credits,
+    mediaEmbeds: form.mediaEmbeds,
   };
 }
 
@@ -126,10 +129,16 @@ export async function publishToWeb(
   code: string,
   archivePath: string,
   imagePath: string,
+  embedImagePaths: string[],
 ): Promise<PublishToWebResult> {
   const form = new FormData();
   form.append('archive', await openAsBlob(archivePath), path.basename(archivePath));
   form.append('image', await openAsBlob(imagePath), path.basename(imagePath));
+  // Matched positionally on the server to this release's stored image-type
+  // media embeds, in the same order - see routes.ts's publish handler.
+  for (const embedImagePath of embedImagePaths) {
+    form.append('embedImage', await openAsBlob(embedImagePath), path.basename(embedImagePath));
+  }
 
   let response: Response;
   try {

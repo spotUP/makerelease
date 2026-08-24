@@ -16,8 +16,13 @@ const api: MakereleaseApi = {
   buildRelease: (form: ReleaseFormData, dryRun: boolean): Promise<BuildResult> =>
     ipcRenderer.invoke('buildRelease', form, dryRun),
   pickImage: (): Promise<string | null> => ipcRenderer.invoke('pickImage'),
-  publishToWeb: (code: string, archivePath: string, imagePath: string): Promise<PublishToWebOutcome> =>
-    ipcRenderer.invoke('publishToWeb', code, archivePath, imagePath),
+  publishToWeb: (
+    code: string,
+    archivePath: string,
+    imagePath: string,
+    embedImagePaths: string[],
+  ): Promise<PublishToWebOutcome> =>
+    ipcRenderer.invoke('publishToWeb', code, archivePath, imagePath, embedImagePaths),
   deleteRelease: (code: string): Promise<DeleteReleaseOutcome> => ipcRenderer.invoke('deleteRelease', code),
 };
 

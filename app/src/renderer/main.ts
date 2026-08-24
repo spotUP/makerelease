@@ -1,5 +1,7 @@
 import { ReleaseFormat, ReleaseFormData } from '../shared/types';
 import { MemberlistTable } from './memberlist-table.js';
+import { CreditsTable } from './credits-table.js';
+import { MediaEmbedsTable } from './media-embeds-table.js';
 import { attachOverwriteGrid, toGridText } from './diz-grid.js';
 import { attachCreatorsAutocomplete } from './creators-autocomplete.js';
 
@@ -9,10 +11,15 @@ const codeInput = $<HTMLInputElement>('code');
 const codeStatus = $<HTMLDivElement>('code-status');
 const releaseNameInput = $<HTMLInputElement>('release-name');
 const platformTagInput = $<HTMLInputElement>('platform-tag');
+const descriptionInput = $<HTMLInputElement>('description-text');
 const releaseNotesTextArea = $<HTMLTextAreaElement>('release-notes-text');
 const newsTextArea = $<HTMLTextAreaElement>('news-text');
 const membersTbody = $<HTMLTableSectionElement>('members-tbody');
 const addMemberBtn = $<HTMLButtonElement>('add-member-btn');
+const creditsTbody = $<HTMLTableSectionElement>('credits-tbody');
+const addCreditBtn = $<HTMLButtonElement>('add-credit-btn');
+const mediaEmbedsContainer = $<HTMLElement>('media-embeds-container');
+const addMediaEmbedBtn = $<HTMLButtonElement>('add-media-embed-btn');
 const releaseNumberPreview = $<HTMLDivElement>('release-number-preview');
 const entryTitleInput = $<HTMLInputElement>('entry-title');
 const entryCategoryInput = $<HTMLSelectElement>('entry-category');
@@ -39,11 +46,19 @@ const deleteReleaseBtn = $<HTMLButtonElement>('delete-release-btn');
 const deleteStatus = $<HTMLDivElement>('delete-status');
 
 const memberlist = new MemberlistTable(membersTbody);
+const creditsTable = new CreditsTable(creditsTbody);
+const mediaEmbedsTable = new MediaEmbedsTable(mediaEmbedsContainer, () => window.api.pickImage());
 let nextReleaseNumber = 0;
 let selectedPaths: string[] = [];
 let lastBuiltCode: string | null = null;
 let lastBuiltArchivePath: string | null = null;
 let selectedImagePath: string | null = null;
+// Captured at build-success time from mediaEmbedsTable, frozen for the
+// later Publish click — mirrors lastBuiltArchivePath. The form's own
+// media-embed rows could be edited (or cleared) between Build and Publish;
+// Publish must send exactly what was actually built and sent to the server,
+// not whatever the form currently shows.
+let lastEmbedImagePaths: string[] = [];
 
 attachCreatorsAutocomplete(entryCreatorsInput, entryCreatorsSuggestions, () => memberlist.getMembers());
 
@@ -78,6 +93,7 @@ function resetPublishState(): void {
   deleteReleaseBtn.disabled = false;
   deleteStatus.textContent = '';
   deleteStatus.className = 'status';
+  lastEmbedImagePaths = [];
 }
 
 function renderSelectedFiles(): void {
@@ -119,6 +135,8 @@ async function init(): Promise<void> {
 }
 
 addMemberBtn.addEventListener('click', () => memberlist.addRow());
+addCreditBtn.addEventListener('click', () => creditsTable.addRow());
+addMediaEmbedBtn.addEventListener('click', () => mediaEmbedsTable.addRow());
 
 codeInput.addEventListener('input', () => {
   codeInput.value = codeInput.value.toUpperCase();
@@ -172,6 +190,15 @@ form.addEventListener('submit', async (e) => {
     buildStatus.className = 'status warn';
     return;
   }
+  const mediaEmbedsError = mediaEmbedsTable.getValidationError();
+  if (mediaEmbedsError) {
+    buildStatus.textContent = mediaEmbedsError;
+    buildStatus.className = 'status warn';
+    return;
+  }
+
+  const mediaEmbeds = mediaEmbedsTable.getMediaEmbeds();
+  const embedImagePaths = mediaEmbedsTable.getEmbedImagePaths();
 
   const formData: ReleaseFormData = {
     code,
@@ -186,6 +213,9 @@ form.addEventListener('submit', async (e) => {
     entryCategory: entryCategoryInput.value.trim(),
     entryCreators: entryCreatorsInput.value.trim(),
     selectedPaths,
+    description: descriptionInput.value.trim(),
+    credits: creditsTable.getCredits(),
+    mediaEmbeds,
   };
 
   const dryRun = dryRunCheckbox.checked;
@@ -208,6 +238,7 @@ form.addEventListener('submit', async (e) => {
       buildStatus.className = 'status ok';
       lastBuiltCode = code;
       lastBuiltArchivePath = result.archivePath;
+      lastEmbedImagePaths = embedImagePaths;
       publishSection.hidden = false;
       publishBtn.disabled = !selectedImagePath;
       cleanupSection.hidden = false;
@@ -235,7 +266,12 @@ publishBtn.addEventListener('click', async () => {
   publishStatus.textContent = 'Publishing... (this can take a while for a large archive, please wait)';
   publishStatus.className = 'status';
   try {
-    const result = await window.api.publishToWeb(lastBuiltCode, lastBuiltArchivePath, selectedImagePath);
+    const result = await window.api.publishToWeb(
+      lastBuiltCode,
+      lastBuiltArchivePath,
+      selectedImagePath,
+      lastEmbedImagePaths,
+    );
     if (result.ok) {
       publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl})`;
       publishStatus.className = 'status ok';
@@ -296,6 +332,7 @@ deleteReleaseBtn.addEventListener('click', async () => {
       // deleteReleaseBtn stays disabled: there's nothing left to delete.
       lastBuiltCode = null;
       lastBuiltArchivePath = null;
+      lastEmbedImagePaths = [];
       publishSection.hidden = true;
       publishStatus.textContent = '';
       publishStatus.className = 'status';
