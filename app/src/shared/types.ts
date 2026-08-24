@@ -4,23 +4,11 @@ export interface MemberEntry {
 }
 
 export interface ReleaseHistoryEntry {
-  releaseNumberRaw: string;
-  releaseNumberValue: number | null;
+  releaseNumber: number;
   filenames: string;
   title: string;
   category: string;
   creators: string;
-  rawBlock: string[];
-}
-
-export interface ParsedNfo {
-  sourceFilePath: string;
-  currentReleaseNotesTitleLine: string;
-  currentReleaseNotesText: string;
-  currentNewsText: string;
-  members: MemberEntry[];
-  history: ReleaseHistoryEntry[];
-  maxReleaseNumber: number;
 }
 
 export type ReleaseFormat = 'LHA' | 'ZIP';
@@ -49,7 +37,9 @@ export interface GeneratedOutputs {
 export interface SeedState {
   members: MemberEntry[];
   nextReleaseNumber: number;
-  sourceNfoPath: string;
+  history: ReleaseHistoryEntry[];
+  currentDizText: string;
+  revision: number;
 }
 
 export interface BuildResult {
