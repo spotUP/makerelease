@@ -185,33 +185,39 @@ describe('registerIpcHandlers', () => {
     expect(result).toBeNull();
   });
 
-  it('publishToWeb delegates to the releases-client function with the right args', async () => {
+  it('publishToWeb delegates to the releases-client function and returns an ok:true outcome', async () => {
     (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
     const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
-    expect(result).toEqual({ archiveUrl: 'a', wordpressPostUrl: 'b' });
+    expect(result).toEqual({ ok: true, archiveUrl: 'a', wordpressPostUrl: 'b' });
     expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
   });
 
-  it('publishToWeb re-throws a plain (non-409) ReleasesApiError unchanged', async () => {
+  it('publishToWeb returns an ok:false outcome for a plain (non-409) ReleasesApiError, not a thrown Error', async () => {
     (releasesClient.publishToWeb as any).mockRejectedValue(new ReleasesApiError('boom', { status: 500 }));
-    await expect(handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png')).rejects.toThrow('boom');
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    expect(result).toEqual({ ok: false, message: 'boom', status: 500, wordpressPostUrl: undefined });
   });
 
-  it('publishToWeb JSON-encodes {message, status, wordpressPostUrl} into the thrown Error message on a 409, ' +
-    'since ipcMain.handle only forwards an Error message string (not custom properties) to the renderer', async () => {
+  it('publishToWeb returns an ok:false outcome carrying status and wordpressPostUrl on a 409, ' +
+    'rather than throwing — ipcMain.handle mangles a thrown Error message crossing the IPC boundary, ' +
+    'but a plain returned object crosses intact', async () => {
     (releasesClient.publishToWeb as any).mockRejectedValue(
       new ReleasesApiError('already published', { status: 409, wordpressPostUrl: 'https://www.uprough.net/x/' }),
     );
 
-    let caught: Error | undefined;
-    try {
-      await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
-    } catch (err) {
-      caught = err as Error;
-    }
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
 
-    expect(caught).toBeInstanceOf(Error);
-    const parsed = JSON.parse(caught!.message);
-    expect(parsed).toEqual({ message: 'already published', status: 409, wordpressPostUrl: 'https://www.uprough.net/x/' });
+    expect(result).toEqual({
+      ok: false,
+      message: 'already published',
+      status: 409,
+      wordpressPostUrl: 'https://www.uprough.net/x/',
+    });
+  });
+
+  it('publishToWeb returns an ok:false outcome with just a message for a non-ReleasesApiError failure', async () => {
+    (releasesClient.publishToWeb as any).mockRejectedValue(new Error('disk full'));
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    expect(result).toEqual({ ok: false, message: 'disk full' });
   });
 });

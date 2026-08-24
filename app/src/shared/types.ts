@@ -59,11 +59,24 @@ export interface PublishToWebResult {
   wordpressPostUrl: string;
 }
 
+/**
+ * publishToWeb's IPC result is a discriminated union rather than a thrown
+ * Error, because Electron's ipcMain.handle/ipcRenderer.invoke boundary
+ * mangles a thrown Error's message (it prepends
+ * `Error invoking remote method '<channel>': Error: ` before the renderer
+ * sees it) and strips every custom property via structured-clone. A plain
+ * returned object crosses intact. Only a genuinely unexpected failure (a
+ * bug, not a modeled outcome like "already published") should still throw.
+ */
+export type PublishToWebOutcome =
+  | ({ ok: true } & PublishToWebResult)
+  | { ok: false; message: string; status?: number; wordpressPostUrl?: string };
+
 export interface MakereleaseApi {
   loadSeedState(): Promise<SeedState>;
   pickFilesAndDirs(): Promise<string[]>;
   checkCodeAvailability(code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData): Promise<BuildResult>;
   pickImage(): Promise<string | null>;
-  publishToWeb(code: string, archivePath: string, imagePath: string): Promise<PublishToWebResult>;
+  publishToWeb(code: string, archivePath: string, imagePath: string): Promise<PublishToWebOutcome>;
 }

@@ -1,6 +1,6 @@
 import { dialog, ipcMain } from 'electron';
 import * as path from 'path';
-import { BuildResult, PublishToWebResult, ReleaseFormData, SeedState } from '../shared/types';
+import { BuildResult, PublishToWebOutcome, ReleaseFormData, SeedState } from '../shared/types';
 import {
   fetchSeed,
   checkCodeExists,
@@ -95,23 +95,20 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
 
   ipcMain.handle(
     'publishToWeb',
-    async (_event, code: string, archivePath: string, imagePath: string): Promise<PublishToWebResult> => {
+    async (_event, code: string, archivePath: string, imagePath: string): Promise<PublishToWebOutcome> => {
       try {
-        return await publishToWebClient(releasesConfig, code, archivePath, imagePath);
+        const result = await publishToWebClient(releasesConfig, code, archivePath, imagePath);
+        return { ok: true, ...result };
       } catch (err) {
-        if (err instanceof ReleasesApiError && err.status === 409) {
-          // ipcMain.handle only forwards an Error's `message` string to the
-          // renderer process — Electron's IPC boundary strips any other
-          // properties from a thrown Error (structured-clone does not
-          // preserve custom fields or the prototype chain). Encode the
-          // fields the renderer needs as JSON in the message so they
-          // survive the round trip; main.ts's catch block parses this back
-          // out instead of pattern-matching on error text.
-          throw new Error(
-            JSON.stringify({ message: err.message, status: err.status, wordpressPostUrl: err.wordpressPostUrl }),
-          );
+        // Return a plain discriminated result rather than throwing: Electron
+        // prepends `Error invoking remote method '<channel>': Error: ` to a
+        // thrown Error's message before the renderer sees it, and strips
+        // every custom property via structured-clone. A plain returned
+        // object crosses the IPC boundary intact.
+        if (err instanceof ReleasesApiError) {
+          return { ok: false, message: err.message, status: err.status, wordpressPostUrl: err.wordpressPostUrl };
         }
-        throw err;
+        return { ok: false, message: err instanceof Error ? err.message : String(err) };
       }
     },
   );
