@@ -36,3 +36,17 @@ For local development against a local/staging `releases-doorserver`, set
 `RELEASES_WRITE_KEY` (and optionally `RELEASES_API_BASE_URL`) as a normal
 env var before `npm start` — no injection step needed; see the resolution
 order documented at the top of `src/main/config.ts`.
+
+## Production server
+
+`RELEASES_API_BASE_URL` defaults to `https://www.uprough.net` (see
+`DEFAULT_BASE_URL` in `src/main/config.ts`) — `releases-doorserver` runs
+there, path-mounted at `/api/releases/*` on the same host and nginx vhost as
+the WordPress site (not on its own `releases.uprough.net` subdomain — that
+DNS record doesn't exist). Full server-side deployment details — host,
+paths, pm2 setup, nginx config, how to update it, how to rotate the
+`RELEASES_WRITE_KEY`/WordPress credentials — live in
+[`releases-doorserver/DEPLOYMENT.md`](https://github.com/spotUP/releases-doorserver/blob/main/DEPLOYMENT.md)
+(separate repo). The real `RELEASES_WRITE_KEY` for that server is not
+committed anywhere — get it from whoever ran the deploy, or generate a new
+one and update the server's `ecosystem.config.cjs` to match.
