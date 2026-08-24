@@ -111,4 +111,13 @@ describe('generateOutputs', () => {
     expect(result.releaseNumber).toBe(42);
     expect(result.nfoText).toContain('release 42');
   });
+
+  it('does not synthesize a history entry — an empty history produces an empty history block', () => {
+    const result = generateOutputs([], 42, sampleForm);
+    expect(result.releaseNumber).toBe(42);
+    expect(result.nfoText).not.toContain('release 42');
+    // The history section should still have its heading, just no entry beneath it.
+    const historySectionIndex = result.nfoText.indexOf('        r e l e a s e d   s o   f a r');
+    expect(historySectionIndex).toBeGreaterThan(-1);
+  });
 });
