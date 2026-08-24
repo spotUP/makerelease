@@ -231,7 +231,7 @@ pickImageBtn.addEventListener('click', async () => {
 publishBtn.addEventListener('click', async () => {
   if (!lastBuiltCode || !lastBuiltArchivePath || !selectedImagePath) return;
   publishBtn.disabled = true;
-  publishStatus.textContent = 'Publishing...';
+  publishStatus.textContent = 'Publishing... (this can take a while for a large archive, please wait)';
   publishStatus.className = 'status';
   try {
     const result = await window.api.publishToWeb(lastBuiltCode, lastBuiltArchivePath, selectedImagePath);
