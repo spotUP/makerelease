@@ -26,17 +26,23 @@ vi.mock('../../src/main/archiver', () => ({
   finalizeRelease: vi.fn(),
 }));
 
+vi.mock('../../src/main/fs-helpers', () => ({
+  pathExists: vi.fn(),
+}));
+
 import { registerIpcHandlers } from '../../src/main/ipc-handlers';
 import * as releasesClient from '../../src/main/releases-client';
 import * as nfoGenerator from '../../src/main/nfo-generator';
 import * as staging from '../../src/main/staging';
 import * as archiver from '../../src/main/archiver';
+import * as fsHelpers from '../../src/main/fs-helpers';
 
 describe('registerIpcHandlers', () => {
-  const cfg = { baseUrl: 'https://x', writeKey: 'k' };
+  const cfg = { baseUrl: 'https://x', writeKey: 'k', isPlaceholderKey: false };
 
   beforeEach(() => {
     vi.clearAllMocks();
+    (fsHelpers.pathExists as any).mockResolvedValue(false);
     registerIpcHandlers('/root', cfg);
   });
 
@@ -98,5 +104,55 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.checkCodeAvailability(null, 'AAAAA');
     expect(result).toEqual({ exists: true });
     expect(releasesClient.checkCodeExists).toHaveBeenCalledWith(cfg, 'AAAAA');
+  });
+
+  it('buildRelease throws locally and never calls publishRelease when UP-<CODE> already exists on disk', async () => {
+    (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-AAAAA');
+
+    const form = { code: 'AAAAA', format: 'LHA' } as any;
+    await expect(handlers.buildRelease(null, form)).rejects.toThrow(/UP-AAAAA already exists locally/);
+
+    expect(releasesClient.publishRelease).not.toHaveBeenCalled();
+  });
+
+  it('buildRelease throws locally when a stale UP-<CODE>.LHA archive already exists on disk', async () => {
+    (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-AAAAA.LHA');
+
+    const form = { code: 'AAAAA', format: 'LHA' } as any;
+    await expect(handlers.buildRelease(null, form)).rejects.toThrow(/UP-AAAAA already exists locally/);
+
+    expect(releasesClient.publishRelease).not.toHaveBeenCalled();
+  });
+
+  it('buildRelease throws locally when a stale UP-<CODE>.ZIP archive already exists on disk', async () => {
+    (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-AAAAA.ZIP');
+
+    const form = { code: 'AAAAA', format: 'ZIP' } as any;
+    await expect(handlers.buildRelease(null, form)).rejects.toThrow(/UP-AAAAA already exists locally/);
+
+    expect(releasesClient.publishRelease).not.toHaveBeenCalled();
+  });
+
+  it('loadSeedState sets configWarning when running with the placeholder write key', async () => {
+    vi.clearAllMocks();
+    (fsHelpers.pathExists as any).mockResolvedValue(false);
+    registerIpcHandlers('/root', { baseUrl: 'https://x', writeKey: 'REPLACE_ME_BEFORE_DISTRIBUTING', isPlaceholderKey: true });
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
+    });
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.configWarning).toMatch(/RELEASES_WRITE_KEY/);
+  });
+
+  it('loadSeedState omits configWarning when a real write key is configured', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
+    });
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.configWarning).toBeUndefined();
   });
 });

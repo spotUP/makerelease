@@ -40,6 +40,13 @@ export interface SeedState {
   history: ReleaseHistoryEntry[];
   currentDizText: string;
   revision: number;
+  /**
+   * Set when this build is running with the placeholder RELEASES_WRITE_KEY
+   * (i.e. no key was baked in at build time and none was supplied via the
+   * dev-time env var override). Publishing a release will 401. The renderer
+   * surfaces this to the user; see main.ts's init().
+   */
+  configWarning?: string;
 }
 
 export interface BuildResult {

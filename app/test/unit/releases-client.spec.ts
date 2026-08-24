@@ -2,7 +2,7 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { fetchSeed, checkCodeExists, publishRelease, ReleasesApiError } from '../../src/main/releases-client';
 import { ReleaseFormData } from '../../src/shared/types';
 
-const cfg = { baseUrl: 'https://releases.example.test', writeKey: 'secret' };
+const cfg = { baseUrl: 'https://releases.example.test', writeKey: 'secret', isPlaceholderKey: false };
 
 const sampleForm: ReleaseFormData = {
   code: 'TEST0',

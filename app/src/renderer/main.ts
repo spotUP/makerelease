@@ -70,6 +70,10 @@ async function init(): Promise<void> {
     nextReleaseNumber = seed.nextReleaseNumber;
     dizBannerTextArea.value = toGridText(seed.currentDizText);
     updateReleaseNumberPreview();
+    if (seed.configWarning) {
+      buildStatus.textContent = seed.configWarning;
+      buildStatus.className = 'status warn';
+    }
   } catch (err) {
     buildStatus.textContent = `Failed to load current members/release number: ${
       err instanceof Error ? err.message : String(err)
