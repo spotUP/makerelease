@@ -42,15 +42,25 @@ deliberate action taken only when the member is satisfied with the build.
 
 ## Credential model
 
-SSH key and WordPress application password/credentials live **only** on the
-`releases-doorserver` host, as server config (env vars, following the same
-"configured or refuse to start" policy as every other credential in that
-project's `config.ts`). No member's machine, and no copy of the Electron
-app, ever holds them. The app authenticates to `releases-doorserver`'s
-publish endpoint the same way it authenticates Phase 1's write endpoint (the
-shared `X-Release-Key` header) and hands over the archive bytes + post
-content; the server does the SCP and the WordPress API call using its own
-credentials.
+**`releases-doorserver` and `www.uprough.net` (WordPress) run on the same
+box** (confirmed by the user - same host as `bbs.uprough.net`). This
+simplifies the "SCP" step to a local filesystem copy, not a real SSH/SCP
+network hop - no SSH key is needed at all. Only a WordPress Application
+Password (WP's built-in mechanism, confirmed available) is required as a
+real credential, held **only** on the `releases-doorserver` host as server
+config (env vars, following the same "configured or refuse to start" policy
+as every other credential in that project's `config.ts`). No member's
+machine, and no copy of the Electron app, ever holds it. The app
+authenticates to `releases-doorserver`'s publish endpoint the same way it
+authenticates Phase 1's write endpoint (the shared `X-Release-Key` header)
+and hands over the archive bytes + post content; the server does the local
+file copy and the WordPress API call using its own credentials.
+
+This also means the "publish" endpoint's file-copy step is simpler and more
+reliable than a network SCP would be (no connection/auth failure mode for
+that half of the pipeline - a local `fs.copyFile` either succeeds or hits a
+real filesystem error like disk-full or permissions, both worth surfacing
+distinctly but neither is a network-flakiness concern).
 
 ## API
 
@@ -72,28 +82,52 @@ back to the app (a partial failure - e.g. SCP succeeds, WordPress post fails
 - must be reported as exactly that, not a generic "publish failed", so a
 retry doesn't re-upload an archive that's already in place):
 
-1. **SCP the archive** to `www.uprough.net`'s `/releases/` directory as
+1. **Copy the archive** to `www.uprough.net`'s `/releases/` directory (a
+   local filesystem path on this same host - see Credential model above) as
    `UP-<CODE>.<FORMAT>` (matching the already-confirmed live path exactly, so
    the download link Phase 1 already computes - `releases.uprough.net`'s
    `/manifest` and any future browsing page - is correct the moment this
-   step completes).
+   step completes). The exact source-of-truth local path for that directory
+   (e.g. `/var/www/uprough.net/releases/` or wherever the live site's
+   `/releases/` URL actually resolves to on disk) is a deployment-time config
+   value (`WORDPRESS_RELEASES_DIR` env var), not hardcoded - the operator
+   sets it when deploying, matching this project's existing "configured, no
+   defaults" convention.
 2. **Upload the image** via the WordPress REST API's media endpoint
-   (`/wp-json/wp/v2/media`), get back the WordPress media ID.
+   (`/wp-json/wp/v2/media`), authenticated with a WordPress Application
+   Password (confirmed available on this site), get back the WordPress media
+   ID.
 3. **Create the WordPress post** via `/wp-json/wp/v2/posts`:
    - Title: `#<release_number>: <release_name>` (the group's existing
      numbering convention, e.g. `#217: Hypocrisy` - confirmed by the user
      directly, not inferred).
    - Body: the release's `release_notes` text.
    - Featured image: the media ID from step 2.
-   - Tags: derived from the release's `entry_category` (the same fixed list
-     already in the app's category `<select>` - Demo, Intro, Musicdisk,
-     Music, Graphics, ASCII, Tool, Video, Science, Other), mapped to the
-     group's existing WordPress tag names (confirmed example: category
-     `Demo` -> tag `Demos`, plural). **Open question for spec review**: the
-     exact mapping for every category needs the user to confirm the real tag
-     names in WordPress (only `Demo` -> `Demos` and implicitly `Music` have
-     been mentioned so far) - listed under "Needs confirmation before
-     implementation" below rather than guessed.
+   - **Category** (WordPress category, not a tag - corrected from an earlier
+     draft of this spec): derived from the release's `entry_category` (the
+     same fixed list already in the app's category `<select>` - Demo, Intro,
+     Musicdisk, Music, Graphics, ASCII, Tool, Video, Science, Other), mapped
+     1:1 to the group's real WordPress categories (confirmed full list:
+     Demos, Music, Ascii, Diskmag, Graphics, Intros, Links for You,
+     Musicdisks, News, Other, People, Radio Dirty, Science, Tools, Videos -
+     the app's 10 categories all have a direct match):
+
+     | App category | WordPress category |
+     |---|---|
+     | Demo | Demos |
+     | Intro | Intros |
+     | Musicdisk | Musicdisks |
+     | Music | Music |
+     | Graphics | Graphics |
+     | ASCII | Ascii |
+     | Tool | Tools |
+     | Video | Videos |
+     | Science | Science |
+     | Other | Other |
+
+     The WordPress-side categories the app never produces (Diskmag, Links
+     for You, News, People, Radio Dirty) are simply never targeted - no
+     mapping needed for them.
 4. Record the publish result (WordPress post URL, SCP completion) back onto
    the `releases` row (new columns: `published_at`, `wordpress_post_url`) so
    a second publish attempt on an already-published release can be detected
@@ -129,30 +163,26 @@ v1 (WordPress's own edit UI already covers that case).
   `409` (already published), shows the existing post URL instead of
   attempting again.
 
-## Needs confirmation before implementation
+## Decisions confirmed (previously open questions)
 
-- **Full category -> WordPress tag mapping.** Only `Demo` -> `Demos` has been
-  confirmed directly; the other nine categories (Intro, Musicdisk, Music,
-  Graphics, ASCII, Tool, Video, Science, Other) need their real WordPress tag
-  names confirmed against the actual site before this ships, rather than
-  guessed from the category label.
-- **SCP target specifics**: exact host/path/user for the `www.uprough.net`
-  box's `/releases/` directory, and how the `releases-doorserver` host
-  reaches it (same box as `bbs.uprough.net`, a different box, a bastion,
-  etc) - needed to write the actual SCP config, not just the pipeline logic.
-- **WordPress REST API credentials type**: an Application Password (WP's
-  built-in mechanism) is assumed here as the simplest fit for a server-side
-  service account with no interactive login, but this needs confirming
-  against however `www.uprough.net`'s WordPress is actually configured.
+- **Category mapping** (not tags - corrected above): full 1:1 table
+  confirmed against the real WordPress category list.
+- **File transfer**: `releases-doorserver` and `www.uprough.net` share a
+  host, so this is a local file copy (`WORDPRESS_RELEASES_DIR` config path),
+  not a network SCP/SSH hop - no SSH key needed.
+- **WordPress auth**: Application Passwords, confirmed available on the real
+  site.
 
 ## Testing
 
 - `releases-doorserver`: unit tests for the publish pipeline's three steps
-  mocked independently (SCP, media upload, post creation) so a failure in
-  any one step is tested in isolation, plus the idempotency (`409`) path.
-  No test should perform a real SCP or a real WordPress post - all three
-  external calls are mocked in the test suite, matching door-repo's own
-  pattern of never hitting real external systems in `npm test`.
+  mocked independently (local file copy, media upload, post creation) so a
+  failure in any one step is tested in isolation, plus the idempotency
+  (`409`) path. No test should perform a real WordPress API call - both
+  external calls (media upload, post creation) are mocked in the test suite,
+  matching door-repo's own pattern of never hitting real external systems in
+  `npm test`. The file-copy step can be tested against a real temp directory
+  (no mocking needed - it's local disk I/O, not a network call).
 - Manual end-to-end (necessarily against real `www.uprough.net`, so run
   deliberately, not in CI): publish one real throwaway release, confirm the
   archive is downloadable at the predictable URL, confirm the WordPress post
