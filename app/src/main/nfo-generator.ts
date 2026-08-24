@@ -1,4 +1,4 @@
-import { GeneratedOutputs, MemberEntry, ParsedNfo, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
+import { GeneratedOutputs, MemberEntry, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
 import {
   BANNER,
   FOOTER_LINE,
@@ -48,21 +48,15 @@ function wrapWords(text: string, firstWidth: number, contWidth: number): string[
   return lines.length ? lines : [''];
 }
 
-export function renderNewHistoryEntry(
-  releaseNumber: number,
-  filenames: string,
-  title: string,
-  category: string,
-  creators: string,
-): string[] {
+export function renderHistoryEntry(entry: ReleaseHistoryEntry): string[] {
   const indent = ' '.repeat(HISTORY_BODY_INDENT);
   const contentWidth = HISTORY_WRAP_WIDTH - HISTORY_CONTINUATION_INDENT;
-  const lines: string[] = [`${indent}release ${releaseNumber} ${filenames}`];
+  const lines: string[] = [`${indent}release ${entry.releaseNumber} ${entry.filenames}`];
 
   const fields: [string, string][] = [
-    ['title', title],
-    ['category', category],
-    ['creator(s)', creators],
+    ['title', entry.title],
+    ['category', entry.category],
+    ['creator(s)', entry.creators],
   ];
   for (const [label, value] of fields) {
     const wrapped = wrapWords(value, contentWidth, contentWidth);
@@ -74,19 +68,20 @@ export function renderNewHistoryEntry(
   return lines;
 }
 
-export function renderHistoryBlock(newEntryLines: string[], existing: ReleaseHistoryEntry[]): string {
-  const blocks = [newEntryLines.join('\n'), ...existing.map((e) => e.rawBlock.join('\n'))];
-  return blocks.join('\n\n');
+export function renderHistoryBlock(history: ReleaseHistoryEntry[]): string {
+  return history.map((entry) => renderHistoryEntry(entry).join('\n')).join('\n\n');
 }
 
-export function renderNfo(parsed: ParsedNfo, form: ReleaseFormData, releaseNumber: number): string {
-  const filenames = `up-${form.code.toLowerCase()}.${form.format.toLowerCase()}`;
+// `_releaseNumber` is intentionally unused here: `history[0]` already carries the
+// just-inserted release's number. The parameter is kept (leading underscore silences
+// noUnusedParameters) so generateOutputs' callers can pass it explicitly, documenting
+// intent at the call site.
+export function renderNfo(history: ReleaseHistoryEntry[], form: ReleaseFormData, _releaseNumber: number): string {
   const releaseNotesLine = `Release named ${form.releaseName}${
     form.platformTag ? ` (${form.platformTag})` : ''
   } (UP-${form.code.toUpperCase()}.${form.format})`;
 
-  const newEntry = renderNewHistoryEntry(releaseNumber, filenames, form.entryTitle, form.entryCategory, form.entryCreators);
-  const historyBlock = renderHistoryBlock(newEntry, parsed.history);
+  const historyBlock = renderHistoryBlock(history);
   const membersBlock = renderMemberBlock(form.members);
 
   return [
@@ -124,10 +119,13 @@ export function renderDiz(form: ReleaseFormData): string {
   return toAsciiSafe(form.dizBannerText.trim()) + '\n';
 }
 
-export function generateOutputs(parsed: ParsedNfo, form: ReleaseFormData): GeneratedOutputs {
-  const releaseNumber = parsed.maxReleaseNumber + 1;
+export function generateOutputs(
+  history: ReleaseHistoryEntry[],
+  releaseNumber: number,
+  form: ReleaseFormData,
+): GeneratedOutputs {
   return {
-    nfoText: renderNfo(parsed, form, releaseNumber),
+    nfoText: renderNfo(history, form, releaseNumber),
     dizText: renderDiz(form),
     releaseNumber,
   };
