@@ -180,4 +180,58 @@ describe('publishToWeb', () => {
     fs.unlinkSync(archivePath);
     fs.unlinkSync(imagePath);
   });
+
+  it('attaches status and wordpressPostUrl to the thrown ReleasesApiError on a 409 "already published" response', async () => {
+    const archivePath = '/tmp/mr-test-archive4.lha';
+    const imagePath = '/tmp/mr-test-image4.png';
+    fs.writeFileSync(archivePath, 'a');
+    fs.writeFileSync(imagePath, 'i');
+
+    (global.fetch as any).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'already published', wordpressPostUrl: 'https://www.uprough.net/x/' }),
+    });
+
+    let caught: ReleasesApiError | undefined;
+    try {
+      await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+    } catch (err) {
+      caught = err as ReleasesApiError;
+    }
+
+    expect(caught).toBeInstanceOf(ReleasesApiError);
+    expect(caught?.status).toBe(409);
+    expect(caught?.wordpressPostUrl).toBe('https://www.uprough.net/x/');
+    expect(caught?.message).toBe('already published');
+
+    fs.unlinkSync(archivePath);
+    fs.unlinkSync(imagePath);
+  });
+
+  it('does not attach wordpressPostUrl for a non-409 failure, even if status is set', async () => {
+    const archivePath = '/tmp/mr-test-archive5.lha';
+    const imagePath = '/tmp/mr-test-image5.png';
+    fs.writeFileSync(archivePath, 'a');
+    fs.writeFileSync(imagePath, 'i');
+
+    (global.fetch as any).mockResolvedValue({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'internal error', wordpressPostUrl: 'https://should-not-appear.example/' }),
+    });
+
+    let caught: ReleasesApiError | undefined;
+    try {
+      await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+    } catch (err) {
+      caught = err as ReleasesApiError;
+    }
+
+    expect(caught?.status).toBe(500);
+    expect(caught?.wordpressPostUrl).toBeUndefined();
+
+    fs.unlinkSync(archivePath);
+    fs.unlinkSync(imagePath);
+  });
 });

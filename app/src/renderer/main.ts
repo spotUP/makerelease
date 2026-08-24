@@ -53,6 +53,28 @@ function getSelectedFormat(): ReleaseFormat {
   return (checked?.value as ReleaseFormat) ?? 'LHA';
 }
 
+/**
+ * ipcMain.handle only forwards an Error's `message` string across the IPC
+ * boundary — Electron's structured-clone serialization strips any other
+ * properties from a thrown Error. For the 409 "already published" case,
+ * ipc-handlers.ts's publishToWeb handler JSON-encodes {message, status,
+ * wordpressPostUrl} into that message string; this reconstructs it. A
+ * plain (non-JSON) message — every other failure — falls back to a bare
+ * message with no status/wordpressPostUrl.
+ */
+function parsePublishError(err: unknown): { message: string; status?: number; wordpressPostUrl?: string } {
+  const raw = err instanceof Error ? err.message : String(err);
+  try {
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === 'object' && typeof parsed.message === 'string') {
+      return parsed as { message: string; status?: number; wordpressPostUrl?: string };
+    }
+  } catch {
+    // not JSON — a plain error message, fall through
+  }
+  return { message: raw };
+}
+
 function renderSelectedFiles(): void {
   selectedFilesList.innerHTML = '';
   for (const p of selectedPaths) {
@@ -191,19 +213,27 @@ publishBtn.addEventListener('click', async () => {
   publishStatus.className = 'status';
   try {
     const result = await window.api.publishToWeb(lastBuiltCode, lastBuiltArchivePath, selectedImagePath);
-    publishStatus.textContent = `Published: ${result.wordpressPostUrl}`;
+    publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl})`;
     publishStatus.className = 'status ok';
+    // A real, successful publish — leave publishBtn disabled. A stray
+    // second click would just 409; nothing more needs to happen for this
+    // build once it's published.
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    if (message.includes('already published')) {
-      publishStatus.textContent = `Already published: ${message}`;
+    const parsed = parsePublishError(err);
+    if (parsed.status === 409) {
+      publishStatus.textContent = parsed.wordpressPostUrl
+        ? `Already published: ${parsed.wordpressPostUrl}`
+        : `Already published: ${parsed.message}`;
       publishStatus.className = 'status warn';
+      // Already published — leave publishBtn disabled, same as the success
+      // path. A genuinely-already-published release doesn't need retrying.
     } else {
-      publishStatus.textContent = `Publish failed: ${message}`;
+      publishStatus.textContent = `Publish failed: ${parsed.message}`;
       publishStatus.className = 'status warn';
+      // Any other failure (network error, 500, etc) is the genuine retry
+      // case — re-enable so the user can try again.
+      publishBtn.disabled = false;
     }
-  } finally {
-    publishBtn.disabled = false;
   }
 });
 

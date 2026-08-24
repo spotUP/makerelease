@@ -7,12 +7,24 @@ vi.mock('electron', () => ({
   dialog: { showOpenDialog: vi.fn() },
 }));
 
-vi.mock('../../src/main/releases-client', () => ({
-  fetchSeed: vi.fn(),
-  checkCodeExists: vi.fn(),
-  publishRelease: vi.fn(),
-  publishToWeb: vi.fn(),
-}));
+vi.mock('../../src/main/releases-client', () => {
+  class ReleasesApiError extends Error {
+    status?: number;
+    wordpressPostUrl?: string;
+    constructor(message: string, opts?: { status?: number; wordpressPostUrl?: string }) {
+      super(message);
+      this.status = opts?.status;
+      this.wordpressPostUrl = opts?.wordpressPostUrl;
+    }
+  }
+  return {
+    fetchSeed: vi.fn(),
+    checkCodeExists: vi.fn(),
+    publishRelease: vi.fn(),
+    publishToWeb: vi.fn(),
+    ReleasesApiError,
+  };
+});
 
 vi.mock('../../src/main/nfo-generator', () => ({
   generateOutputs: vi.fn(),
@@ -34,6 +46,7 @@ vi.mock('../../src/main/fs-helpers', () => ({
 import { registerIpcHandlers } from '../../src/main/ipc-handlers';
 import * as electron from 'electron';
 import * as releasesClient from '../../src/main/releases-client';
+import { ReleasesApiError } from '../../src/main/releases-client';
 import * as nfoGenerator from '../../src/main/nfo-generator';
 import * as staging from '../../src/main/staging';
 import * as archiver from '../../src/main/archiver';
@@ -177,5 +190,28 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
     expect(result).toEqual({ archiveUrl: 'a', wordpressPostUrl: 'b' });
     expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+  });
+
+  it('publishToWeb re-throws a plain (non-409) ReleasesApiError unchanged', async () => {
+    (releasesClient.publishToWeb as any).mockRejectedValue(new ReleasesApiError('boom', { status: 500 }));
+    await expect(handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png')).rejects.toThrow('boom');
+  });
+
+  it('publishToWeb JSON-encodes {message, status, wordpressPostUrl} into the thrown Error message on a 409, ' +
+    'since ipcMain.handle only forwards an Error message string (not custom properties) to the renderer', async () => {
+    (releasesClient.publishToWeb as any).mockRejectedValue(
+      new ReleasesApiError('already published', { status: 409, wordpressPostUrl: 'https://www.uprough.net/x/' }),
+    );
+
+    let caught: Error | undefined;
+    try {
+      await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
+    } catch (err) {
+      caught = err as Error;
+    }
+
+    expect(caught).toBeInstanceOf(Error);
+    const parsed = JSON.parse(caught!.message);
+    expect(parsed).toEqual({ message: 'already published', status: 409, wordpressPostUrl: 'https://www.uprough.net/x/' });
   });
 });

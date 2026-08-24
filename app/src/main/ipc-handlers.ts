@@ -1,7 +1,13 @@
 import { dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import { BuildResult, PublishToWebResult, ReleaseFormData, SeedState } from '../shared/types';
-import { fetchSeed, checkCodeExists, publishRelease, publishToWeb as publishToWebClient } from './releases-client';
+import {
+  fetchSeed,
+  checkCodeExists,
+  publishRelease,
+  publishToWeb as publishToWebClient,
+  ReleasesApiError,
+} from './releases-client';
 import { generateOutputs } from './nfo-generator';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
@@ -90,7 +96,23 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
   ipcMain.handle(
     'publishToWeb',
     async (_event, code: string, archivePath: string, imagePath: string): Promise<PublishToWebResult> => {
-      return publishToWebClient(releasesConfig, code, archivePath, imagePath);
+      try {
+        return await publishToWebClient(releasesConfig, code, archivePath, imagePath);
+      } catch (err) {
+        if (err instanceof ReleasesApiError && err.status === 409) {
+          // ipcMain.handle only forwards an Error's `message` string to the
+          // renderer process — Electron's IPC boundary strips any other
+          // properties from a thrown Error (structured-clone does not
+          // preserve custom fields or the prototype chain). Encode the
+          // fields the renderer needs as JSON in the message so they
+          // survive the round trip; main.ts's catch block parses this back
+          // out instead of pattern-matching on error text.
+          throw new Error(
+            JSON.stringify({ message: err.message, status: err.status, wordpressPostUrl: err.wordpressPostUrl }),
+          );
+        }
+        throw err;
+      }
     },
   );
 }

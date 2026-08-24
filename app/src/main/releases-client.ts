@@ -3,7 +3,22 @@ import * as path from 'path';
 import { MemberEntry, PublishToWebResult, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
 import { ReleasesClientConfig } from './config';
 
-export class ReleasesApiError extends Error {}
+export class ReleasesApiError extends Error {
+  /** HTTP status code of the response that produced this error, when known. */
+  status?: number;
+  /**
+   * Populated when the server's 409 "already published" response body
+   * included the existing WordPress post URL, so callers can show it
+   * instead of just the bare error message.
+   */
+  wordpressPostUrl?: string;
+
+  constructor(message: string, opts?: { status?: number; wordpressPostUrl?: string }) {
+    super(message);
+    this.status = opts?.status;
+    this.wordpressPostUrl = opts?.wordpressPostUrl;
+  }
+}
 
 export interface SeedResponse {
   members: MemberEntry[];
@@ -100,7 +115,11 @@ export async function publishToWeb(
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new ReleasesApiError((body as { error?: string }).error ?? `releases.uprough.net returned ${response.status}`);
+    const errorBody = body as { error?: string; wordpressPostUrl?: string };
+    throw new ReleasesApiError(errorBody.error ?? `releases.uprough.net returned ${response.status}`, {
+      status: response.status,
+      ...(response.status === 409 && errorBody.wordpressPostUrl ? { wordpressPostUrl: errorBody.wordpressPostUrl } : {}),
+    });
   }
   return body as PublishToWebResult;
 }
