@@ -1,4 +1,6 @@
-import { MemberEntry, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
+import * as fs from 'fs/promises';
+import * as path from 'path';
+import { MemberEntry, PublishToWebResult, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
 import { ReleasesClientConfig } from './config';
 
 export class ReleasesApiError extends Error {}
@@ -74,4 +76,33 @@ export async function publishRelease(cfg: ReleasesClientConfig, form: ReleaseFor
     throw new ReleasesApiError((body as { error?: string }).error ?? `releases.uprough.net returned ${response.status}`);
   }
   return body as PublishResponse;
+}
+
+export async function publishToWeb(
+  cfg: ReleasesClientConfig,
+  code: string,
+  archivePath: string,
+  imagePath: string,
+): Promise<PublishToWebResult> {
+  const [archiveBytes, imageBytes] = await Promise.all([fs.readFile(archivePath), fs.readFile(imagePath)]);
+
+  const form = new FormData();
+  form.append('archive', new Blob([archiveBytes]), path.basename(archivePath));
+  form.append('image', new Blob([imageBytes]), path.basename(imagePath));
+
+  let response: Response;
+  try {
+    response = await fetch(`${cfg.baseUrl}/api/releases/${encodeURIComponent(code)}/publish`, {
+      method: 'POST',
+      headers: { 'X-Release-Key': cfg.writeKey },
+      body: form,
+    });
+  } catch (err) {
+    throw new ReleasesApiError(`could not reach releases.uprough.net: ${(err as Error).message}`);
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ReleasesApiError((body as { error?: string }).error ?? `releases.uprough.net returned ${response.status}`);
+  }
+  return body as PublishToWebResult;
 }

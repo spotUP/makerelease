@@ -54,9 +54,16 @@ export interface BuildResult {
   releaseNumber: number;
 }
 
+export interface PublishToWebResult {
+  archiveUrl: string;
+  wordpressPostUrl: string;
+}
+
 export interface MakereleaseApi {
   loadSeedState(): Promise<SeedState>;
   pickFilesAndDirs(): Promise<string[]>;
   checkCodeAvailability(code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData): Promise<BuildResult>;
+  pickImage(): Promise<string | null>;
+  publishToWeb(code: string, archivePath: string, imagePath: string): Promise<PublishToWebResult>;
 }

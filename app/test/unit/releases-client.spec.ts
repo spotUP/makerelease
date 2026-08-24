@@ -1,5 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
-import { fetchSeed, checkCodeExists, publishRelease, ReleasesApiError } from '../../src/main/releases-client';
+import * as fs from 'fs';
+import { fetchSeed, checkCodeExists, publishRelease, publishToWeb, ReleasesApiError } from '../../src/main/releases-client';
 import { ReleaseFormData } from '../../src/shared/types';
 
 const cfg = { baseUrl: 'https://releases.example.test', writeKey: 'secret', isPlaceholderKey: false };
@@ -110,5 +111,47 @@ describe('publishRelease', () => {
       json: async () => ({ error: 'code AAAAA already exists' }),
     });
     await expect(publishRelease(cfg, sampleForm)).rejects.toThrow('code AAAAA already exists');
+  });
+});
+
+describe('publishToWeb', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('POSTs a multipart form with the archive and image file contents, and the write key header', async () => {
+    const archivePath = '/tmp/mr-test-archive.lha';
+    const imagePath = '/tmp/mr-test-image.png';
+    fs.writeFileSync(archivePath, 'fake archive bytes');
+    fs.writeFileSync(imagePath, 'fake image bytes');
+
+    const body = { archiveUrl: 'https://www.uprough.net/releases/UP-AAAAA.LHA', wordpressPostUrl: 'https://www.uprough.net/x/' };
+    (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
+
+    const result = await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+
+    expect(result).toEqual(body);
+    const [url, init] = (global.fetch as any).mock.calls[0];
+    expect(url).toBe('https://releases.example.test/api/releases/AAAAA/publish');
+    expect(init.method).toBe('POST');
+    expect(init.headers['X-Release-Key']).toBe('secret');
+    expect(init.body).toBeInstanceOf(FormData);
+
+    fs.unlinkSync(archivePath);
+    fs.unlinkSync(imagePath);
+  });
+
+  it('throws ReleasesApiError with the server message on failure', async () => {
+    fs.writeFileSync('/tmp/mr-test-archive2.lha', 'a');
+    fs.writeFileSync('/tmp/mr-test-image2.png', 'i');
+    (global.fetch as any).mockResolvedValue({ ok: false, status: 409, json: async () => ({ error: 'already published' }) });
+    await expect(publishToWeb(cfg, 'AAAAA', '/tmp/mr-test-archive2.lha', '/tmp/mr-test-image2.png')).rejects.toThrow(
+      'already published',
+    );
+    fs.unlinkSync('/tmp/mr-test-archive2.lha');
+    fs.unlinkSync('/tmp/mr-test-image2.png');
   });
 });
