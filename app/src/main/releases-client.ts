@@ -1,4 +1,4 @@
-import * as fs from 'fs/promises';
+import { openAsBlob } from 'fs';
 import * as path from 'path';
 import { MemberEntry, PublishToWebResult, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
 import { ReleasesClientConfig } from './config';
@@ -84,11 +84,9 @@ export async function publishToWeb(
   archivePath: string,
   imagePath: string,
 ): Promise<PublishToWebResult> {
-  const [archiveBytes, imageBytes] = await Promise.all([fs.readFile(archivePath), fs.readFile(imagePath)]);
-
   const form = new FormData();
-  form.append('archive', new Blob([archiveBytes]), path.basename(archivePath));
-  form.append('image', new Blob([imageBytes]), path.basename(imagePath));
+  form.append('archive', await openAsBlob(archivePath), path.basename(archivePath));
+  form.append('image', await openAsBlob(imagePath), path.basename(imagePath));
 
   let response: Response;
   try {

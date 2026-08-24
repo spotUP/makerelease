@@ -154,4 +154,30 @@ describe('publishToWeb', () => {
     fs.unlinkSync('/tmp/mr-test-archive2.lha');
     fs.unlinkSync('/tmp/mr-test-image2.png');
   });
+
+  it('uses fs.openAsBlob to attach the archive/image as file-backed Blobs, without reading their bytes into memory', async () => {
+    const archivePath = '/tmp/mr-test-archive3.lha';
+    const imagePath = '/tmp/mr-test-image3.png';
+    fs.writeFileSync(archivePath, 'fake archive bytes');
+    fs.writeFileSync(imagePath, 'fake image bytes');
+
+    const body = { archiveUrl: 'https://www.uprough.net/releases/UP-AAAAA.LHA', wordpressPostUrl: 'https://www.uprough.net/x/' };
+    (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
+
+    await publishToWeb(cfg, 'AAAAA', archivePath, imagePath);
+
+    const [, init] = (global.fetch as any).mock.calls[0];
+    const sentForm = init.body as FormData;
+    const archiveEntry = sentForm.get('archive') as Blob;
+    const imageEntry = sentForm.get('image') as Blob;
+    // fs.openAsBlob-backed Blobs still report the correct size/type without
+    // ever having been read into a Buffer by publishToWeb itself.
+    expect(archiveEntry.size).toBe(Buffer.byteLength('fake archive bytes'));
+    expect(imageEntry.size).toBe(Buffer.byteLength('fake image bytes'));
+    expect(await archiveEntry.text()).toBe('fake archive bytes');
+    expect(await imageEntry.text()).toBe('fake image bytes');
+
+    fs.unlinkSync(archivePath);
+    fs.unlinkSync(imagePath);
+  });
 });
