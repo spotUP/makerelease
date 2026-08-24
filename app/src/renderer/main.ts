@@ -23,6 +23,7 @@ attachOverwriteGrid(dizBannerTextArea);
 
 const pickFilesBtn = $<HTMLButtonElement>('pick-files-btn');
 const selectedFilesList = $<HTMLUListElement>('selected-files-list');
+const dryRunCheckbox = $<HTMLInputElement>('dry-run-checkbox');
 const buildBtn = $<HTMLButtonElement>('build-btn');
 const buildStatus = $<HTMLDivElement>('build-status');
 const form = $<HTMLFormElement>('release-form');
@@ -32,6 +33,10 @@ const pickImageBtn = $<HTMLButtonElement>('pick-image-btn');
 const selectedImageDiv = $<HTMLDivElement>('selected-image');
 const publishBtn = $<HTMLButtonElement>('publish-btn');
 const publishStatus = $<HTMLDivElement>('publish-status');
+
+const cleanupSection = $<HTMLElement>('cleanup-section');
+const deleteReleaseBtn = $<HTMLButtonElement>('delete-release-btn');
+const deleteStatus = $<HTMLDivElement>('delete-status');
 
 const memberlist = new MemberlistTable(membersTbody);
 let nextReleaseNumber = 0;
@@ -54,10 +59,11 @@ function getSelectedFormat(): ReleaseFormat {
 }
 
 /**
- * Resets everything related to the Publish section. Called at the start of
- * every new build attempt so a previous release's stale state (its success
- * message, its archive path wired to the Publish button, its picked cover
- * image) can never silently carry over to a different release's code/build.
+ * Resets everything related to the Publish and cleanup sections. Called at
+ * the start of every new build attempt so a previous release's stale state
+ * (its success message, its archive path wired to the Publish button, its
+ * picked cover image) can never silently carry over to a different
+ * release's code/build.
  */
 function resetPublishState(): void {
   lastBuiltCode = null;
@@ -68,6 +74,10 @@ function resetPublishState(): void {
   publishStatus.textContent = '';
   publishStatus.className = 'status';
   publishBtn.disabled = true;
+  cleanupSection.hidden = true;
+  deleteReleaseBtn.disabled = false;
+  deleteStatus.textContent = '';
+  deleteStatus.className = 'status';
 }
 
 function renderSelectedFiles(): void {
@@ -178,17 +188,30 @@ form.addEventListener('submit', async (e) => {
     selectedPaths,
   };
 
+  const dryRun = dryRunCheckbox.checked;
+
   buildBtn.disabled = true;
-  buildStatus.textContent = 'Building...';
+  buildStatus.textContent = dryRun ? 'Building (dry run)...' : 'Building...';
   buildStatus.className = 'status';
   try {
-    const result = await window.api.buildRelease(formData);
-    buildStatus.textContent = `Built release ${result.releaseNumber}: ${result.archivePath}`;
-    buildStatus.className = 'status ok';
-    lastBuiltCode = code;
-    lastBuiltArchivePath = result.archivePath;
-    publishSection.hidden = false;
-    publishBtn.disabled = !selectedImagePath;
+    const result = await window.api.buildRelease(formData, dryRun);
+    if (result.isDryRun) {
+      buildStatus.textContent =
+        `Dry run built: ${result.archivePath} (preview release ${result.releaseNumber} — ` +
+        'nothing was sent to the server, no release number was consumed).';
+      buildStatus.className = 'status ok';
+      // No real release row exists server-side for a dry run — Publish and
+      // the cleanup/delete section both stay hidden (resetPublishState()
+      // above already did this; nothing further to show here).
+    } else {
+      buildStatus.textContent = `Built release ${result.releaseNumber}: ${result.archivePath}`;
+      buildStatus.className = 'status ok';
+      lastBuiltCode = code;
+      lastBuiltArchivePath = result.archivePath;
+      publishSection.hidden = false;
+      publishBtn.disabled = !selectedImagePath;
+      cleanupSection.hidden = false;
+    }
   } catch (err) {
     buildStatus.textContent = `Build failed: ${err instanceof Error ? err.message : String(err)}`;
     buildStatus.className = 'status warn';
@@ -240,6 +263,56 @@ publishBtn.addEventListener('click', async () => {
     publishStatus.textContent = `Publish failed: ${err instanceof Error ? err.message : String(err)}`;
     publishStatus.className = 'status warn';
     publishBtn.disabled = false;
+  }
+});
+
+deleteReleaseBtn.addEventListener('click', async () => {
+  const deletedCode = lastBuiltCode;
+  if (!deletedCode) return;
+  const confirmed = window.confirm(
+    `Delete release ${deletedCode} from the server? This only works if it's still the most ` +
+      'recently created release. If it was published, the WordPress post is NOT deleted ' +
+      'automatically.',
+  );
+  if (!confirmed) return;
+
+  deleteReleaseBtn.disabled = true;
+  deleteStatus.textContent = 'Deleting...';
+  deleteStatus.className = 'status';
+  try {
+    const result = await window.api.deleteRelease(deletedCode);
+    if (result.ok) {
+      deleteStatus.textContent = result.wasPublished
+        ? `Deleted release ${result.releaseNumber}. It was published — remove the WordPress post ` +
+          `yourself: ${result.wordpressPostUrl}` +
+          (result.archiveRemoved ? '' : ' (its archive file could not be auto-removed — check the server logs).')
+        : `Deleted release ${result.releaseNumber}.`;
+      deleteStatus.className = 'status ok';
+      // The release no longer exists server-side: nothing left to publish.
+      // Clear just the publish-specific state (not deleteStatus/
+      // cleanupSection — those are showing the message above, including a
+      // WordPress-post URL the user still needs to read and act on) so a
+      // stray click on Publish can't fire against a code that's gone.
+      // deleteReleaseBtn stays disabled: there's nothing left to delete.
+      lastBuiltCode = null;
+      lastBuiltArchivePath = null;
+      publishSection.hidden = true;
+      publishStatus.textContent = '';
+      publishStatus.className = 'status';
+      publishBtn.disabled = true;
+    } else if (result.status === 409) {
+      deleteStatus.textContent = `Could not delete: ${result.message} (a newer release exists — this is no longer the latest).`;
+      deleteStatus.className = 'status warn';
+      deleteReleaseBtn.disabled = false;
+    } else {
+      deleteStatus.textContent = `Delete failed: ${result.message}`;
+      deleteStatus.className = 'status warn';
+      deleteReleaseBtn.disabled = false;
+    }
+  } catch (err) {
+    deleteStatus.textContent = `Delete failed: ${err instanceof Error ? err.message : String(err)}`;
+    deleteStatus.className = 'status warn';
+    deleteReleaseBtn.disabled = false;
   }
 });
 

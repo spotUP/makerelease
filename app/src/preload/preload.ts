@@ -1,15 +1,24 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { BuildResult, MakereleaseApi, PublishToWebOutcome, ReleaseFormData, SeedState } from '../shared/types';
+import {
+  BuildResult,
+  DeleteReleaseOutcome,
+  MakereleaseApi,
+  PublishToWebOutcome,
+  ReleaseFormData,
+  SeedState,
+} from '../shared/types';
 
 const api: MakereleaseApi = {
   loadSeedState: (): Promise<SeedState> => ipcRenderer.invoke('loadSeedState'),
   pickFilesAndDirs: (): Promise<string[]> => ipcRenderer.invoke('pickFilesAndDirs'),
   checkCodeAvailability: (code: string): Promise<{ exists: boolean }> =>
     ipcRenderer.invoke('checkCodeAvailability', code),
-  buildRelease: (form: ReleaseFormData): Promise<BuildResult> => ipcRenderer.invoke('buildRelease', form),
+  buildRelease: (form: ReleaseFormData, dryRun: boolean): Promise<BuildResult> =>
+    ipcRenderer.invoke('buildRelease', form, dryRun),
   pickImage: (): Promise<string | null> => ipcRenderer.invoke('pickImage'),
   publishToWeb: (code: string, archivePath: string, imagePath: string): Promise<PublishToWebOutcome> =>
     ipcRenderer.invoke('publishToWeb', code, archivePath, imagePath),
+  deleteRelease: (code: string): Promise<DeleteReleaseOutcome> => ipcRenderer.invoke('deleteRelease', code),
 };
 
 contextBridge.exposeInMainWorld('api', api);

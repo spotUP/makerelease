@@ -1,10 +1,11 @@
 import { dialog, ipcMain } from 'electron';
 import * as path from 'path';
-import { BuildResult, PublishToWebOutcome, ReleaseFormData, SeedState } from '../shared/types';
+import { BuildResult, DeleteReleaseOutcome, PublishToWebOutcome, ReleaseFormData, ReleaseHistoryEntry, SeedState } from '../shared/types';
 import {
   fetchSeed,
   checkCodeExists,
   publishRelease,
+  deleteRelease as deleteReleaseClient,
   publishToWeb as publishToWebClient,
   ReleasesApiError,
 } from './releases-client';
@@ -71,16 +72,43 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
     return { exists: await checkCodeExists(releasesConfig, code) };
   });
 
-  ipcMain.handle('buildRelease', async (_event, form: ReleaseFormData): Promise<BuildResult> => {
+  ipcMain.handle('buildRelease', async (_event, form: ReleaseFormData, dryRun: boolean): Promise<BuildResult> => {
     await assertLocalCodeAvailable(makereleaseRoot, form.code);
-    const published = await publishRelease(releasesConfig, form);
-    const generated = generateOutputs(published.history, published.releaseNumber, form);
+
+    let releaseNumber: number;
+    let history: ReleaseHistoryEntry[];
+    if (dryRun) {
+      // No POST to the server: no real release number consumed, no catalog
+      // write, no member-roster replacement. nextReleaseNumber is a preview
+      // only - a real build racing this one would still get the same
+      // number, since dry-run makes no reservation.
+      const seed = await fetchSeed(releasesConfig);
+      releaseNumber = seed.nextReleaseNumber;
+      // Synthesize the entry a real publish would have inserted, so the
+      // generated NFO's release-history section previews correctly - the
+      // filename convention matches catalog.ts's filenamesFor exactly.
+      const dryRunEntry: ReleaseHistoryEntry = {
+        releaseNumber: String(releaseNumber),
+        filenames: `up-${form.code.toLowerCase()}.${form.format.toLowerCase()}`,
+        title: form.entryTitle,
+        category: form.entryCategory,
+        creators: form.entryCreators,
+      };
+      history = [dryRunEntry, ...seed.history];
+    } else {
+      const published = await publishRelease(releasesConfig, form);
+      releaseNumber = published.releaseNumber;
+      history = published.history;
+    }
+
+    const generated = generateOutputs(history, releaseNumber, form);
     const outerDir = await stageRelease(form, generated);
     await packArchive(outerDir, form.code, form.format, makereleaseRoot);
     await finalizeRelease(outerDir, form.code, makereleaseRoot);
     return {
       archivePath: path.join(makereleaseRoot, `UP-${form.code.toUpperCase()}.${form.format}`),
-      releaseNumber: published.releaseNumber,
+      releaseNumber,
+      isDryRun: dryRun,
     };
   });
 
@@ -112,4 +140,23 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
       }
     },
   );
+
+  ipcMain.handle('deleteRelease', async (_event, code: string): Promise<DeleteReleaseOutcome> => {
+    try {
+      const result = await deleteReleaseClient(releasesConfig, code);
+      return {
+        ok: true,
+        code: result.code,
+        releaseNumber: result.releaseNumber,
+        wasPublished: result.wasPublished,
+        wordpressPostUrl: result.wordpressPostUrl,
+        archiveRemoved: result.archiveRemoved,
+      };
+    } catch (err) {
+      if (err instanceof ReleasesApiError) {
+        return { ok: false, message: err.message, status: err.status };
+      }
+      return { ok: false, message: err instanceof Error ? err.message : String(err) };
+    }
+  });
 }

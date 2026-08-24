@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
-import { fetchSeed, checkCodeExists, publishRelease, publishToWeb, ReleasesApiError } from '../../src/main/releases-client';
+import { fetchSeed, checkCodeExists, publishRelease, deleteRelease, publishToWeb, ReleasesApiError } from '../../src/main/releases-client';
 import { ReleaseFormData } from '../../src/shared/types';
 
 const cfg = { baseUrl: 'https://releases.example.test', writeKey: 'secret', isPlaceholderKey: false };
@@ -65,6 +65,59 @@ describe('checkCodeExists', () => {
       expect.any(Object),
     );
     expect(result).toBe(true);
+  });
+});
+
+describe('deleteRelease', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('DELETEs /api/releases/:code with the write key header and returns the parsed JSON', async () => {
+    const body = {
+      deleted: true,
+      code: 'TEST0',
+      releaseNumber: 5,
+      wasPublished: false,
+      wordpressPostUrl: null,
+      archiveRemoved: false,
+    };
+    (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
+
+    const result = await deleteRelease(cfg, 'TEST0');
+
+    expect(global.fetch).toHaveBeenCalledWith('https://releases.example.test/api/releases/TEST0', {
+      method: 'DELETE',
+      headers: { 'X-Release-Key': 'secret' },
+    });
+    expect(result).toEqual(body);
+  });
+
+  it('throws ReleasesApiError with status on a 409 (not the latest release)', async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({ error: 'not the latest release' }),
+    });
+    await expect(deleteRelease(cfg, 'TEST0')).rejects.toThrow(ReleasesApiError);
+    try {
+      await deleteRelease(cfg, 'TEST0');
+    } catch (err) {
+      expect((err as ReleasesApiError).status).toBe(409);
+    }
+  });
+
+  it('throws ReleasesApiError with status on a 404 (unknown code)', async () => {
+    (global.fetch as any).mockResolvedValue({ ok: false, status: 404, json: async () => ({ error: 'no release found' }) });
+    await expect(deleteRelease(cfg, 'ZZZZZ')).rejects.toThrow(ReleasesApiError);
+  });
+
+  it('throws ReleasesApiError when fetch itself rejects (network failure)', async () => {
+    (global.fetch as any).mockRejectedValue(new Error('ECONNREFUSED'));
+    await expect(deleteRelease(cfg, 'TEST0')).rejects.toThrow(ReleasesApiError);
   });
 });
 

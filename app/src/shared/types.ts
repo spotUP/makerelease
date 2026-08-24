@@ -52,6 +52,14 @@ export interface SeedState {
 export interface BuildResult {
   archivePath: string;
   releaseNumber: number;
+  /**
+   * True when this build ran with dryRun: no POST to the server, no real
+   * release number consumed, no catalog write. releaseNumber is a preview
+   * (the seed's nextReleaseNumber at build time), not a reserved one. The
+   * renderer must not offer Publish for a dry-run build — there is no
+   * server-side release row to publish.
+   */
+  isDryRun: boolean;
 }
 
 export interface PublishToWebResult {
@@ -72,11 +80,27 @@ export type PublishToWebOutcome =
   | ({ ok: true } & PublishToWebResult)
   | { ok: false; message: string; status?: number; wordpressPostUrl?: string };
 
+export interface DeleteReleaseResult {
+  code: string;
+  releaseNumber: number;
+  wasPublished: boolean;
+  wordpressPostUrl: string | null;
+  archiveRemoved: boolean;
+}
+
+// Same discriminated-result shape as PublishToWebOutcome, and for the same
+// reason: a thrown Error's message is mangled crossing ipcMain.handle's IPC
+// boundary, so any modeled failure (404, 409) is returned, not thrown.
+export type DeleteReleaseOutcome =
+  | ({ ok: true } & DeleteReleaseResult)
+  | { ok: false; message: string; status?: number };
+
 export interface MakereleaseApi {
   loadSeedState(): Promise<SeedState>;
   pickFilesAndDirs(): Promise<string[]>;
   checkCodeAvailability(code: string): Promise<{ exists: boolean }>;
-  buildRelease(form: ReleaseFormData): Promise<BuildResult>;
+  buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
   pickImage(): Promise<string | null>;
   publishToWeb(code: string, archivePath: string, imagePath: string): Promise<PublishToWebOutcome>;
+  deleteRelease(code: string): Promise<DeleteReleaseOutcome>;
 }

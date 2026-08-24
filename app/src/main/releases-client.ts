@@ -34,6 +34,15 @@ export interface PublishResponse {
   history: ReleaseHistoryEntry[];
 }
 
+export interface DeleteResponse {
+  deleted: true;
+  code: string;
+  releaseNumber: number;
+  wasPublished: boolean;
+  wordpressPostUrl: string | null;
+  archiveRemoved: boolean;
+}
+
 async function getJson<T>(cfg: ReleasesClientConfig, path: string): Promise<T> {
   let response: Response;
   try {
@@ -91,6 +100,25 @@ export async function publishRelease(cfg: ReleasesClientConfig, form: ReleaseFor
     throw new ReleasesApiError((body as { error?: string }).error ?? `releases.uprough.net returned ${response.status}`);
   }
   return body as PublishResponse;
+}
+
+export async function deleteRelease(cfg: ReleasesClientConfig, code: string): Promise<DeleteResponse> {
+  let response: Response;
+  try {
+    response = await fetch(`${cfg.baseUrl}/api/releases/${encodeURIComponent(code)}`, {
+      method: 'DELETE',
+      headers: { 'X-Release-Key': cfg.writeKey },
+    });
+  } catch (err) {
+    throw new ReleasesApiError(`could not reach releases.uprough.net: ${(err as Error).message}`);
+  }
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    throw new ReleasesApiError((body as { error?: string }).error ?? `releases.uprough.net returned ${response.status}`, {
+      status: response.status,
+    });
+  }
+  return body as DeleteResponse;
 }
 
 export async function publishToWeb(

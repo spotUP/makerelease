@@ -21,6 +21,7 @@ vi.mock('../../src/main/releases-client', () => {
     fetchSeed: vi.fn(),
     checkCodeExists: vi.fn(),
     publishRelease: vi.fn(),
+    deleteRelease: vi.fn(),
     publishToWeb: vi.fn(),
     ReleasesApiError,
   };
@@ -102,7 +103,7 @@ describe('registerIpcHandlers', () => {
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
     const form = { code: 'AAAAA', format: 'LHA' } as any;
-    const result = await handlers.buildRelease(null, form);
+    const result = await handlers.buildRelease(null, form, false);
 
     expect(callOrder).toEqual(['publish', 'generate']);
     expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(
@@ -112,6 +113,44 @@ describe('registerIpcHandlers', () => {
     );
     expect(result.releaseNumber).toBe(7);
     expect(result.archivePath).toContain('UP-AAAAA.LHA');
+    expect(result.isDryRun).toBe(false);
+    expect(releasesClient.fetchSeed).not.toHaveBeenCalled();
+  });
+
+  it('buildRelease with dryRun:true never calls publishRelease, uses fetchSeed instead, and synthesizes the preview history entry', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [],
+      nextReleaseNumber: 8,
+      history: [{ releaseNumber: '7', filenames: 'up-old.lha', title: 'old', category: 'Demo', creators: 'spot' }],
+      currentDizText: '',
+      revision: 3,
+    });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 8 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    const form = {
+      code: 'BBBBB',
+      format: 'ZIP',
+      entryTitle: 'new thing',
+      entryCategory: 'Music',
+      entryCreators: 'spot, qwan',
+    } as any;
+    const result = await handlers.buildRelease(null, form, true);
+
+    expect(releasesClient.publishRelease).not.toHaveBeenCalled();
+    expect(releasesClient.fetchSeed).toHaveBeenCalledWith(cfg);
+    expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(
+      [
+        { releaseNumber: '8', filenames: 'up-bbbbb.zip', title: 'new thing', category: 'Music', creators: 'spot, qwan' },
+        { releaseNumber: '7', filenames: 'up-old.lha', title: 'old', category: 'Demo', creators: 'spot' },
+      ],
+      8,
+      form,
+    );
+    expect(result.releaseNumber).toBe(8);
+    expect(result.isDryRun).toBe(true);
   });
 
   it('checkCodeAvailability delegates to checkCodeExists', async () => {
@@ -219,5 +258,38 @@ describe('registerIpcHandlers', () => {
     (releasesClient.publishToWeb as any).mockRejectedValue(new Error('disk full'));
     const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png');
     expect(result).toEqual({ ok: false, message: 'disk full' });
+  });
+
+  it('deleteRelease delegates to the releases-client function and returns an ok:true outcome', async () => {
+    (releasesClient.deleteRelease as any).mockResolvedValue({
+      deleted: true,
+      code: 'AAAAA',
+      releaseNumber: 7,
+      wasPublished: false,
+      wordpressPostUrl: null,
+      archiveRemoved: false,
+    });
+    const result = await handlers.deleteRelease(null, 'AAAAA');
+    expect(result).toEqual({
+      ok: true,
+      code: 'AAAAA',
+      releaseNumber: 7,
+      wasPublished: false,
+      wordpressPostUrl: null,
+      archiveRemoved: false,
+    });
+    expect(releasesClient.deleteRelease).toHaveBeenCalledWith(cfg, 'AAAAA');
+  });
+
+  it('deleteRelease returns an ok:false outcome carrying status for a 409 (not the latest release), not a thrown Error', async () => {
+    (releasesClient.deleteRelease as any).mockRejectedValue(new ReleasesApiError('not the latest', { status: 409 }));
+    const result = await handlers.deleteRelease(null, 'AAAAA');
+    expect(result).toEqual({ ok: false, message: 'not the latest', status: 409 });
+  });
+
+  it('deleteRelease returns an ok:false outcome for a non-ReleasesApiError failure', async () => {
+    (releasesClient.deleteRelease as any).mockRejectedValue(new Error('network down'));
+    const result = await handlers.deleteRelease(null, 'AAAAA');
+    expect(result).toEqual({ ok: false, message: 'network down' });
   });
 });

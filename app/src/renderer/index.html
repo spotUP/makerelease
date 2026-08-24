@@ -89,6 +89,7 @@
     </section>
 
     <section>
+      <label><input type="checkbox" id="dry-run-checkbox" /> Dry run — build and preview the archive locally without touching the server (no release number consumed, nothing published)</label>
       <button type="submit" id="build-btn">Build release</button>
       <div id="build-status" class="status"></div>
     </section>
@@ -100,6 +101,13 @@
     <div id="selected-image" class="status"></div>
     <button type="button" id="publish-btn" disabled>Publish</button>
     <div id="publish-status" class="status"></div>
+  </section>
+
+  <section id="cleanup-section" hidden>
+    <h2>Undo this build</h2>
+    <p>Only works while this is still the most recently created release. If it was published, the WordPress post is <strong>not</strong> deleted automatically — you'll get its URL to remove by hand.</p>
+    <button type="button" id="delete-release-btn" class="danger">Delete release from server</button>
+    <div id="delete-status" class="status"></div>
   </section>
 
   <script type="module" src="main.js"></script>
