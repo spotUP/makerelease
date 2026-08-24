@@ -1,18 +1,21 @@
 import { dialog, ipcMain } from 'electron';
 import * as path from 'path';
 import { BuildResult, ReleaseFormData, SeedState } from '../shared/types';
-import { scanForLatestNfo, codeExists } from './repo-scanner';
+import { fetchSeed, checkCodeExists, publishRelease } from './releases-client';
 import { generateOutputs } from './nfo-generator';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
+import { ReleasesClientConfig } from './config';
 
-export function registerIpcHandlers(makereleaseRoot: string): void {
+export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: ReleasesClientConfig): void {
   ipcMain.handle('loadSeedState', async (): Promise<SeedState> => {
-    const parsed = await scanForLatestNfo(makereleaseRoot);
+    const seed = await fetchSeed(releasesConfig);
     return {
-      members: parsed.members,
-      nextReleaseNumber: parsed.maxReleaseNumber + 1,
-      sourceNfoPath: parsed.sourceFilePath,
+      members: seed.members,
+      nextReleaseNumber: seed.nextReleaseNumber,
+      history: seed.history,
+      currentDizText: seed.currentDizText ?? '',
+      revision: seed.revision,
     };
   });
 
@@ -25,18 +28,18 @@ export function registerIpcHandlers(makereleaseRoot: string): void {
   });
 
   ipcMain.handle('checkCodeAvailability', async (_event, code: string): Promise<{ exists: boolean }> => {
-    return { exists: await codeExists(makereleaseRoot, code) };
+    return { exists: await checkCodeExists(releasesConfig, code) };
   });
 
   ipcMain.handle('buildRelease', async (_event, form: ReleaseFormData): Promise<BuildResult> => {
-    const parsed = await scanForLatestNfo(makereleaseRoot);
-    const generated = generateOutputs(parsed, form);
+    const published = await publishRelease(releasesConfig, form);
+    const generated = generateOutputs(published.history, published.releaseNumber, form);
     const outerDir = await stageRelease(form, generated);
     await packArchive(outerDir, form.code, form.format, makereleaseRoot);
     await finalizeRelease(outerDir, form.code, makereleaseRoot);
     return {
       archivePath: path.join(makereleaseRoot, `UP-${form.code.toUpperCase()}.${form.format}`),
-      releaseNumber: generated.releaseNumber,
+      releaseNumber: published.releaseNumber,
     };
   });
 }
