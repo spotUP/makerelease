@@ -125,6 +125,34 @@ The user then repointed the Loopia A record to `97.75.89.139`.
   runs green (the upload flake previously hit roughly every second run).
 - makerelease app: typecheck clean, 67/67 tests.
 
+## Follow-up: the index page now clones the door repository's design
+
+The first version of the page was designed from scratch and looked nothing
+like `doors.uprough.net`. The reference is
+`/Users/spot/Code/amiexpress-doorserver/web` — a React/Vite/Tailwind/Radix
+SPA. What was cloned is its **design**, not its stack:
+
+- Palette, type scale and table treatment come from that repo's
+  `tailwind.config.js`, `components/DoorTable.tsx` and `pages/Browse.tsx` —
+  same dark tokens (`--bg: #0b0d10`, `--accent: #5ac8fa`, ...), Inter with a
+  mono column for identifiers, bordered rounded table card, uppercase surface
+  header row, lucide's download glyph as the row action.
+- Tokens are inlined as plain CSS in `src/index-page.ts`. Adding React, Vite
+  and a build step to this Express service to emit one static table would
+  cost far more than it returns. **If the door repo's tokens change, change
+  them here too** — the comment on `STYLES` says so.
+- The search field was brought over as well, since it is the most
+  recognisable band of the reference layout. The catalogue is already in the
+  document, so filtering is inline script with no request and no dependency;
+  with JavaScript off every release still lists, just unfiltered. Verified
+  live: 216 rows -> 22 for "goto80", count updates, no-match message shows.
+
+Screenshotting both pages at 1440x900 and comparing caught three defects the
+markup alone did not show: Category was absorbing several hundred pixels of
+slack that belonged to Credits, the dash for a release with no archive was
+not aligned with the download icons above it, and the page 404'd for a
+favicon. All three are fixed.
+
 ## Next Steps
 
 1. **Both repos have uncommitted changes** (see `git status` in each). The
