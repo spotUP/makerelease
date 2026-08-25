@@ -10,6 +10,7 @@ import {
   publishToWeb as publishToWebClient,
   ReleasesApiError,
 } from './releases-client';
+import { describeStaleDrafts } from './stale-drafts';
 import { generateOutputs } from './nfo-generator';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
@@ -55,6 +56,7 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
       numbering && numbering.checked && numbering.ok === false && numbering.summary
         ? `${numbering.summary} Do not build until this is reconciled - the release number goes into the NFO.`
         : undefined;
+    const staleDraftWarning = describeStaleDrafts(seed.drafts ?? [], Math.floor(Date.now() / 1000));
     return {
       members: seed.members,
       nextReleaseNumber: seed.nextReleaseNumber,
@@ -62,6 +64,7 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
       currentDizText: seed.currentDizText ?? '',
       revision: seed.revision,
       ...(numberingWarning ? { numberingWarning } : {}),
+      ...(staleDraftWarning ? { staleDraftWarning } : {}),
       ...(releasesConfig.isPlaceholderKey
         ? {
             configWarning:

@@ -29,12 +29,22 @@ export class ReleasesApiError extends Error {
   }
 }
 
+export interface DraftEntry {
+  code: string;
+  releaseNumber: number;
+  /** Unix seconds. */
+  createdAt: number;
+  entryTitle: string;
+}
+
 export interface SeedResponse {
   members: MemberEntry[];
   nextReleaseNumber: number;
   history: ReleaseHistoryEntry[];
   currentDizText: string | null;
   revision: number;
+  /** Builds that were never published and never revoked - see describeStaleDrafts. */
+  drafts?: DraftEntry[];
 }
 
 export interface PublishResponse {

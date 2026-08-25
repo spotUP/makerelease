@@ -252,6 +252,40 @@ describe('registerIpcHandlers', () => {
     expect(result.numberingWarning).toBeUndefined();
   });
 
+  it('loadSeedState warns about a build that was never published or revoked', async () => {
+    const twoDaysAgo = Math.floor(Date.now() / 1000) - 2 * 24 * 60 * 60;
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 219, history: [], currentDizText: '', revision: 0,
+      drafts: [{ code: 'EVK26', releaseNumber: 217, createdAt: twoDaysAgo, entryTitle: 'evoke 2026' }],
+    });
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.staleDraftWarning).toMatch(/EVK26/);
+    expect(result.staleDraftWarning).toMatch(/release 217/);
+  });
+
+  it('loadSeedState says nothing about a draft made minutes ago', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 219, history: [], currentDizText: '', revision: 0,
+      drafts: [{ code: 'EVK26', releaseNumber: 218, createdAt: Math.floor(Date.now() / 1000) - 120, entryTitle: 'x' }],
+    });
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.staleDraftWarning).toBeUndefined();
+  });
+
+  it('loadSeedState copes with a server that does not report drafts at all', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
+    });
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.staleDraftWarning).toBeUndefined();
+  });
+
   it('pickImage opens a file dialog restricted to image types and returns the chosen path', async () => {
     (electron.dialog.showOpenDialog as any).mockResolvedValue({ canceled: false, filePaths: ['/tmp/cover.png'] });
     const result = await handlers.pickImage();

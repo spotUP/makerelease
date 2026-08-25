@@ -75,6 +75,14 @@ export interface SeedState {
    * GET /api/releases/numbering-check.
    */
   numberingWarning?: string;
+  /**
+   * Set when a previous build was never published and never revoked. Such a
+   * build is invisible in the catalogue but keeps its release number and its
+   * code forever - an abandoned Evoke build is exactly what left 217 spent
+   * while the catalogue looked like it ended at 216. See
+   * describeStaleDrafts in main/stale-drafts.ts.
+   */
+  staleDraftWarning?: string;
 }
 
 export interface BuildResult {
