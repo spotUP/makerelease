@@ -114,7 +114,15 @@ resolves, the old one 404s. Backup first:
 | 206 | up-blvd.lha | up-blvrd.lha |
 | 209 | ..._flafouk.zip | ..._glafouk.zip |
 | 213 | up-scago.lha | up-scago.zip |
-| 115 | ht15_m68k.lha (#114's build) | ht16_m68k.lha |
+
+**#34's columns were swapped.** The history line read `release 034 sige dame
+maz` with `sige_dame_maz.mp3` in the title column - the filename and the title
+had traded places. Now title "sige dame maz", filename `sige_dame_maz.mp3`.
+
+**#115 was left alone.** The site's post links `ht16_m68k.lha`, which does not
+exist on the web server; the history's `ht15_m68k.lha` does. Changing it to
+match the post was a mistake and was reverted - the rule is "the file that
+actually resolves wins", and here that is the history's.
 
 **#108 was a duplicate.** The history had "anniversary" (up-annv.lha) at both
 108 and 113, and the release the site has at #108 - "Up Garage Treat mix",
@@ -133,6 +141,23 @@ UP-GRTMX.LHA - was missing from it entirely. #108 is now that release.
 
 90, 91 and 194's dead link are WordPress-side fixes (relink the post, or
 re-upload the file). 93 is a numbering question only the group can answer.
+
+## Auditing every filename, not just the disputed ones
+
+A follow-up pass asked the web server about all 217 rows. Once mixed-case
+names (`TBLvsUP.lha`, `UPvsAPT.LHA`, `SpbUP-BW.lha`) are accounted for, 12
+rows name a file that is not online: 8, 67, 75, 89, 91, 104, 105, 171, 202,
+204, 205 and 34's original value. Those are not history errors - they are
+releases whose archive was never put on the website (BBS-era `.dms`, an
+`.avi` party report, an HTML release, a `.mp3` that lives under `/radio/`).
+Only #34 was a real mistake, and it is fixed above.
+
+Worth saying plainly: the history block is the error-prone side, because it
+was hand-typed. **New releases no longer type it at all** - the NFO's history
+section is generated from the catalogue and the filename comes from
+`filenamesFor(code, format)`, so the class of typo repaired here cannot be
+introduced by the tool. What still gets typed by a human is the title, the
+creators and the release notes.
 
 ## Learnings
 
