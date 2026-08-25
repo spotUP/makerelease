@@ -36,7 +36,8 @@ everything is in and what is still open.
 - Catalogue: 217 entries, **next release number 218**, no drafts.
 - Server deployed and running (`pm2` id 0, `releases-doorserver`).
 - Three distribution zips in `~/Desktop/up-rough-release-maker-0.1.0/`.
-- **Nothing is pushed.** Both repos have this work as local commits only.
+- Both repos are **pushed**: `spotUP/releases-doorserver` at `3438a3f`,
+  `spotUP/makerelease` at `b9edd19`. `makerelease`'s working tree is clean.
 
 ## Recent changes
 
@@ -56,12 +57,14 @@ Tests 200 -> 246.
 `a4b15c1` (editor numbering warning), `9378e30` (stale-draft warning,
 `app/src/main/stale-drafts.ts`), plus the handoff docs. Tests 74 -> 101.
 
-**Uncommitted, deliberately:** `app/src/renderer/main.ts` carries the one line
-that prints those warnings, and it sits on top of the unfinished DIZ
-release-line work (`diz-release-line.ts`, `index.html`, `style.css`,
-`constants.ts`, `diz-grid.ts` deleted). That work IS in the shipped build -
-typecheck and all 101 tests pass with it. `UP-HYPOC*` in the repo root are
-Varin0x's build artifacts, not source.
+`35e14aa` then landed the DIZ release-line work that had been sitting
+uncommitted: the banner art is inherited verbatim from the last published
+release and only the single line naming the release can be retyped
+(`app/src/renderer/diz-release-line.ts` replaces `diz-grid.ts`, which exposed
+the whole 45x10 grid). `main.ts` carries the warning-display line in the same
+commit, since it lives in the same `init()`. `b9edd19` ignores `UP-*` build
+output in the repo root - about 450 MB of leftover `UP-HYPOC` artifacts are
+still sitting there untouched, delete them if they are not wanted.
 
 ### Live data repairs (three passes, each with a DB backup on `hippoplayer`)
 
@@ -117,8 +120,7 @@ Varin0x's build artifacts, not source.
 1. **Send the zips to Varin0x and the crew.** He rebuilds the Evoke release
    and gets 218; the `UP-EVK26.LHA` he already holds says 217 and must be
    binned.
-2. **Push both repos.** 4 commits in `uprough-releases-server`, 8 in
-   `makerelease`, none pushed.
+2. ~~Push both repos~~ **done**.
 3. **Fix #194's download link** in wp-admin: the post links
    `up-xmas2018.zip`, the file is `UP-XMAS2018.ZIP`. Dead link from a case
    mismatch. (The user said they would do this.)
@@ -129,9 +131,7 @@ Varin0x's build artifacts, not source.
    2026-08-25): no `lha`/`zip` on the platform, so `INSTALL.txt` asks members
    to put `lha.exe`/`zip.exe` on PATH. The real fix is bundling them via
    electron-builder `extraResources`.
-6. Commit the renderer warning line once the DIZ release-line work is
-   finished, or split it out if that work is going to sit unfinished.
-7. Optional: a `windows-latest` GitHub Actions job would keep builds off this
+6. Optional: a `windows-latest` GitHub Actions job would keep builds off this
    laptop's disk entirely (`origin` is `git@github.com:spotUP/makerelease.git`).
 
 ## Other Notes
