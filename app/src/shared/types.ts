@@ -65,6 +65,16 @@ export interface SeedState {
    * surfaces this to the user; see main.ts's init().
    */
   configWarning?: string;
+  /**
+   * Set when the catalogue's release numbering no longer matches
+   * www.uprough.net - a release posted to the site by hand holds a number
+   * this tool never spent, so every number the tool hands out afterwards is
+   * one too low. The build itself is refused server-side once the next
+   * number is one the site already used; this warning is what makes the
+   * drift visible BEFORE anyone fills in a form. See the releases server's
+   * GET /api/releases/numbering-check.
+   */
+  numberingWarning?: string;
 }
 
 export interface BuildResult {

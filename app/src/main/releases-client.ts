@@ -173,3 +173,18 @@ export async function publishToWeb(
   }
   return body as PublishToWebResult;
 }
+
+export interface NumberingCheckResponse {
+  /** False when the server could not reach WordPress at all. */
+  checked: boolean;
+  ok?: boolean;
+  summary?: string;
+  error?: string;
+}
+
+// Asks the server whether its numbering still matches www.uprough.net. The
+// endpoint answers 200 even when it could not reach the site (checked:
+// false), so a site outage never turns into a scary error in the editor.
+export async function fetchNumberingCheck(cfg: ReleasesClientConfig): Promise<NumberingCheckResponse> {
+  return getJson<NumberingCheckResponse>(cfg, '/api/releases/numbering-check');
+}

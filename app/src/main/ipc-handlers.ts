@@ -3,6 +3,7 @@ import * as path from 'path';
 import { BuildResult, DeleteReleaseOutcome, PublishToWebOutcome, ReleaseFormData, ReleaseHistoryEntry, SeedState } from '../shared/types';
 import {
   fetchSeed,
+  fetchNumberingCheck,
   checkCodeExists,
   publishRelease,
   deleteRelease as deleteReleaseClient,
@@ -43,13 +44,24 @@ async function assertLocalCodeAvailable(makereleaseRoot: string, code: string): 
 
 export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: ReleasesClientConfig): void {
   ipcMain.handle('loadSeedState', async (): Promise<SeedState> => {
-    const seed = await fetchSeed(releasesConfig);
+    // Both in one round trip's worth of time, and a numbering check that
+    // fails for any reason must never stop the editor from opening - it is
+    // a warning, not a precondition.
+    const [seed, numbering] = await Promise.all([
+      fetchSeed(releasesConfig),
+      fetchNumberingCheck(releasesConfig).catch(() => null),
+    ]);
+    const numberingWarning =
+      numbering && numbering.checked && numbering.ok === false && numbering.summary
+        ? `${numbering.summary} Do not build until this is reconciled - the release number goes into the NFO.`
+        : undefined;
     return {
       members: seed.members,
       nextReleaseNumber: seed.nextReleaseNumber,
       history: seed.history,
       currentDizText: seed.currentDizText ?? '',
       revision: seed.revision,
+      ...(numberingWarning ? { numberingWarning } : {}),
       ...(releasesConfig.isPlaceholderKey
         ? {
             configWarning:

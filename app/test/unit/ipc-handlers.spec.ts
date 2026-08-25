@@ -19,6 +19,7 @@ vi.mock('../../src/main/releases-client', () => {
   }
   return {
     fetchSeed: vi.fn(),
+    fetchNumberingCheck: vi.fn(),
     checkCodeExists: vi.fn(),
     publishRelease: vi.fn(),
     deleteRelease: vi.fn(),
@@ -59,6 +60,8 @@ describe('registerIpcHandlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (fsHelpers.pathExists as any).mockResolvedValue(false);
+    // Default: the server could not reach the site, so no numbering warning.
+    (releasesClient.fetchNumberingCheck as any).mockResolvedValue({ checked: false });
     registerIpcHandlers('/root', cfg);
   });
 
@@ -208,6 +211,45 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.loadSeedState();
 
     expect(result.configWarning).toBeUndefined();
+  });
+
+  it('loadSeedState warns when the catalogue numbering has drifted from the site', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 217, history: [], currentDizText: '', revision: 0,
+    });
+    (releasesClient.fetchNumberingCheck as any).mockResolvedValue({
+      checked: true,
+      ok: false,
+      summary: 'Release numbering disagrees with www.uprough.net: the site already has #217 "Hypocrisy".',
+    });
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.numberingWarning).toMatch(/#217/);
+    expect(result.numberingWarning).toMatch(/NFO/);
+  });
+
+  it('loadSeedState omits the numbering warning when the catalogue and the site agree', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 218, history: [], currentDizText: '', revision: 0,
+    });
+    (releasesClient.fetchNumberingCheck as any).mockResolvedValue({ checked: true, ok: true, summary: 'agree' });
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.numberingWarning).toBeUndefined();
+  });
+
+  it('loadSeedState still loads when the numbering check itself fails', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 3, history: [], currentDizText: '', revision: 0,
+    });
+    (releasesClient.fetchNumberingCheck as any).mockRejectedValue(new Error('releases.uprough.net unreachable'));
+
+    const result = await handlers.loadSeedState();
+
+    expect(result.nextReleaseNumber).toBe(3);
+    expect(result.numberingWarning).toBeUndefined();
   });
 
   it('pickImage opens a file dialog restricted to image types and returns the chosen path', async () => {
