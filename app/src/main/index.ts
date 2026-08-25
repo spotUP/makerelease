@@ -1,10 +1,20 @@
 import { app, BrowserWindow } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs/promises';
 import { registerIpcHandlers } from './ipc-handlers';
 import { loadReleasesClientConfig } from './config';
 
-// __dirname is dist/main/main (tsc preserves the src/main/ subfolder under outDir dist/main).
-const MAKERELEASE_ROOT = path.resolve(__dirname, '..', '..', '..', '..');
+// In dev, __dirname is dist/main/main and resolving 4 levels up reaches the
+// repo root — convenient for local testing. In a PACKAGED build (asar, an
+// AppImage's squashfs mount, an installed .app/.exe), __dirname sits inside
+// the app's own read-only bundle, so the same walk lands somewhere inside
+// (or briefly beside) the install location instead of anywhere writable —
+// on Linux AppImages that showed up as a build failure writing into the
+// AppImage's temporary /tmp/.mount_* directory. Packaged builds get a real,
+// stable, user-writable output folder instead.
+const MAKERELEASE_ROOT = app.isPackaged
+  ? path.join(app.getPath('documents'), 'Up Rough Releases')
+  : path.resolve(__dirname, '..', '..', '..', '..');
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -29,7 +39,8 @@ function createWindow(): void {
   });
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  await fs.mkdir(MAKERELEASE_ROOT, { recursive: true });
   const releasesConfig = loadReleasesClientConfig();
   registerIpcHandlers(MAKERELEASE_ROOT, releasesConfig);
   createWindow();
