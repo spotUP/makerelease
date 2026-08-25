@@ -2,7 +2,8 @@ import { ReleaseFormat, ReleaseFormData } from '../shared/types';
 import { MemberlistTable } from './memberlist-table.js';
 import { CreditsTable } from './credits-table.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
-import { attachOverwriteGrid, toGridText } from './diz-grid.js';
+import { applyReleaseLineText, findReleaseLineSlot, readReleaseLineText } from './diz-release-line.js';
+import { DEFAULT_DIZ_BANNER } from '../shared/constants.js';
 import { attachCreatorsAutocomplete } from './creators-autocomplete.js';
 import { describeRevoke } from './revoke-message.js';
 
@@ -26,8 +27,9 @@ const entryTitleInput = $<HTMLInputElement>('entry-title');
 const entryCategoryInput = $<HTMLSelectElement>('entry-category');
 const entryCreatorsInput = $<HTMLInputElement>('entry-creators');
 const entryCreatorsSuggestions = $<HTMLUListElement>('entry-creators-suggestions');
-const dizBannerTextArea = $<HTMLTextAreaElement>('diz-banner-text');
-attachOverwriteGrid(dizBannerTextArea);
+const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
+const dizReleaseLineInput = $<HTMLInputElement>('diz-release-line');
+const dizReleaseLineCount = $<HTMLDivElement>('diz-release-line-count');
 
 const pickFilesBtn = $<HTMLButtonElement>('pick-files-btn');
 const selectedFilesList = $<HTMLUListElement>('selected-files-list');
@@ -62,6 +64,31 @@ let selectedImagePath: string | null = null;
 let lastEmbedImagePaths: string[] = [];
 
 attachCreatorsAutocomplete(entryCreatorsInput, entryCreatorsSuggestions, () => memberlist.getMembers());
+
+// Banner art is read-only: whatever the last release used (or the built-in
+// fallback when there is no previous release). Only the release line changes,
+// and diz-release-line.ts keeps it inside the art's frame characters.
+let dizBannerTemplate = DEFAULT_DIZ_BANNER;
+
+function currentDizBannerText(): string {
+  return applyReleaseLineText(dizBannerTemplate, dizReleaseLineInput.value);
+}
+
+function renderDizPreview(): void {
+  const slot = findReleaseLineSlot(dizBannerTemplate);
+  dizBannerPreview.textContent = currentDizBannerText();
+  dizReleaseLineCount.textContent = `${dizReleaseLineInput.value.length}/${slot.width} characters (longer text is cut off)`;
+}
+
+function seedDizBanner(bannerText: string): void {
+  dizBannerTemplate = bannerText.trim() === '' ? DEFAULT_DIZ_BANNER : bannerText;
+  const slot = findReleaseLineSlot(dizBannerTemplate);
+  // Hard cap in the field itself, so nothing longer than the gap between the
+  // frame characters can ever be typed or pasted in.
+  dizReleaseLineInput.maxLength = slot.width;
+  dizReleaseLineInput.value = readReleaseLineText(dizBannerTemplate).slice(0, slot.width);
+  renderDizPreview();
+}
 
 function updateReleaseNumberPreview(): void {
   const code = codeInput.value.trim().toUpperCase() || 'XXXXX';
@@ -120,10 +147,13 @@ async function init(): Promise<void> {
     const seed = await window.api.loadSeedState();
     memberlist.seed(seed.members);
     nextReleaseNumber = seed.nextReleaseNumber;
-    dizBannerTextArea.value = toGridText(seed.currentDizText);
+    seedDizBanner(seed.currentDizText);
     updateReleaseNumberPreview();
-    if (seed.configWarning) {
-      buildStatus.textContent = seed.configWarning;
+    // Both can be set at once (an unconfigured build against a drifted
+    // catalogue), and neither must hide the other.
+    const warnings = [seed.numberingWarning, seed.staleDraftWarning, seed.configWarning].filter(Boolean);
+    if (warnings.length > 0) {
+      buildStatus.textContent = warnings.join(' ');
       buildStatus.className = 'status warn';
     }
   } catch (err) {
@@ -133,6 +163,11 @@ async function init(): Promise<void> {
     buildStatus.className = 'status warn';
   }
 }
+
+dizReleaseLineInput.addEventListener('input', renderDizPreview);
+// Show the fallback art immediately - init() re-seeds it once the server
+// answers, and a failed seed load still leaves a usable, framed banner.
+seedDizBanner('');
 
 addMemberBtn.addEventListener('click', () => memberlist.addRow());
 addCreditBtn.addEventListener('click', () => creditsTable.addRow());
@@ -207,7 +242,7 @@ form.addEventListener('submit', async (e) => {
     platformTag: platformTagInput.value.trim(),
     releaseNotesText: releaseNotesTextArea.value,
     newsText: newsTextArea.value,
-    dizBannerText: dizBannerTextArea.value,
+    dizBannerText: currentDizBannerText(),
     members: memberlist.getMembers(),
     entryTitle: entryTitleInput.value.trim(),
     entryCategory: entryCategoryInput.value.trim(),

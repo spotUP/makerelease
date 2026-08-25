@@ -23,3 +23,24 @@ export const BANNER = [
   '                                 \\ \\)\\_________\\ ',
   '                  ',
 ].join('\n');
+
+// Row of the file_id.diz banner art that names the release - the only line the
+// release maker lets anyone edit (see renderer/diz-release-line.ts). Zero-based,
+// so this is line 9 of the art. New banner art with the release name on another
+// line has to move this constant with it.
+export const DIZ_RELEASE_LINE_ROW = 8;
+
+// Used only when the server has no previous release to inherit banner art from
+// (SeedState.currentDizText empty), so the tool is never left with no art at all.
+export const DEFAULT_DIZ_BANNER = [
+  '    _ _ __ ___    ____  _ _ __ _________',
+  '   | | Y  / _ \\../ __ \\| | Y  / __  | | |',
+  'dNo| | | | | | || /_ | | | | | |_ | l | |dS!',
+  '|  | | | | |`| || || | | | | | || |___| |  |',
+  "|  | | l | |__/'| || | | | | | || |   | |  |",
+  '|  | l___| |    | || | | l l | ll | | | |  |',
+  "|  `\\______|    |_|`\\_/'\\___/`\\__/l_l_|_|  |",
+  '|            Up Rough Presents:            |',
+  '|                                          |',
+  "`------------------------------------------'",
+].join('\n');

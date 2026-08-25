@@ -90,9 +90,15 @@
     </section>
 
     <section>
-      <h2>8. Diz banner art</h2>
-      <label for="diz-banner-text">Paste your hand-made ASCII banner art (written verbatim to file_id.diz, fixed 45x10 grid &mdash; typing overwrites in place)</label>
-      <textarea id="diz-banner-text" rows="10" cols="45" wrap="off" class="monospace diz-banner" spellcheck="false" required></textarea>
+      <h2>8. Diz release line</h2>
+      <p class="hint">
+        The file_id.diz banner art is inherited from the last release and cannot be edited here.
+        Only the release line changes &mdash; it is centered between the frame characters automatically.
+      </p>
+      <pre id="diz-banner-preview" class="diz-banner-preview" aria-label="file_id.diz preview"></pre>
+      <label for="diz-release-line">Release line (line 9 of the diz)</label>
+      <input type="text" id="diz-release-line" class="monospace diz-release-line" spellcheck="false" autocomplete="off" required />
+      <div id="diz-release-line-count" class="hint"></div>
     </section>
 
     <section>
