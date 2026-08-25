@@ -15,12 +15,15 @@
 //      to main-process stdout (which a Finder-launched user never sees).
 import { INJECTED_RELEASES_WRITE_KEY } from './config.generated';
 
-// releases-doorserver is deployed as a path-mounted API on the same host
-// and nginx vhost as www.uprough.net (see /etc/nginx/sites-available/
-// uprough.net on the server), not on its own subdomain — releases.uprough.net
-// has no DNS record. releases-client.ts appends /api/releases/... itself, so
-// this is the bare origin.
-const DEFAULT_BASE_URL = 'https://www.uprough.net';
+// releases.uprough.net now has its own DNS record and nginx vhost (see
+// /etc/nginx/sites-available/releases.uprough.net on the server) proxying to
+// the same releases-doorserver process that www.uprough.net/api/releases
+// still reaches. Both origins work and must keep working: builds already
+// distributed to members are pinned to the www one, so the path-mounted
+// block in the uprough.net vhost cannot be removed.
+// releases-client.ts appends /api/releases/... itself, so this is the bare
+// origin.
+const DEFAULT_BASE_URL = 'https://releases.uprough.net';
 const PLACEHOLDER_KEY = 'REPLACE_ME_BEFORE_DISTRIBUTING';
 
 export interface ReleasesClientConfig {
