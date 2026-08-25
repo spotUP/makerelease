@@ -195,6 +195,20 @@ section is generated from the catalogue and the filename comes from
 introduced by the tool. What still gets typed by a human is the title, the
 creators and the release notes.
 
+## Abandoned builds no longer disappear quietly
+
+The last soft spot: a build that is never published and never revoked keeps
+its release number and its code forever while being invisible everywhere a
+reader looks. That is what the EVK26 draft did - it held 217 for a day, so
+the catalogue looked like it ended at 216.
+
+`GET /seed` now returns `drafts` (`uprough-releases-server` `3438a3f`), and
+makerelease turns any draft older than a day into an editor warning naming
+the code, the number it is holding and its age (`makerelease` `9378e30`,
+`app/src/main/stale-drafts.ts`). Drafts younger than a day are ignored: the
+build you just made is a draft, and warning about it would be noise. Server
+tests 243 -> 246, app tests 93 -> 101.
+
 ## Learnings
 
 - The website's `#N:` post titles are the real public numbering. The NFO
