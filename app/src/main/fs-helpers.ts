@@ -27,6 +27,14 @@ export async function moveDir(src: string, dest: string): Promise<void> {
   }
 }
 
+export async function isDirectory(p: string): Promise<boolean> {
+  try {
+    return (await fs.stat(p)).isDirectory();
+  } catch {
+    return false;
+  }
+}
+
 export function baseName(p: string): string {
   return path.basename(p);
 }
