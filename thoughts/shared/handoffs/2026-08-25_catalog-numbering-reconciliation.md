@@ -85,7 +85,7 @@ Deploying the check immediately turned up 25 numbers where the catalogue and
 the site disagreed about which archive the release is. Three were the check's
 own fault and 18 were real errors in the imported NFO history.
 
-**Check bug (fixed, `uprough-releases-server` commit `1cfd4f7`).** A release
+**Check bug (fixed, `uprough-releases-server` commit `8f6de82`).** A release
 post often links several archives - side A and side B of the same LP, every
 build of HivelyTracker, a follow-up fix - and only the first link was being
 compared. Six numbers (27, 50, 51, 90-93 partly, 131, 132) were flagged purely
@@ -130,7 +130,41 @@ UP-GRTMX.LHA - was missing from it entirely. #108 is now that release.
 
 25 conflicts -> 4.
 
-## Four left, each needing a human decision
+## Second pass: the archive directory settles it
+
+`/var/www/uprough.net/releases` (250 files, readable on `hippoplayer`) is the
+only record that cannot be stale, and it decided the rest. Backup:
+`/home/spot/releases.db.bak-2026-08-25-round2`.
+
+| # | was | is | why |
+|---|---|---|---|
+| 8 | up-amluv.lha | up-amluv.txt | the release is a text file |
+| 27 | up-april.lha | up-aprip.lha | that is #12's archive; the demo is UP-APRIP.LHA |
+| 75 | up-hmnt.zip | up-hmnit.zip | typo |
+| 92 | ht12.lha | ht12.lha ht12_m68k.lha | the 68k build belongs with 1.2 |
+| 93 | "hively tracker 1.2 (68k version)", ht12_m68k.lha | "hively tracker 1.3", ht13.lha ht13_m68k.lha | the history had no 1.3 at all, and both 1.3 files sit on disk unclaimed |
+| 171 | www.stucksomewhereintime.com | ssithtml.zip | its Megadrive and A500 siblings name archives, and SSITHTML.ZIP is on disk |
+
+**#90 and #91 were not errors.** The HivelyTracker 1.0 post reads "Version 1.0
+is outdated, instead;" and links 1.2 deliberately; `HT10.LHA` and `HT11.lha`
+are both still on the server. A post's link is editorial, so the check was
+wrong to treat one as evidence - fixed in `uprough-releases-server` commit
+`3b485b5`: `numbering-check` now reads `WORDPRESS_RELEASES_DIR` and a number
+only counts as a conflict when the catalogue names a file that is NOT there
+while the site links one that is.
+
+Live result: **ok: true** - 0 ahead, 0 conflicts, next release 218.
+
+## Seven archives that are simply not on the website
+
+Reported by `numbering-check` as `missingArchives`, advisory only (not part of
+`ok`): 34 (the mp3 lives under `/radio/mp3/mod/`), 67 (the Live Axxion patch),
+89 (an `.avi` party report), 104 (Planet Hively's OS4 build), 105, 202 (Santaz
+Triptro - not on the server under any name, which is why the post's link is
+dead too) and 205. Nothing to fix in the catalogue; upload the files or leave
+them.
+
+## Superseded: the four that needed a decision
 
 | # | site | catalogue | what is actually on the web server |
 |---|---|---|---|
@@ -139,8 +173,10 @@ UP-GRTMX.LHA - was missing from it entirely. #108 is now that release.
 | 93 | "Hively Tracker 1.3" (ht13.lha, ht13_m68k.lha) | "hively tracker 1.2 (68k version)" (ht12_m68k.lha) | both files exist - the two records disagree about what #93 IS |
 | 202 | Santaz Triptro, links up-xmas2021.7z | up-xmas2021.zip | neither exists - the archive is not on the server at all |
 
-90, 91 and 194's dead link are WordPress-side fixes (relink the post, or
-re-upload the file). 93 is a numbering question only the group can answer.
+All four are resolved above: 90 and 91 were never errors, 93 was a missing
+Hively Tracker 1.3, and 202's archive is not on the server at all. The one
+WordPress-side fix left is #194, whose post links `up-xmas2018.zip` while the
+file is `UP-XMAS2018.ZIP` - a dead link from a case mismatch.
 
 ## Auditing every filename, not just the disputed ones
 
@@ -178,8 +214,8 @@ creators and the release notes.
    then `ssh hippoplayer 'cd /home/spot/apps/releases-doorserver && npm ci && npm run build && pm2 restart releases-doorserver'`,
    then check `curl -s https://releases.uprough.net/api/releases/numbering-check`
    reports `ok: true` against the repaired catalogue.
-2. Decide the four remaining conflicts above; until then the editor shows a
-   numbering warning on every load.
+2. Fix #194's download link in wp-admin (`up-xmas2018.zip` ->
+   `UP-XMAS2018.ZIP`); optionally upload the seven missing archives.
 3. Ship a new makerelease build so the editor shows the numbering warning
    (`npm run dist` in `app/`). Not urgent: the server-side build gate protects
    the existing build too.
