@@ -37,11 +37,11 @@ everything is in and what is still open.
 - Server deployed and running (`pm2` id 0, `releases-doorserver`).
 - Three distribution zips in `~/Desktop/up-rough-release-maker-0.1.0/`.
 - Both repos are **pushed**: `spotUP/releases-doorserver` at `3438a3f`,
-  `spotUP/makerelease` at `b9edd19`. `makerelease`'s working tree is clean.
+  `spotUP/makerelease` at its latest `main`. `makerelease`'s working tree is clean.
 
 ## Recent changes
 
-### uprough-releases-server (4 unpushed commits on `main`)
+### uprough-releases-server (4 commits on `main`)
 
 | Commit | What |
 |---|---|
@@ -52,7 +52,7 @@ everything is in and what is still open.
 
 Tests 200 -> 246.
 
-### makerelease (8 unpushed commits on `main`)
+### makerelease (11 commits on `main`)
 
 `a4b15c1` (editor numbering warning), `9378e30` (stale-draft warning,
 `app/src/main/stale-drafts.ts`), plus the handoff docs. Tests 74 -> 101.
