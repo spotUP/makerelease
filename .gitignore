@@ -9,3 +9,12 @@ app/src/main/config.generated.ts
 .DS_Store
 thoughts/spot/
 thoughts/searchable/
+# Release build output. Older builds wrote UP-<CODE>/ and UP-<CODE>.<FORMAT>
+# into the repo root before the output root moved to ~/Documents/Up Rough
+# Releases/; a leftover UP-<CODE> is also what assertLocalCodeAvailable
+# refuses to build over.
+UP-*/
+UP-*.LHA
+UP-*.ZIP
+UP-*.lha
+UP-*.zip
