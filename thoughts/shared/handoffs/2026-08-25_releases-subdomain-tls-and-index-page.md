@@ -153,6 +153,41 @@ slack that belonged to Credits, the dash for a release with no archive was
 not aligned with the download icons above it, and the page 404'd for a
 favicon. All three are fixed.
 
+## Follow-up: sortable columns and a release detail view
+
+Also cloned from the door repository, completing the parity list:
+
+- **Sorting** happens in the page, not the server. All 216 rows are already
+  in the document, so re-ordering costs a `DocumentFragment` and no request,
+  and it composes with the search filter a server-side sort would have had to
+  re-implement. Number sorts on the internal integer — the display label is
+  legacy free text (`o94`, `034`, `oo8`) and sorting on it puts `o15` after
+  `99`.
+- **Detail view**, one renderer two ways: `GET /release/:code` is a full page
+  (shared links, middle clicks, no-JS), `?panel=1` is the bare card the
+  listing fetches into a `<dialog>`. A failed fetch falls back to navigating.
+- Rows are real links, not click handlers, so middle click and "copy link
+  address" work.
+- `src/page-chrome.ts` now holds the shared palette, icons and shell.
+
+**Production data finding, checked before building the tabs:** of the 216
+imported entries, **0 have DIZ art, 0 have news, 0 have a description**, and
+all 216 share the same placeholder `release_notes` ("imported historical
+entry, no original release notes preserved"). The history import had none of
+it to import. So the FILE_ID.DIZ tab is conditional — it appears only for a
+release that has one, the way the door repo shows its Guide tab only for a
+door with documentation. Releases made through the app carry all these
+fields and get the full treatment automatically. Until then a release page
+is thin, and that is the data, not the page.
+
+Topaz is vendored into `releases-doorserver/public/fonts` (two TTFs from the
+door repo) because DIZ art only lines up at that font's cell width.
+
+Verified live: sort arrows and `aria-sort` toggle correctly, number sorts
+1..216 and back, title sorts alphabetically, the modal opens and closes,
+`/release/UPHYPOC` 200, `?panel=1` returns a shell-less fragment,
+`/release/NOPE` 404s, Topaz serves, zero console errors.
+
 ## Next Steps
 
 1. **Both repos have uncommitted changes** (see `git status` in each). The
