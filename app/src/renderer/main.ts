@@ -284,6 +284,14 @@ publishBtn.addEventListener('click', async () => {
       // A real, successful publish — leave publishBtn disabled. A stray
       // second click would just 409; nothing more needs to happen for this
       // build once it's published.
+    } else if (result.status === 409 && result.reason === 'number-taken') {
+      // The site already has a post with this release number, so the
+      // catalogue and the website disagree about which numbers are taken.
+      // Retrying changes nothing until a human reconciles them, but it is
+      // worth retrying afterwards, so the button stays live.
+      publishStatus.textContent = `Not published — ${result.message}`;
+      publishStatus.className = 'status warn';
+      publishBtn.disabled = false;
     } else if (result.status === 409) {
       publishStatus.textContent = result.wordpressPostUrl
         ? `Already published: ${result.wordpressPostUrl}`

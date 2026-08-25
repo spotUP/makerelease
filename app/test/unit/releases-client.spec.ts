@@ -124,6 +124,34 @@ describe('deleteRelease', () => {
   });
 });
 
+describe('publishToWeb 409 handling', () => {
+  beforeEach(() => {
+    global.fetch = vi.fn();
+  });
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("carries the server's reason so a number collision is not shown as 'already published'", async () => {
+    (global.fetch as any).mockResolvedValue({
+      ok: false,
+      status: 409,
+      json: async () => ({
+        error: 'WordPress already has a post numbered #217 ("#217: Hypocrisy", https://www.uprough.net/217-hypocrisy/)',
+        reason: 'number-taken',
+        wordpressPostUrl: 'https://www.uprough.net/217-hypocrisy/',
+      }),
+    });
+    try {
+      await publishToWeb(cfg, 'TEST0', __filename, __filename, []);
+      throw new Error('expected publishToWeb to reject');
+    } catch (err) {
+      expect((err as ReleasesApiError).reason).toBe('number-taken');
+      expect((err as ReleasesApiError).status).toBe(409);
+    }
+  });
+});
+
 describe('publishRelease', () => {
   describe('the DIZ it sends to the catalog', () => {
     beforeEach(() => {

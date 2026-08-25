@@ -8,15 +8,23 @@ export class ReleasesApiError extends Error {
   /** HTTP status code of the response that produced this error, when known. */
   status?: number;
   /**
+   * The server's machine-readable reason for a 409, when it sent one:
+   * 'already-published', 'publish-in-progress', or 'number-taken' (WordPress
+   * already has a post claiming this release number). The three need
+   * different handling, and sniffing the prose would be fragile.
+   */
+  reason?: string;
+  /**
    * Populated when the server's 409 "already published" response body
    * included the existing WordPress post URL, so callers can show it
    * instead of just the bare error message.
    */
   wordpressPostUrl?: string;
 
-  constructor(message: string, opts?: { status?: number; wordpressPostUrl?: string }) {
+  constructor(message: string, opts?: { status?: number; reason?: string; wordpressPostUrl?: string }) {
     super(message);
     this.status = opts?.status;
+    this.reason = opts?.reason;
     this.wordpressPostUrl = opts?.wordpressPostUrl;
   }
 }
@@ -156,9 +164,10 @@ export async function publishToWeb(
   }
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    const errorBody = body as { error?: string; wordpressPostUrl?: string };
+    const errorBody = body as { error?: string; reason?: string; wordpressPostUrl?: string };
     throw new ReleasesApiError(errorBody.error ?? `releases.uprough.net returned ${response.status}`, {
       status: response.status,
+      ...(errorBody.reason ? { reason: errorBody.reason } : {}),
       ...(response.status === 409 && errorBody.wordpressPostUrl ? { wordpressPostUrl: errorBody.wordpressPostUrl } : {}),
     });
   }

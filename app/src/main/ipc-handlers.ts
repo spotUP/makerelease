@@ -140,7 +140,13 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
         // every custom property via structured-clone. A plain returned
         // object crosses the IPC boundary intact.
         if (err instanceof ReleasesApiError) {
-          return { ok: false, message: err.message, status: err.status, wordpressPostUrl: err.wordpressPostUrl };
+          return {
+            ok: false,
+            message: err.message,
+            status: err.status,
+            reason: err.reason,
+            wordpressPostUrl: err.wordpressPostUrl,
+          };
         }
         return { ok: false, message: err instanceof Error ? err.message : String(err) };
       }

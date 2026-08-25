@@ -96,7 +96,7 @@ export interface PublishToWebResult {
  */
 export type PublishToWebOutcome =
   | ({ ok: true } & PublishToWebResult)
-  | { ok: false; message: string; status?: number; wordpressPostUrl?: string };
+  | { ok: false; message: string; status?: number; reason?: string; wordpressPostUrl?: string };
 
 export interface DeleteReleaseResult {
   code: string;
