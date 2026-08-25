@@ -7,6 +7,15 @@ status: implemented
 
 # Releases pipeline: deploy + distribution handoff
 
+> **Partly superseded by `2026-08-25_cross-platform-archiver-fixes.md`.**
+> Everything below about the **server, deploy, nginx, pm2 and WordPress** is
+> still accurate. The **distribution** parts are not: the binaries described
+> here could not build on Linux or Windows at all (macOS-hardcoded archiver
+> paths, plus an output directory that resolved inside the packaged app
+> bundle). Both bugs were found by a member and fixed the next day. Read the
+> 2026-08-25 handoff before touching the app's packaging or acting on the
+> Next Steps below.
+
 ## Task(s)
 
 - Built and deployed `releases-doorserver` (metadata API + release numbering
