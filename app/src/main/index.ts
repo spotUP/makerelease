@@ -1,8 +1,9 @@
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, dialog } from 'electron';
 import * as path from 'path';
 import * as fs from 'fs/promises';
 import { registerIpcHandlers } from './ipc-handlers';
 import { loadReleasesClientConfig } from './config';
+import { resolvePackagedOutputRoot } from './output-root';
 
 // In dev, __dirname is dist/main/main and resolving 4 levels up reaches the
 // repo root — convenient for local testing. In a PACKAGED build (asar, an
@@ -12,9 +13,10 @@ import { loadReleasesClientConfig } from './config';
 // on Linux AppImages that showed up as a build failure writing into the
 // AppImage's temporary /tmp/.mount_* directory. Packaged builds get a real,
 // stable, user-writable output folder instead.
-const MAKERELEASE_ROOT = app.isPackaged
-  ? path.join(app.getPath('documents'), 'Up Rough Releases')
-  : path.resolve(__dirname, '..', '..', '..', '..');
+function outputRoot(): string {
+  if (!app.isPackaged) return path.resolve(__dirname, '..', '..', '..', '..');
+  return resolvePackagedOutputRoot((name) => app.getPath(name));
+}
 
 function createWindow(): void {
   const win = new BrowserWindow({
@@ -40,9 +42,22 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
-  await fs.mkdir(MAKERELEASE_ROOT, { recursive: true });
+  let makereleaseRoot: string;
+  try {
+    makereleaseRoot = outputRoot();
+    await fs.mkdir(makereleaseRoot, { recursive: true });
+  } catch (err) {
+    // Startup failure with no window yet — a plain throw here would exit
+    // silently, so say what went wrong before quitting.
+    dialog.showErrorBox(
+      'Up Rough Release Maker',
+      `Could not prepare the folder where builds are saved.\n\n${(err as Error).message}`,
+    );
+    app.quit();
+    return;
+  }
   const releasesConfig = loadReleasesClientConfig();
-  registerIpcHandlers(MAKERELEASE_ROOT, releasesConfig);
+  registerIpcHandlers(makereleaseRoot, releasesConfig);
   createWindow();
 
   app.on('activate', () => {
