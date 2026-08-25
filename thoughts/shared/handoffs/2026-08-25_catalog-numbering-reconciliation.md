@@ -79,6 +79,61 @@ above it up, which is exactly the surgery done by hand above.
 Server tests 200 -> 236, app tests 74 -> 93 (the numbering guard was verified
 by disabling it and watching its test fail).
 
+## The 25 filename mismatches the check found on its first live run
+
+Deploying the check immediately turned up 25 numbers where the catalogue and
+the site disagreed about which archive the release is. Three were the check's
+own fault and 18 were real errors in the imported NFO history.
+
+**Check bug (fixed, `uprough-releases-server` commit `1cfd4f7`).** A release
+post often links several archives - side A and side B of the same LP, every
+build of HivelyTracker, a follow-up fix - and only the first link was being
+compared. Six numbers (27, 50, 51, 90-93 partly, 131, 132) were flagged purely
+because the catalogue's file was the post's *second* link.
+
+**Real errors in the history (fixed in the live catalogue).** Every fix was
+decided by an HTTP request to `www.uprough.net/releases/<name>`: the new name
+resolves, the old one 404s. Backup first:
+`/home/spot/releases.db.bak-2026-08-25-filenames`.
+
+| # | was | is |
+|---|---|---|
+| 15 | up-intro.lha | up-yours.lha |
+| 40 | up-tumbl.lha | up-tumb.lha |
+| 47 | up-style.mp3 | up-style.lha |
+| 94 | up-2teis.lha | up-2teis.zip |
+| 131/132 | up-l3ang/up-l3bng.lha | up-lp3an/up-lp3bn.lha |
+| 133 | up-gbahx.lha | up-gbahx.zip |
+| 151 | up-d13gx.lha | up-ds13gx.lha |
+| 159 | up-13pce.zip | up-14pce.zip |
+| 166 | up-dunno.lha | up-dunno.zip |
+| 181 | up-tbsne.zip (#180's file) | up-fuck3.lha |
+| 182 | up-e2015.zip | up-e2015.lha |
+| 194 | up-bbaza.lha (#193's file) | up-xmas2018.zip |
+| 201 | up-xmas2020.zip (#200's file) | up-256.zip |
+| 206 | up-blvd.lha | up-blvrd.lha |
+| 209 | ..._flafouk.zip | ..._glafouk.zip |
+| 213 | up-scago.lha | up-scago.zip |
+| 115 | ht15_m68k.lha (#114's build) | ht16_m68k.lha |
+
+**#108 was a duplicate.** The history had "anniversary" (up-annv.lha) at both
+108 and 113, and the release the site has at #108 - "Up Garage Treat mix",
+UP-GRTMX.LHA - was missing from it entirely. #108 is now that release.
+
+25 conflicts -> 4.
+
+## Four left, each needing a human decision
+
+| # | site | catalogue | what is actually on the web server |
+|---|---|---|---|
+| 90 | Hively Tracker 1.0, links ht12.lha | ht10.lha | `HT10.LHA` exists - the POST is the stale one |
+| 91 | Hively Tracker 1.1, links ht12.lha | ht11.lha | neither ht11.lha nor HT11.LHA exists - the 1.1 archive is gone |
+| 93 | "Hively Tracker 1.3" (ht13.lha, ht13_m68k.lha) | "hively tracker 1.2 (68k version)" (ht12_m68k.lha) | both files exist - the two records disagree about what #93 IS |
+| 202 | Santaz Triptro, links up-xmas2021.7z | up-xmas2021.zip | neither exists - the archive is not on the server at all |
+
+90, 91 and 194's dead link are WordPress-side fixes (relink the post, or
+re-upload the file). 93 is a numbering question only the group can answer.
+
 ## Learnings
 
 - The website's `#N:` post titles are the real public numbering. The NFO
@@ -93,15 +148,17 @@ by disabling it and watching its test fail).
 
 ## Next Steps
 
-1. **Deploy the server** - the prevention code is committed locally only:
+1. ~~Deploy the server~~ **done** - deployed and verified live; for reference:
    `rsync -az --exclude node_modules --exclude .git --exclude dist --exclude coverage --exclude data ./ hippoplayer:/home/spot/apps/releases-doorserver/`
    then `ssh hippoplayer 'cd /home/spot/apps/releases-doorserver && npm ci && npm run build && pm2 restart releases-doorserver'`,
    then check `curl -s https://releases.uprough.net/api/releases/numbering-check`
    reports `ok: true` against the repaired catalogue.
-2. Ship a new makerelease build so the editor shows the numbering warning
+2. Decide the four remaining conflicts above; until then the editor shows a
+   numbering warning on every load.
+3. Ship a new makerelease build so the editor shows the numbering warning
    (`npm run dist` in `app/`). Not urgent: the server-side build gate protects
    the existing build too.
-3. Varin0x rebuilds the Evoke 2026 release - it now draws **218** and its NFO
+4. Varin0x rebuilds the Evoke 2026 release - it now draws **218** and its NFO
    history lists 216 GERP 2026 and 217 hypocrisy correctly. The `UP-EVK26.LHA`
    he already has is numbered 217 and must not reach traders.
 2. Still outstanding from the previous handoff: push `uprough-releases-server`
