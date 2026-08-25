@@ -82,8 +82,11 @@ describe('deleteRelease', () => {
       code: 'TEST0',
       releaseNumber: 5,
       wasPublished: false,
+      wasDraft: true,
       wordpressPostUrl: null,
       archiveRemoved: false,
+      wordpressPostTrashed: false,
+      wordpressPostError: null,
     };
     (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
 
@@ -122,6 +125,26 @@ describe('deleteRelease', () => {
 });
 
 describe('publishRelease', () => {
+  describe('the DIZ it sends to the catalog', () => {
+    beforeEach(() => {
+      global.fetch = vi.fn();
+    });
+    afterEach(() => {
+      vi.restoreAllMocks();
+    });
+
+    it('keeps leading spaces and drops the grid padding, exactly like the file_id.diz', async () => {
+      (global.fetch as any).mockResolvedValue({
+        ok: true,
+        status: 200,
+        json: async () => ({ releaseNumber: 1, revision: 1, history: [] }),
+      });
+      await publishRelease(cfg, { ...sampleForm, dizBannerText: '   /\\   \n  /__\\  \n     \n' });
+      const [, init] = (global.fetch as any).mock.calls[0];
+      expect(JSON.parse(init.body).dizText).toBe('   /\\\n  /__\\');
+    });
+  });
+
   beforeEach(() => {
     global.fetch = vi.fn();
   });

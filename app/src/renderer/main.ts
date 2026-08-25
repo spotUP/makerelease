@@ -4,6 +4,7 @@ import { CreditsTable } from './credits-table.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
 import { attachOverwriteGrid, toGridText } from './diz-grid.js';
 import { attachCreatorsAutocomplete } from './creators-autocomplete.js';
+import { describeRevoke } from './revoke-message.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -234,7 +235,10 @@ form.addEventListener('submit', async (e) => {
       // the cleanup/delete section both stay hidden (resetPublishState()
       // above already did this; nothing further to show here).
     } else {
-      buildStatus.textContent = `Built release ${result.releaseNumber}: ${result.archivePath}`;
+      buildStatus.textContent =
+        `Built release ${result.releaseNumber}: ${result.archivePath} — it is a draft until you ` +
+        'publish it below, so nothing about it is public yet. Abandoning it costs nothing; use ' +
+        'Revoke to hand the release number straight back.';
       buildStatus.className = 'status ok';
       lastBuiltCode = code;
       lastBuiltArchivePath = result.archivePath;
@@ -306,24 +310,26 @@ deleteReleaseBtn.addEventListener('click', async () => {
   const deletedCode = lastBuiltCode;
   if (!deletedCode) return;
   const confirmed = window.confirm(
-    `Delete release ${deletedCode} from the server? This only works if it's still the most ` +
-      'recently created release. If it was published, the WordPress post is NOT deleted ' +
-      'automatically.',
+    `Revoke release ${deletedCode}? This removes its catalog entry, frees its release number, ` +
+      'deletes the published archive, and moves its WordPress post to the trash. It only works ' +
+      "if it's still the most recently created release.",
   );
   if (!confirmed) return;
 
   deleteReleaseBtn.disabled = true;
-  deleteStatus.textContent = 'Deleting...';
+  deleteStatus.textContent = 'Revoking...';
   deleteStatus.className = 'status';
   try {
     const result = await window.api.deleteRelease(deletedCode);
     if (result.ok) {
-      deleteStatus.textContent = result.wasPublished
-        ? `Deleted release ${result.releaseNumber}. It was published — remove the WordPress post ` +
-          `yourself: ${result.wordpressPostUrl}` +
-          (result.archiveRemoved ? '' : ' (its archive file could not be auto-removed — check the server logs).')
-        : `Deleted release ${result.releaseNumber}.`;
-      deleteStatus.className = 'status ok';
+      deleteStatus.textContent = describeRevoke(result);
+      // Anything the server could not finish itself (a post it failed to
+      // trash, an archive it failed to unlink) is the user's to follow up,
+      // so it reads as a warning rather than a clean success.
+      deleteStatus.className =
+        result.wordpressPostError !== null || (result.wasPublished && !result.archiveRemoved)
+          ? 'status warn'
+          : 'status ok';
       // The release no longer exists server-side: nothing left to publish.
       // Clear just the publish-specific state (not deleteStatus/
       // cleanupSection — those are showing the message above, including a
@@ -338,16 +344,16 @@ deleteReleaseBtn.addEventListener('click', async () => {
       publishStatus.className = 'status';
       publishBtn.disabled = true;
     } else if (result.status === 409) {
-      deleteStatus.textContent = `Could not delete: ${result.message} (a newer release exists — this is no longer the latest).`;
+      deleteStatus.textContent = `Could not revoke: ${result.message} (a newer release exists — this is no longer the latest).`;
       deleteStatus.className = 'status warn';
       deleteReleaseBtn.disabled = false;
     } else {
-      deleteStatus.textContent = `Delete failed: ${result.message}`;
+      deleteStatus.textContent = `Revoke failed: ${result.message}`;
       deleteStatus.className = 'status warn';
       deleteReleaseBtn.disabled = false;
     }
   } catch (err) {
-    deleteStatus.textContent = `Delete failed: ${err instanceof Error ? err.message : String(err)}`;
+    deleteStatus.textContent = `Revoke failed: ${err instanceof Error ? err.message : String(err)}`;
     deleteStatus.className = 'status warn';
     deleteReleaseBtn.disabled = false;
   }

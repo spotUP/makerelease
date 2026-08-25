@@ -2,6 +2,7 @@ import { openAsBlob } from 'fs';
 import * as path from 'path';
 import { MemberEntry, PublishToWebResult, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
 import { ReleasesClientConfig } from './config';
+import { trimDizBanner } from './nfo-generator';
 
 export class ReleasesApiError extends Error {
   /** HTTP status code of the response that produced this error, when known. */
@@ -39,8 +40,11 @@ export interface DeleteResponse {
   code: string;
   releaseNumber: number;
   wasPublished: boolean;
+  wasDraft: boolean;
   wordpressPostUrl: string | null;
   archiveRemoved: boolean;
+  wordpressPostTrashed: boolean;
+  wordpressPostError: string | null;
 }
 
 async function getJson<T>(cfg: ReleasesClientConfig, path: string): Promise<T> {
@@ -76,7 +80,7 @@ function toPublishBody(form: ReleaseFormData): Record<string, unknown> {
     platformTag: form.platformTag,
     releaseNotes: form.releaseNotesText,
     news: form.newsText,
-    dizText: form.dizBannerText,
+    dizText: trimDizBanner(form.dizBannerText),
     entryTitle: form.entryTitle,
     entryCategory: form.entryCategory,
     entryCreators: form.entryCreators,

@@ -102,8 +102,21 @@ export interface DeleteReleaseResult {
   code: string;
   releaseNumber: number;
   wasPublished: boolean;
+  /**
+   * True when the release was still a draft - built but never published to
+   * the web, so nobody ever saw it. Revoking one of these is free.
+   */
+  wasDraft: boolean;
   wordpressPostUrl: string | null;
   archiveRemoved: boolean;
+  /**
+   * Whether the server moved the WordPress post to the trash (recoverable in
+   * wp-admin for 30 days). False when there was no post, or when WordPress
+   * refused - `wordpressPostError` then says why and the post needs removing
+   * by hand.
+   */
+  wordpressPostTrashed: boolean;
+  wordpressPostError: string | null;
 }
 
 // Same discriminated-result shape as PublishToWebOutcome, and for the same

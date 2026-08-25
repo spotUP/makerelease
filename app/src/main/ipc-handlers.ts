@@ -155,8 +155,11 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
         code: result.code,
         releaseNumber: result.releaseNumber,
         wasPublished: result.wasPublished,
+        wasDraft: result.wasDraft,
         wordpressPostUrl: result.wordpressPostUrl,
         archiveRemoved: result.archiveRemoved,
+        wordpressPostTrashed: result.wordpressPostTrashed,
+        wordpressPostError: result.wordpressPostError,
       };
     } catch (err) {
       if (err instanceof ReleasesApiError) {

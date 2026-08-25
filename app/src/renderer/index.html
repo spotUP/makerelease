@@ -123,9 +123,9 @@
   </section>
 
   <section id="cleanup-section" hidden>
-    <h2>Undo this build</h2>
-    <p>Only works while this is still the most recently created release. If it was published, the WordPress post is <strong>not</strong> deleted automatically — you'll get its URL to remove by hand.</p>
-    <button type="button" id="delete-release-btn" class="danger">Delete release from server</button>
+    <h2>Revoke this release</h2>
+    <p>Removes the catalog entry, hands the release number back, deletes the published archive, and moves the WordPress post to the trash (recoverable in wp-admin for 30 days). Only works while this is still the most recently created release.</p>
+    <button type="button" id="delete-release-btn" class="danger">Revoke release</button>
     <div id="delete-status" class="status"></div>
   </section>
 
