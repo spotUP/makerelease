@@ -42,7 +42,7 @@ const selectedImageDiv = $<HTMLDivElement>('selected-image');
 const publishBtn = $<HTMLButtonElement>('publish-btn');
 const publishStatus = $<HTMLDivElement>('publish-status');
 
-const cleanupSection = $<HTMLElement>('cleanup-section');
+const revokeCodeInput = $<HTMLInputElement>('revoke-code');
 const deleteReleaseBtn = $<HTMLButtonElement>('delete-release-btn');
 const deleteStatus = $<HTMLDivElement>('delete-status');
 
@@ -90,7 +90,6 @@ function resetPublishState(): void {
   publishStatus.textContent = '';
   publishStatus.className = 'status';
   publishBtn.disabled = true;
-  cleanupSection.hidden = true;
   deleteReleaseBtn.disabled = false;
   deleteStatus.textContent = '';
   deleteStatus.className = 'status';
@@ -245,7 +244,10 @@ form.addEventListener('submit', async (e) => {
       lastEmbedImagePaths = embedImagePaths;
       publishSection.hidden = false;
       publishBtn.disabled = !selectedImagePath;
-      cleanupSection.hidden = false;
+      // Pre-fill the revoke box with what was just built: that is the release
+      // a mistake is most likely to be about, and it is the only one the
+      // server will accept anyway until something newer exists.
+      revokeCodeInput.value = code;
     }
   } catch (err) {
     buildStatus.textContent = `Build failed: ${err instanceof Error ? err.message : String(err)}`;
@@ -307,12 +309,21 @@ publishBtn.addEventListener('click', async () => {
 });
 
 deleteReleaseBtn.addEventListener('click', async () => {
-  const deletedCode = lastBuiltCode;
-  if (!deletedCode) return;
+  // Read from the input, not from this session's build: a release that needs
+  // revoking is often one from an earlier run of the app, after the mistake
+  // has been noticed. Requiring a fresh build to reach the button left those
+  // unreachable, which is exactly how two abandoned builds sat in the public
+  // catalogue.
+  const deletedCode = revokeCodeInput.value.trim().toUpperCase();
+  if (!deletedCode) {
+    deleteStatus.textContent = 'Enter the code of the release to revoke.';
+    deleteStatus.className = 'status warn';
+    return;
+  }
   const confirmed = window.confirm(
-    `Revoke release ${deletedCode}? This removes its catalog entry, frees its release number, ` +
-      'deletes the published archive, and moves its WordPress post to the trash. It only works ' +
-      "if it's still the most recently created release.",
+    `Revoke release ${deletedCode}? This removes its catalog entry, frees its release number ` +
+      'and its code, deletes the published archive, and moves its WordPress post to the trash. ' +
+      "It only works if it's still the most recently created release.",
   );
   if (!confirmed) return;
 
@@ -330,19 +341,23 @@ deleteReleaseBtn.addEventListener('click', async () => {
         result.wordpressPostError !== null || (result.wasPublished && !result.archiveRemoved)
           ? 'status warn'
           : 'status ok';
-      // The release no longer exists server-side: nothing left to publish.
-      // Clear just the publish-specific state (not deleteStatus/
-      // cleanupSection — those are showing the message above, including a
-      // WordPress-post URL the user still needs to read and act on) so a
-      // stray click on Publish can't fire against a code that's gone.
-      // deleteReleaseBtn stays disabled: there's nothing left to delete.
-      lastBuiltCode = null;
-      lastBuiltArchivePath = null;
-      lastEmbedImagePaths = [];
-      publishSection.hidden = true;
-      publishStatus.textContent = '';
-      publishStatus.className = 'status';
-      publishBtn.disabled = true;
+      revokeCodeInput.value = '';
+      // Revoking the release this session just built leaves nothing to
+      // publish, so the publish state goes with it — a stray click on Publish
+      // must not fire against a code that is gone. Revoking some older
+      // release leaves this session's own build alone. deleteStatus stays as
+      // it is either way: it may carry a WordPress-post URL the user still
+      // has to act on.
+      if (deletedCode === lastBuiltCode) {
+        lastBuiltCode = null;
+        lastBuiltArchivePath = null;
+        lastEmbedImagePaths = [];
+        publishSection.hidden = true;
+        publishStatus.textContent = '';
+        publishStatus.className = 'status';
+        publishBtn.disabled = true;
+      }
+      deleteReleaseBtn.disabled = false;
     } else if (result.status === 409) {
       deleteStatus.textContent = `Could not revoke: ${result.message} (a newer release exists — this is no longer the latest).`;
       deleteStatus.className = 'status warn';

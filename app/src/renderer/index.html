@@ -122,9 +122,11 @@
     <div id="publish-status" class="status"></div>
   </section>
 
-  <section id="cleanup-section" hidden>
-    <h2>Revoke this release</h2>
-    <p>Removes the catalog entry, hands the release number back, deletes the published archive, and moves the WordPress post to the trash (recoverable in wp-admin for 30 days). Only works while this is still the most recently created release.</p>
+  <section id="cleanup-section">
+    <h2>Revoke a release</h2>
+    <p>Removes the catalog entry, frees the release number <strong>and the code</strong>, deletes the published archive, and moves the WordPress post to the trash (recoverable in wp-admin for 30 days). Works on any release, including one from an earlier session — but only on the most recently created one, so revoke newest first.</p>
+    <label for="revoke-code">5-character code of the release to revoke</label>
+    <input type="text" id="revoke-code" maxlength="5" placeholder="EVK26" autocomplete="off" />
     <button type="button" id="delete-release-btn" class="danger">Revoke release</button>
     <div id="delete-status" class="status"></div>
   </section>
