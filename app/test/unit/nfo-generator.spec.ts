@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderMemberBlock, renderHistoryBlock, renderHistoryEntry, renderNfo, generateOutputs } from '../../src/main/nfo-generator';
+import { renderMemberBlock, renderHistoryBlock, renderHistoryEntry, renderNfo, renderDiz, generateOutputs } from '../../src/main/nfo-generator';
 import { MemberEntry, ReleaseHistoryEntry, ReleaseFormData } from '../../src/shared/types';
 
 const MEMBERS: MemberEntry[] = [
@@ -104,6 +104,18 @@ describe('renderNfo', () => {
     expect(nfo).toContain('Some news.');
     expect(nfo).toContain('spot                leader, ink, stereofonik development');
     expect(nfo).toContain('release 217 up-test0.lha');
+  });
+});
+
+describe('renderDiz', () => {
+  it('keeps leading spaces on the first line of indented ASCII art', () => {
+    const diz = renderDiz({ ...sampleForm, dizBannerText: '   /\\   \n  /__\\  ' });
+    expect(diz).toBe('   /\\\n  /__\\\n');
+  });
+
+  it('still drops grid padding: trailing spaces per line and blank leading/trailing rows', () => {
+    const diz = renderDiz({ ...sampleForm, dizBannerText: '\n  art   \n     \n\n' });
+    expect(diz).toBe('  art\n');
   });
 });
 

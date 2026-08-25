@@ -115,8 +115,20 @@ export function renderNfo(history: ReleaseHistoryEntry[], form: ReleaseFormData,
   ].join('\n');
 }
 
+// The DIZ grid pads every row to DIZ_COLS, so trailing blanks are padding, not
+// art. Leading spaces on a line ARE art (indented ASCII) and must survive.
+// Exported because the catalog copy of the DIZ (sent by releases-client) has
+// to be trimmed exactly the same way the file_id.diz is - otherwise the
+// release page on the web would render the grid's 45-column padding.
+export function trimDizBanner(text: string): string {
+  const lines = text.split('\n').map((line) => line.replace(/[ \t]+$/, ''));
+  while (lines.length && lines[0] === '') lines.shift();
+  while (lines.length && lines[lines.length - 1] === '') lines.pop();
+  return lines.join('\n');
+}
+
 export function renderDiz(form: ReleaseFormData): string {
-  return toAsciiSafe(form.dizBannerText.trim()) + '\n';
+  return toAsciiSafe(trimDizBanner(form.dizBannerText)) + '\n';
 }
 
 export function generateOutputs(
