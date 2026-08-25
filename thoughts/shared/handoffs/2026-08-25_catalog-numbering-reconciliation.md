@@ -45,6 +45,40 @@ One transaction against `data/releases.db` on `hippoplayer`:
 Live after: `/api/releases/seed` reports `nextReleaseNumber 218` with 217
 entries, `/release/UPGRP26` renders, `EVK26` is gone.
 
+## Stopping it happening again (code, committed, NOT yet deployed)
+
+The data fix above does not prevent a repeat: anyone can post a numbered
+release to the site by hand and the catalogue will drift again. Three changes,
+`uprough-releases-server` commit `b857bf9` and `makerelease` commit `a4b15c1`:
+
+1. **The site's numbering is now readable.** `listNumberedPosts`
+   (`src/wordpress-client.ts`) pages through the posts and returns every
+   `#<number>: <name>` title plus the archive that post links under
+   `/releases/`. `src/numbering.ts` compares that against the catalogue and
+   reports two things: releases the site has that the catalogue does not
+   (`ahead`), and numbers that describe a *different* release on each side
+   (`conflicts`, matched by archive filename - what would have caught GERP
+   2026 the day it was posted).
+2. **The number is checked at build time**, in `POST /api/releases`, before it
+   is handed out and baked into the NFO. A number the site has already used is
+   refused with 409 `number-taken` and nothing is written, so the code stays
+   free for the rebuild. The identical publish-time check stays as the
+   backstop. WordPress being unreachable does not block a build - the risk is
+   a rebuild, and refusing to let anyone work because the website is down is
+   worse.
+3. **The drift is visible before anyone builds.** `GET
+   /api/releases/numbering-check` exposes the comparison, and makerelease's
+   `loadSeedState` asks for it alongside the seed and surfaces
+   `numberingWarning` in the editor next to the release number.
+
+Repair, when it does happen: `insertHistoricalRelease` (`src/catalog.ts`) plus
+`npm run reconcile-numbering` - no arguments prints the drift, `--insert
+<number> ... --apply` backfills the missing release and shifts the entries
+above it up, which is exactly the surgery done by hand above.
+
+Server tests 200 -> 236, app tests 74 -> 93 (the numbering guard was verified
+by disabling it and watching its test fail).
+
 ## Learnings
 
 - The website's `#N:` post titles are the real public numbering. The NFO
@@ -59,7 +93,15 @@ entries, `/release/UPGRP26` renders, `EVK26` is gone.
 
 ## Next Steps
 
-1. Varin0x rebuilds the Evoke 2026 release - it now draws **218** and its NFO
+1. **Deploy the server** - the prevention code is committed locally only:
+   `rsync -az --exclude node_modules --exclude .git --exclude dist --exclude coverage --exclude data ./ hippoplayer:/home/spot/apps/releases-doorserver/`
+   then `ssh hippoplayer 'cd /home/spot/apps/releases-doorserver && npm ci && npm run build && pm2 restart releases-doorserver'`,
+   then check `curl -s https://releases.uprough.net/api/releases/numbering-check`
+   reports `ok: true` against the repaired catalogue.
+2. Ship a new makerelease build so the editor shows the numbering warning
+   (`npm run dist` in `app/`). Not urgent: the server-side build gate protects
+   the existing build too.
+3. Varin0x rebuilds the Evoke 2026 release - it now draws **218** and its NFO
    history lists 216 GERP 2026 and 217 hypocrisy correctly. The `UP-EVK26.LHA`
    he already has is numbered 217 and must not reach traders.
 2. Still outstanding from the previous handoff: push `uprough-releases-server`
