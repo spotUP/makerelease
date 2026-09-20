@@ -123,6 +123,32 @@ the number of editable DIZ lines; a dry run for each division writes to
   Up-Rough-only; for /X it would search a numbering the site does not use.
   Guard the guard with a test.
 
+## Phase 6 - submit the door to the door repository
+
+Decided 2026-09-20: a /X release is an AmiExpress door, so it belongs in the
+door repo at `doors.uprough.net` as well. All four existing /X doors are
+already listed there (`up-md15.lha`, `up-stw10.lha`, `up-dgc10.zip`,
+`UP-MDCM1.ZIP`), submitted by hand.
+
+- After a /X build, POST the archive to
+  `https://doors.uprough.net/api/door-repo/submissions` as multipart, the
+  way any member would. **No admin key in the app**: the member builds are
+  unsigned zips anyone can unpack, so a curation key baked into one is a key
+  everybody has. Approval stays a click in the door-repo admin UI.
+- The server does the validating (`amiexpress-doorserver/src/submissions.ts`):
+  extension allowlist `.lha/.lzx/.lzh/.dms/.zip`, magic bytes checked against
+  the extension, 8 MB cap, and a sha256 check against both the catalog and
+  the queue. A rebuild of the same archive comes back 409 with a readable
+  reason rather than queueing twice - surface that message as-is.
+- Show the 202's `message` and the submission `id` in the build result, so
+  there is something to quote when approving.
+- **Up Rough releases do not do this.** Demos, music and ASCII are not doors;
+  only the /X division submits.
+
+Verification: a /X build submits exactly once and reports the queue message;
+an Up Rough build never calls the door server; a 409 duplicate is shown as
+the server worded it, not swallowed.
+
 ## Risks
 
 - **The roster is replaced wholesale on every publish.** With two divisions
