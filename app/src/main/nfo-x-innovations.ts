@@ -1,4 +1,6 @@
 import { BoardEntry, MemberEntry } from '../shared/types';
+import { DIVISIONS } from '../shared/divisions';
+import { applyReleaseLines, readReleaseLineText } from '../shared/diz-release-line';
 import { X_INNOVATIONS_NFO_TEMPLATE } from './x-innovations-template';
 
 /**
@@ -173,6 +175,26 @@ export function releaseListBlock(
     out.push(frameLine());
   }
   return out;
+}
+
+/**
+ * The art a release shows in the release list, built from the banner it
+ * shipped.
+ *
+ * Only the name survives: every entry in the real NFO carries the fixed
+ * "pRESENTS:" line and one name line, even for releases whose own
+ * FILE_ID.DIZ also has a tagline. So the list is drawn from the division's
+ * own art with just that one row filled in, which also keeps the seven
+ * historical entries and every future one identical in shape.
+ */
+export function listArtFromBanner(banner: string): string {
+  const division = DIVISIONS.xinnovations;
+  const [nameRow] = division.editableDizRows;
+  const name = readReleaseLineText(banner, nameRow.row);
+  return applyReleaseLines(
+    division.defaultDizBanner,
+    division.editableDizRows.map((spec) => ({ row: spec.row, text: spec.row === nameRow.row ? name : '' })),
+  );
 }
 
 export interface XInnovationsNfoInput {

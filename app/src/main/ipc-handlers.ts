@@ -3,6 +3,7 @@ import * as path from 'path';
 import { BuildResult, DeleteReleaseOutcome, PublishToWebOutcome, ReleaseFormData, ReleaseHistoryEntry, SeedState } from '../shared/types';
 import {
   fetchSeed,
+  fetchManifest,
   fetchNumberingCheck,
   checkCodeExists,
   publishRelease,
@@ -10,9 +11,10 @@ import {
   publishToWeb as publishToWebClient,
   ReleasesApiError,
 } from './releases-client';
-import { DEFAULT_DIVISION, type DivisionId } from '../shared/divisions';
+import { DEFAULT_DIVISION, formatReleaseNumber, type DivisionId } from '../shared/divisions';
 import { describeStaleDrafts } from './stale-drafts';
 import { generateOutputs } from './nfo-generator';
+import { listArtFromBanner } from './nfo-x-innovations';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
 import { pathExists, ensureDir, removePath } from './fs-helpers';
@@ -140,7 +142,21 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
       history = published.history;
     }
 
-    const generated = generateOutputs(history, releaseNumber, form);
+    // The /X NFO lists every previous release as its own banner art, which
+    // only the manifest carries; its own entry is prepended because a
+    // release that is still a draft is not in anyone's history yet.
+    const releaseList =
+      form.division === 'xinnovations'
+        ? [
+            { displayNumber: formatReleaseNumber(releaseNumber, form.division), art: listArtFromBanner(form.dizBannerText) },
+            ...(await fetchManifest(releasesConfig, form.division)).history.map((entry) => ({
+              displayNumber: entry.releaseNumber,
+              art: listArtFromBanner(entry.dizText),
+            })),
+          ]
+        : [];
+
+    const generated = generateOutputs(history, releaseNumber, form, releaseList);
     const outerDir = await stageRelease(form, generated);
     await packArchive(outerDir, form.code, form.format, outputRoot);
     await finalizeRelease(outerDir, form.code, outputRoot);

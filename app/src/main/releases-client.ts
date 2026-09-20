@@ -91,6 +91,28 @@ export async function fetchSeed(
   return getJson<SeedResponse>(cfg, `/api/releases/seed?division=${encodeURIComponent(division)}`);
 }
 
+export interface ManifestEntry {
+  releaseNumber: string;
+  filenames: string;
+  title: string;
+  dizText: string;
+}
+
+/**
+ * The full history, including each release's banner art - which /seed
+ * deliberately leaves out. The /X NFO lists every previous release as its
+ * own art, so building one needs this; an Up Rough build never calls it.
+ */
+export async function fetchManifest(
+  cfg: ReleasesClientConfig,
+  division: DivisionId = DEFAULT_DIVISION,
+): Promise<{ history: ManifestEntry[] }> {
+  return getJson<{ history: ManifestEntry[] }>(
+    cfg,
+    `/api/releases/manifest?division=${encodeURIComponent(division)}`,
+  );
+}
+
 export async function checkCodeExists(cfg: ReleasesClientConfig, code: string): Promise<boolean> {
   const result = await getJson<{ exists: boolean }>(cfg, `/api/releases/${encodeURIComponent(code)}/exists`);
   return result.exists;

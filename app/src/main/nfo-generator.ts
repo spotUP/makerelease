@@ -1,3 +1,4 @@
+import { renderXInnovationsNfo } from './nfo-x-innovations';
 import { GeneratedOutputs, MemberEntry, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
 import {
   BANNER,
@@ -131,14 +132,41 @@ export function renderDiz(form: ReleaseFormData): string {
   return toAsciiSafe(trimDizBanner(form.dizBannerText)) + '\n';
 }
 
+/**
+ * The two divisions ship completely different NFOs - Up Rough's plain
+ * 80-column layout and /X Innovations' framed drawing - so which renderer
+ * runs is decided here, once, from the release's own division.
+ *
+ * `releaseList` is only needed by /X, whose NFO lists every previous release
+ * as its own banner art rather than as a line of text.
+ */
 export function generateOutputs(
   history: ReleaseHistoryEntry[],
   releaseNumber: number,
   form: ReleaseFormData,
+  releaseList: ReadonlyArray<{ displayNumber: string; art: string }> = [],
 ): GeneratedOutputs {
+  const dizText = renderDiz(form);
+  if (form.division === 'xinnovations') {
+    return {
+      nfoText: renderXInnovationsNfo({
+        releaseName: form.entryTitle,
+        releaseDate: form.releaseDate ?? '',
+        coder: form.coder ?? '',
+        system: form.system ?? '',
+        design: form.design ?? '',
+        releaseNotes: form.releaseNotesText,
+        members: form.members,
+        boards: form.boards ?? [],
+        releaseList,
+      }),
+      dizText,
+      releaseNumber,
+    };
+  }
   return {
     nfoText: renderNfo(history, form, releaseNumber),
-    dizText: renderDiz(form),
+    dizText,
     releaseNumber,
   };
 }

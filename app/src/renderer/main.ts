@@ -1,9 +1,10 @@
 import { ReleaseFormat, ReleaseFormData } from '../shared/types';
 import { MemberlistTable } from './memberlist-table.js';
+import { BoardsTable } from './boards-table.js';
 import { CreditsTable } from './credits-table.js';
 import { creatorsFromCredits } from './credits-creators.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
-import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from './diz-release-line.js';
+import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../shared/diz-release-line.js';
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
 import { describeRevoke } from './revoke-message.js';
 
@@ -19,6 +20,13 @@ const newsTextArea = $<HTMLTextAreaElement>('news-text');
 const membersTbody = $<HTMLTableSectionElement>('members-tbody');
 const addMemberBtn = $<HTMLButtonElement>('add-member-btn');
 const creditsTbody = $<HTMLTableSectionElement>('credits-tbody');
+const boardsTbody = $<HTMLTableSectionElement>('boards-tbody');
+const addBoardBtn = $<HTMLButtonElement>('add-board-btn');
+const xFieldsSection = $<HTMLElement>('x-fields-section');
+const xReleaseDateInput = $<HTMLInputElement>('x-release-date');
+const xCoderInput = $<HTMLInputElement>('x-coder');
+const xSystemInput = $<HTMLInputElement>('x-system');
+const xDesignInput = $<HTMLInputElement>('x-design');
 const addCreditBtn = $<HTMLButtonElement>('add-credit-btn');
 const mediaEmbedsContainer = $<HTMLElement>('media-embeds-container');
 const addMediaEmbedBtn = $<HTMLButtonElement>('add-media-embed-btn');
@@ -51,6 +59,7 @@ const creditsTable = new CreditsTable(creditsTbody, {
   getMembers: () => memberlist.getMembers(),
   onChange: () => updateCreatorsPreview(),
 });
+const boardsTable = new BoardsTable(boardsTbody);
 const mediaEmbedsTable = new MediaEmbedsTable(mediaEmbedsContainer, () => window.api.pickImage());
 let nextReleaseNumber = 0;
 let selectedPaths: string[] = [];
@@ -213,6 +222,10 @@ document.querySelectorAll<HTMLInputElement>('input[name="division"]').forEach((r
 async function init(): Promise<void> {
   try {
     const seed = await window.api.loadSeedState(currentDivision);
+    // Only /X prints these; showing them for Up Rough would invite filling
+    // in fields that go nowhere.
+    xFieldsSection.hidden = currentDivision !== 'xinnovations';
+    boardsTable.seed(seed.boards);
     memberlist.seed(seed.members);
     nextReleaseNumber = seed.nextReleaseNumber;
     seedDizBanner(seed.currentDizText);
@@ -239,6 +252,7 @@ updateCreatorsPreview();
 
 addMemberBtn.addEventListener('click', () => memberlist.addRow());
 addCreditBtn.addEventListener('click', () => creditsTable.addRow());
+addBoardBtn.addEventListener('click', () => boardsTable.addRow());
 addMediaEmbedBtn.addEventListener('click', () => mediaEmbedsTable.addRow());
 
 codeInput.addEventListener('input', () => {
@@ -314,8 +328,20 @@ form.addEventListener('submit', async (e) => {
   const mediaEmbeds = mediaEmbedsTable.getMediaEmbeds();
   const embedImagePaths = mediaEmbedsTable.getEmbedImagePaths();
 
+  const boards = boardsTable.getBoards();
   const formData: ReleaseFormData = {
     division: currentDivision,
+    ...(currentDivision === 'xinnovations'
+      ? {
+          releaseDate: xReleaseDateInput.value.trim(),
+          coder: xCoderInput.value.trim(),
+          system: xSystemInput.value.trim(),
+          design: xDesignInput.value.trim(),
+          // An empty table means "leave the stored list alone", so it is sent
+          // as absent rather than as an empty list that would wipe it.
+          ...(boards.length > 0 ? { boards } : {}),
+        }
+      : {}),
     code,
     format: getSelectedFormat(),
     releaseName: releaseNameInput.value.trim(),

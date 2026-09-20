@@ -50,6 +50,11 @@ export interface ReleaseFormData {
   mediaEmbeds: MediaEmbedFormEntry[];
   /** /X only: the boards its NFO lists. Omitted leaves the stored list alone. */
   boards?: BoardEntry[];
+  /** /X only: the bracketed fields its NFO prints under the logo. */
+  releaseDate?: string;
+  coder?: string;
+  system?: string;
+  design?: string;
 }
 
 export interface GeneratedOutputs {

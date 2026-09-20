@@ -7,6 +7,7 @@ import {
   boardsBlock,
   centerInField,
   frameLine,
+  listArtFromBanner,
   releaseListBlock,
   releaseNameLine,
   rosterBlock,
@@ -114,5 +115,25 @@ describe('releaseListBlock', () => {
   it('indents the art the way the real entries are indented', () => {
     const block = releaseListBlock([{ displayNumber: 'oo7', art: '|     uP rOUGH /X iNNOVATiONS pRESENTS:    |' }]);
     expect(block[3]).toBe(fixture[148]);
+  });
+});
+
+describe('listArtFromBanner', () => {
+  it('keeps the release name and drops the tagline', () => {
+    const shipped = fs.readFileSync(path.join(__dirname, '../fixtures/UP-MD15-FILE_ID.DIZ'), 'latin1');
+    const art = listArtFromBanner(shipped).split('\n');
+
+    expect(shipped).toContain('uPDATES 4 A bETTER eXPERIENCE!');
+    expect(art.join('\n')).toContain('mORE dOORS cURSOR mENU 1.5');
+    expect(art.join('\n')).not.toContain('uPDATES 4 A bETTER eXPERIENCE!');
+  });
+
+  it('gives every entry the same shape, whatever the release shipped', () => {
+    const withTagline = listArtFromBanner(
+      fs.readFileSync(path.join(__dirname, '../fixtures/UP-MD15-FILE_ID.DIZ'), 'latin1'),
+    );
+    const nameOnly = listArtFromBanner(withTagline);
+    expect(nameOnly).toBe(withTagline);
+    expect(withTagline.split('\n')).toHaveLength(12);
   });
 });

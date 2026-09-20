@@ -3,7 +3,7 @@ import {
   applyReleaseLineText,
   centerInSlot,
   findReleaseLineSlot,
-  readReleaseLineText, applyReleaseLines, readReleaseLines } from '../../src/renderer/diz-release-line';
+  readReleaseLineText, applyReleaseLines, readReleaseLines } from '../../src/shared/diz-release-line';
 import { DIVISIONS } from '../../src/shared/divisions';
 
 const DEFAULT_DIZ_BANNER = DIVISIONS.uprough.defaultDizBanner;

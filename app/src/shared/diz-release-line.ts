@@ -1,4 +1,4 @@
-import { DIVISIONS } from '../shared/divisions.js';
+import { DIVISIONS } from './divisions.js';
 
 // The row to work on when a caller does not name one. It belongs to a
 // division, not to this module - Up Rough's is the historical default, and

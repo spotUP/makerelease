@@ -90,6 +90,17 @@ export const DIVISIONS: Record<DivisionId, Division> = {
   },
 };
 
+/**
+ * How a division writes a release number. Up Rough writes it plainly; /X uses
+ * the group's old typography, three wide with the letter o for zero, so 7 is
+ * "oo7". Must agree with the releases server's formatReleaseNumber - the
+ * server stores the label, this is for previewing it before the build.
+ */
+export function formatReleaseNumber(releaseNumber: number, division: DivisionId): string {
+  if (division !== 'xinnovations') return String(releaseNumber);
+  return String(releaseNumber).padStart(3, '0').replace(/0/g, 'o');
+}
+
 export function isDivisionId(value: unknown): value is DivisionId {
   return value === 'uprough' || value === 'xinnovations';
 }

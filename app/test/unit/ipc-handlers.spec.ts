@@ -19,6 +19,7 @@ vi.mock('../../src/main/releases-client', () => {
   }
   return {
     fetchSeed: vi.fn(),
+    fetchManifest: vi.fn(),
     fetchNumberingCheck: vi.fn(),
     checkCodeExists: vi.fn(),
     publishRelease: vi.fn(),
@@ -118,6 +119,7 @@ describe('registerIpcHandlers', () => {
       [{ releaseNumber: '7', filenames: 'up-x.lha', title: 't', category: 'c', creators: 'cr' }],
       7,
       form,
+      [],
     );
     expect(result.releaseNumber).toBe(7);
     expect(result.archivePath).toContain('UP-AAAAA.LHA');
@@ -156,6 +158,7 @@ describe('registerIpcHandlers', () => {
       ],
       8,
       form,
+      [],
     );
     expect(result.releaseNumber).toBe(8);
     expect(result.isDryRun).toBe(true);
@@ -350,6 +353,60 @@ describe('registerIpcHandlers', () => {
       /already exists locally/,
     );
     expect(releasesClient.publishRelease).not.toHaveBeenCalled();
+  });
+
+  it('builds a /X release with a list of every release as its own art, itself first', async () => {
+    const X_BANNER = [
+      '    _ _ __ ___    ____  _ _ __ _________',
+      '   | | Y  / _ \\../ __ \\| | Y  / __  | | |',
+      'dNo| | | | | | || /_ | | | | | |_ | l | |dS!',
+      '|  | | | | |`| || || | | | | | || |___| |  |',
+      "|  | | l | |__/'| || | | | | | || |   | |  |",
+      '|  | l___| |    | || | | l l | ll | | | |  |',
+      "|  `\\______|    |_|`\\_/'\\___/`\\__/l_l_|_|  |",
+      '|                                          |',
+      '|     uP rOUGH /X iNNOVATiONS pRESENTS:    |',
+      '|              tHE nEW oNE v1.0            |',
+      '|             a tAGLINE hERE!              |',
+      "`------------------------------------------'",
+    ].join('\n');
+
+    (releasesClient.publishRelease as any).mockResolvedValue({ releaseNumber: 8, revision: 2, history: [] });
+    (releasesClient.fetchManifest as any).mockResolvedValue({
+      history: [{ releaseNumber: 'oo7', filenames: 'up-md15.lha', title: 'more doors', dizText: X_BANNER }],
+    });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 8 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    const form = {
+      division: 'xinnovations',
+      code: 'XNEWW',
+      format: 'LHA',
+      entryTitle: 'the new one',
+      dizBannerText: X_BANNER,
+    } as any;
+    await handlers.buildRelease(null, form, false);
+
+    const releaseList = (nfoGenerator.generateOutputs as any).mock.calls[0][3];
+    expect(releaseList[0].displayNumber).toBe('oo8');
+    expect(releaseList[1].displayNumber).toBe('oo7');
+    // Name kept, tagline dropped - every entry in the list has the same shape.
+    expect(releaseList[0].art).toContain('tHE nEW oNE v1.0');
+    expect(releaseList[0].art).not.toContain('a tAGLINE hERE!');
+  });
+
+  it('an Up Rough build never asks for the manifest', async () => {
+    (releasesClient.publishRelease as any).mockResolvedValue({ releaseNumber: 9, revision: 2, history: [] });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 9 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    await handlers.buildRelease(null, { division: 'uprough', code: 'UPNEW', format: 'LHA' } as any, false);
+
+    expect(releasesClient.fetchManifest).not.toHaveBeenCalled();
   });
 
   it('pickImage opens a file dialog restricted to image types and returns the chosen path', async () => {

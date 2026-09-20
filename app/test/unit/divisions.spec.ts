@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { DIVISIONS, DEFAULT_DIVISION, divisionOf, isDivisionId } from '../../src/shared/divisions';
-import { findReleaseLineSlot, readReleaseLineText } from '../../src/renderer/diz-release-line';
+import { findReleaseLineSlot, readReleaseLineText } from '../../src/shared/diz-release-line';
 
 describe('divisions', () => {
   it('defaults to Up Rough', () => {

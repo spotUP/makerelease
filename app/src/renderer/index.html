@@ -74,6 +74,29 @@
       </select>
     </section>
 
+    <section id="x-fields-section" hidden>
+      <h2>/X Innovations details</h2>
+      <p class="hint">Printed under the logo in the /X NFO. Each is drawn into a fixed-width slot, so anything longer is cut.</p>
+      <label for="x-release-date">Release date</label>
+      <input type="text" id="x-release-date" autocomplete="off" placeholder="2026-06-20" />
+      <label for="x-coder">Coder</label>
+      <input type="text" id="x-coder" autocomplete="off" placeholder="zALO/uP!.." />
+      <label for="x-system">System</label>
+      <input type="text" id="x-system" autocomplete="off" placeholder="aMiEXPRESS" />
+      <label for="x-design">Design</label>
+      <input type="text" id="x-design" autocomplete="off" placeholder="diNO/uP!.." />
+
+      <h3>Boards</h3>
+      <p class="hint">The board list the NFO prints. Leave empty to keep the list the last /X release published.</p>
+      <table id="boards-table">
+        <thead>
+          <tr><th>Board</th><th>Sysop</th><th>HQ</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody id="boards-tbody"></tbody>
+      </table>
+      <button type="button" id="add-board-btn">Add board</button>
+    </section>
+
     <section>
       <h2>6. Credits</h2>
       <p class="hint">
