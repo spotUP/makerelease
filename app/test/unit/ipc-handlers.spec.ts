@@ -42,6 +42,10 @@ vi.mock('../../src/main/archiver', () => ({
   finalizeRelease: vi.fn(),
 }));
 
+vi.mock('../../src/main/door-repo-client', () => ({
+  submitDoor: vi.fn(),
+}));
+
 vi.mock('../../src/main/fs-helpers', () => ({
   pathExists: vi.fn(),
   ensureDir: vi.fn(),
@@ -56,6 +60,7 @@ import * as nfoGenerator from '../../src/main/nfo-generator';
 import * as staging from '../../src/main/staging';
 import * as archiver from '../../src/main/archiver';
 import * as fsHelpers from '../../src/main/fs-helpers';
+import * as doorRepo from '../../src/main/door-repo-client';
 
 describe('registerIpcHandlers', () => {
   const cfg = { baseUrl: 'https://x', writeKey: 'k', isPlaceholderKey: false };
@@ -65,6 +70,7 @@ describe('registerIpcHandlers', () => {
     (fsHelpers.pathExists as any).mockResolvedValue(false);
     (fsHelpers.ensureDir as any).mockResolvedValue(undefined);
     (fsHelpers.removePath as any).mockResolvedValue(undefined);
+    (doorRepo.submitDoor as any).mockResolvedValue({ ok: true, id: 12, message: 'in the queue' });
     // Default: the server could not reach the site, so no numbering warning.
     (releasesClient.fetchNumberingCheck as any).mockResolvedValue({ checked: false });
     registerIpcHandlers('/root', cfg);
@@ -203,6 +209,7 @@ describe('registerIpcHandlers', () => {
     (fsHelpers.pathExists as any).mockResolvedValue(false);
     (fsHelpers.ensureDir as any).mockResolvedValue(undefined);
     (fsHelpers.removePath as any).mockResolvedValue(undefined);
+    (doorRepo.submitDoor as any).mockResolvedValue({ ok: true, id: 12, message: 'in the queue' });
     registerIpcHandlers('/root', { baseUrl: 'https://x', writeKey: 'REPLACE_ME_BEFORE_DISTRIBUTING', isPlaceholderKey: true });
     (releasesClient.fetchSeed as any).mockResolvedValue({
       members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
@@ -407,6 +414,77 @@ describe('registerIpcHandlers', () => {
     await handlers.buildRelease(null, { division: 'uprough', code: 'UPNEW', format: 'LHA' } as any, false);
 
     expect(releasesClient.fetchManifest).not.toHaveBeenCalled();
+  });
+
+  it('sends a /X release to the door repository and reports what it said', async () => {
+    (releasesClient.publishRelease as any).mockResolvedValue({ releaseNumber: 8, revision: 2, history: [] });
+    (releasesClient.fetchManifest as any).mockResolvedValue({ history: [] });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 8 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    const result = await handlers.buildRelease(
+      null,
+      { division: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
+      false,
+    );
+
+    expect(doorRepo.submitDoor).toHaveBeenCalledWith('/root/UP-XNEWW.LHA');
+    expect(result.doorSubmission).toEqual({ ok: true, id: 12, message: 'in the queue' });
+  });
+
+  it('does not put a dry run in anybody queue', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 8, history: [], currentDizText: '', revision: 1,
+    });
+    (releasesClient.fetchManifest as any).mockResolvedValue({ history: [] });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 8 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    const result = await handlers.buildRelease(
+      null,
+      { division: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
+      true,
+    );
+
+    expect(doorRepo.submitDoor).not.toHaveBeenCalled();
+    expect(result.doorSubmission).toBeUndefined();
+  });
+
+  it('never sends an Up Rough release to the door repository - a demo is not a door', async () => {
+    (releasesClient.publishRelease as any).mockResolvedValue({ releaseNumber: 9, revision: 2, history: [] });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 9 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    await handlers.buildRelease(null, { division: 'uprough', code: 'UPNEW', format: 'LHA' } as any, false);
+
+    expect(doorRepo.submitDoor).not.toHaveBeenCalled();
+  });
+
+  it('still returns a finished build when the door repository refuses it', async () => {
+    // The archive exists and the release is already in the catalogue; a
+    // refusal from a separate service does not undo either.
+    (doorRepo.submitDoor as any).mockResolvedValue({ ok: false, message: 'the repository already has that archive' });
+    (releasesClient.publishRelease as any).mockResolvedValue({ releaseNumber: 8, revision: 2, history: [] });
+    (releasesClient.fetchManifest as any).mockResolvedValue({ history: [] });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 8 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    const result = await handlers.buildRelease(
+      null,
+      { division: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
+      false,
+    );
+
+    expect(result.archivePath).toBe('/root/UP-XNEWW.LHA');
+    expect(result.doorSubmission?.ok).toBe(false);
   });
 
   it('pickImage opens a file dialog restricted to image types and returns the chosen path', async () => {

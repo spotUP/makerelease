@@ -105,6 +105,12 @@ export interface SeedState {
   staleDraftWarning?: string;
 }
 
+export interface DoorSubmissionOutcome {
+  ok: boolean;
+  message: string;
+  id?: number;
+}
+
 export interface BuildResult {
   archivePath: string;
   releaseNumber: number;
@@ -116,6 +122,13 @@ export interface BuildResult {
    * server-side release row to publish.
    */
   isDryRun: boolean;
+  /**
+   * Set when the division sends its releases to the AmiExpress door
+   * repository. A failure here never fails the build - the archive exists
+   * and the release is already in the catalogue - so the outcome is
+   * reported rather than thrown.
+   */
+  doorSubmission?: DoorSubmissionOutcome;
 }
 
 export interface PublishToWebResult {

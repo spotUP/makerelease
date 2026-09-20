@@ -378,7 +378,15 @@ form.addEventListener('submit', async (e) => {
       buildStatus.textContent =
         `Built release ${result.releaseNumber}: ${result.archivePath} — it is a draft until you ` +
         'publish it below, so nothing about it is public yet. Abandoning it costs nothing; use ' +
-        'Revoke to hand the release number straight back.';
+        'Revoke to hand the release number straight back.' +
+        // The door repository is a separate service with its own queue, so
+        // its answer is shown as it worded it - including a refusal, which
+        // does not make the build any less finished.
+        (result.doorSubmission
+          ? ` Door repository: ${result.doorSubmission.message}${
+              result.doorSubmission.id ? ` (submission ${result.doorSubmission.id})` : ''
+            }`
+          : '');
       buildStatus.className = 'status ok';
       lastBuiltCode = code;
       lastBuiltArchivePath = result.archivePath;

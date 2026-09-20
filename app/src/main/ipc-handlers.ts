@@ -11,10 +11,11 @@ import {
   publishToWeb as publishToWebClient,
   ReleasesApiError,
 } from './releases-client';
-import { DEFAULT_DIVISION, formatReleaseNumber, type DivisionId } from '../shared/divisions';
+import { DEFAULT_DIVISION, divisionOf, formatReleaseNumber, type DivisionId } from '../shared/divisions';
 import { describeStaleDrafts } from './stale-drafts';
 import { generateOutputs } from './nfo-generator';
 import { listArtFromBanner } from './nfo-x-innovations';
+import { submitDoor } from './door-repo-client';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
 import { pathExists, ensureDir, removePath } from './fs-helpers';
@@ -160,10 +161,20 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
     const outerDir = await stageRelease(form, generated);
     await packArchive(outerDir, form.code, form.format, outputRoot);
     await finalizeRelease(outerDir, form.code, outputRoot);
+    const archivePath = path.join(outputRoot, `UP-${upperCode}.${form.format}`);
+
+    // A /X release is an AmiExpress door, so it goes to the door repository
+    // too - but only for real: a dry run must not put a preview in anyone's
+    // queue. The build has already succeeded by this point, so a submission
+    // that fails is reported, never thrown.
+    const submitsToDoorRepo = divisionOf(form.division ?? DEFAULT_DIVISION).submitsToDoorRepo;
+    const doorSubmission = !dryRun && submitsToDoorRepo ? await submitDoor(archivePath) : undefined;
+
     return {
-      archivePath: path.join(outputRoot, `UP-${upperCode}.${form.format}`),
+      archivePath,
       releaseNumber,
       isDryRun: dryRun,
+      ...(doorSubmission ? { doorSubmission } : {}),
     };
   });
 
