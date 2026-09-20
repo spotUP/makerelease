@@ -3,9 +3,11 @@ import {
   applyReleaseLineText,
   centerInSlot,
   findReleaseLineSlot,
-  readReleaseLineText,
-} from '../../src/renderer/diz-release-line';
-import { DEFAULT_DIZ_BANNER, DIZ_RELEASE_LINE_ROW } from '../../src/shared/constants';
+  readReleaseLineText, applyReleaseLines, readReleaseLines } from '../../src/renderer/diz-release-line';
+import { DIVISIONS } from '../../src/shared/divisions';
+
+const DEFAULT_DIZ_BANNER = DIVISIONS.uprough.defaultDizBanner;
+const DIZ_RELEASE_LINE_ROW = DIVISIONS.uprough.editableDizRows[0].row;
 
 const HYPOC_BANNER = [
   '    _ _ __ ___    ____  _ _ __ _________',
@@ -106,5 +108,54 @@ describe('applyReleaseLineText', () => {
   it('round-trips: what is written is what is read back', () => {
     const updated = applyReleaseLineText(HYPOC_BANNER, 'SOME DEMO FROM SOME PARTY 2026');
     expect(readReleaseLineText(updated)).toBe('SOME DEMO FROM SOME PARTY 2026');
+  });
+});
+
+describe('applyReleaseLines', () => {
+  // The /X banner: the division name is fixed on row 9, the release names
+  // itself on row 10 and adds a tagline on row 11.
+  const X_BANNER = [
+    '|                                          |',
+    '|     uP rOUGH /X iNNOVATiONS pRESENTS:    |',
+    '|                                          |',
+    '|                                          |',
+    "`------------------------------------------'",
+  ].join('\n');
+
+  it('fills in every editable row, leaving the fixed ones alone', () => {
+    const out = applyReleaseLines(X_BANNER, [
+      { row: 2, text: 'mORE dOORS cURSOR mENU 1.5' },
+      { row: 3, text: 'uPDATES 4 A bETTER eXPERIENCE!' },
+    ]).split('\n');
+
+    expect(out[1]).toBe('|     uP rOUGH /X iNNOVATiONS pRESENTS:    |');
+    expect(out[2]).toContain('mORE dOORS cURSOR mENU 1.5');
+    expect(out[3]).toContain('uPDATES 4 A bETTER eXPERIENCE!');
+    expect(out[4]).toBe("`------------------------------------------'");
+  });
+
+  it('keeps the frame intact on every row it writes', () => {
+    const out = applyReleaseLines(X_BANNER, [
+      { row: 2, text: 'x'.repeat(200) },
+      { row: 3, text: 'y'.repeat(200) },
+    ]).split('\n');
+
+    expect(out[2]).toHaveLength(X_BANNER.split('\n')[2].length);
+    expect(out[2].startsWith('|')).toBe(true);
+    expect(out[2].endsWith('|')).toBe(true);
+    expect(out[3].startsWith('|')).toBe(true);
+    expect(out[3].endsWith('|')).toBe(true);
+  });
+
+  it('is the same as applying one line when there is only one', () => {
+    expect(applyReleaseLines(X_BANNER, [{ row: 2, text: 'one' }])).toBe(applyReleaseLineText(X_BANNER, 'one', 2));
+  });
+
+  it('reads each row back', () => {
+    const filled = applyReleaseLines(X_BANNER, [
+      { row: 2, text: 'the name' },
+      { row: 3, text: 'the tagline' },
+    ]);
+    expect(readReleaseLines(filled, [2, 3])).toEqual(['the name', 'the tagline']);
   });
 });

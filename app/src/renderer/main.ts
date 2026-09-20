@@ -3,8 +3,8 @@ import { MemberlistTable } from './memberlist-table.js';
 import { CreditsTable } from './credits-table.js';
 import { creatorsFromCredits } from './credits-creators.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
-import { applyReleaseLineText, findReleaseLineSlot, readReleaseLineText } from './diz-release-line.js';
-import { DEFAULT_DIZ_BANNER } from '../shared/constants.js';
+import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from './diz-release-line.js';
+import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
 import { describeRevoke } from './revoke-message.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -27,8 +27,7 @@ const entryTitleInput = $<HTMLInputElement>('entry-title');
 const entryCategoryInput = $<HTMLSelectElement>('entry-category');
 const creatorsPreview = $<HTMLDivElement>('creators-preview');
 const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
-const dizReleaseLineInput = $<HTMLInputElement>('diz-release-line');
-const dizReleaseLineCount = $<HTMLDivElement>('diz-release-line-count');
+const dizReleaseLinesContainer = $<HTMLDivElement>('diz-release-lines');
 
 const pickFilesBtn = $<HTMLButtonElement>('pick-files-btn');
 const selectedFilesList = $<HTMLUListElement>('selected-files-list');
@@ -72,26 +71,70 @@ creditsTbody.addEventListener('input', () => updateCreatorsPreview());
 
 // Banner art is read-only: whatever the last release used (or the built-in
 // fallback when there is no previous release). Only the release line changes,
-// and diz-release-line.ts keeps it inside the art's frame characters.
-let dizBannerTemplate = DEFAULT_DIZ_BANNER;
+// and diz-release-line.ts keeps it inside the art's frame characters. How
+// many of those lines a release may retype is the division's business - Up
+// Rough names itself on one, /X adds a tagline under it.
+let currentDivision: DivisionId = DEFAULT_DIVISION;
+let dizBannerTemplate = divisionOf(currentDivision).defaultDizBanner;
+let dizLineInputs: HTMLInputElement[] = [];
 
 function currentDizBannerText(): string {
-  return applyReleaseLineText(dizBannerTemplate, dizReleaseLineInput.value);
+  return applyReleaseLines(
+    dizBannerTemplate,
+    divisionOf(currentDivision).editableDizRows.map((spec, i) => ({
+      row: spec.row,
+      text: dizLineInputs[i]?.value ?? '',
+    })),
+  );
 }
 
 function renderDizPreview(): void {
-  const slot = findReleaseLineSlot(dizBannerTemplate);
   dizBannerPreview.textContent = currentDizBannerText();
-  dizReleaseLineCount.textContent = `${dizReleaseLineInput.value.length}/${slot.width} characters (longer text is cut off)`;
+  divisionOf(currentDivision).editableDizRows.forEach((spec, i) => {
+    const input = dizLineInputs[i];
+    const count = countFor(input);
+    if (!input || !count) return;
+    const slot = findReleaseLineSlot(dizBannerTemplate, spec.row);
+    count.textContent = `${input.value.length}/${slot.width} characters (longer text is cut off)`;
+  });
+}
+
+const lineCounts = new WeakMap<HTMLInputElement, HTMLDivElement>();
+function countFor(input: HTMLInputElement | undefined): HTMLDivElement | undefined {
+  return input ? lineCounts.get(input) : undefined;
+}
+
+// Rebuilt whenever the division changes, because the number of editable rows
+// and their labels come from the division.
+function buildDizLineInputs(): void {
+  dizReleaseLinesContainer.innerHTML = '';
+  dizLineInputs = divisionOf(currentDivision).editableDizRows.map((spec) => {
+    const slot = findReleaseLineSlot(dizBannerTemplate, spec.row);
+    const label = document.createElement('label');
+    label.textContent = `${spec.label} (line ${spec.row + 1} of the diz)`;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'monospace diz-release-line';
+    input.spellcheck = false;
+    input.autocomplete = 'off';
+    input.required = true;
+    input.placeholder = spec.placeholder;
+    // Hard cap in the field itself, so nothing longer than the gap between
+    // the frame characters can ever be typed or pasted in.
+    input.maxLength = slot.width;
+    input.value = readReleaseLineText(dizBannerTemplate, spec.row).slice(0, slot.width);
+    const count = document.createElement('div');
+    count.className = 'hint';
+    lineCounts.set(input, count);
+    input.addEventListener('input', renderDizPreview);
+    dizReleaseLinesContainer.append(label, input, count);
+    return input;
+  });
 }
 
 function seedDizBanner(bannerText: string): void {
-  dizBannerTemplate = bannerText.trim() === '' ? DEFAULT_DIZ_BANNER : bannerText;
-  const slot = findReleaseLineSlot(dizBannerTemplate);
-  // Hard cap in the field itself, so nothing longer than the gap between the
-  // frame characters can ever be typed or pasted in.
-  dizReleaseLineInput.maxLength = slot.width;
-  dizReleaseLineInput.value = readReleaseLineText(dizBannerTemplate).slice(0, slot.width);
+  dizBannerTemplate = bannerText.trim() === '' ? divisionOf(currentDivision).defaultDizBanner : bannerText;
+  buildDizLineInputs();
   renderDizPreview();
 }
 
@@ -156,9 +199,20 @@ function renderSelectedFiles(): void {
   }
 }
 
+// Switching division is a different release entirely: its own numbering,
+// its own roster, its own banner art. Reloading the seed is what makes all
+// three follow, rather than each being patched in its own place.
+document.querySelectorAll<HTMLInputElement>('input[name="division"]').forEach((radio) => {
+  radio.addEventListener('change', () => {
+    if (!radio.checked || !isDivisionId(radio.value)) return;
+    currentDivision = radio.value;
+    void init();
+  });
+});
+
 async function init(): Promise<void> {
   try {
-    const seed = await window.api.loadSeedState();
+    const seed = await window.api.loadSeedState(currentDivision);
     memberlist.seed(seed.members);
     nextReleaseNumber = seed.nextReleaseNumber;
     seedDizBanner(seed.currentDizText);
@@ -178,7 +232,6 @@ async function init(): Promise<void> {
   }
 }
 
-dizReleaseLineInput.addEventListener('input', renderDizPreview);
 // Show the fallback art immediately - init() re-seeds it once the server
 // answers, and a failed seed load still leaves a usable, framed banner.
 seedDizBanner('');
@@ -262,6 +315,7 @@ form.addEventListener('submit', async (e) => {
   const embedImagePaths = mediaEmbedsTable.getEmbedImagePaths();
 
   const formData: ReleaseFormData = {
+    division: currentDivision,
     code,
     format: getSelectedFormat(),
     releaseName: releaseNameInput.value.trim(),

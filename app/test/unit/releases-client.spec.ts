@@ -28,13 +28,25 @@ describe('fetchSeed', () => {
     vi.restoreAllMocks();
   });
 
+  it('asks for the division it was given', async () => {
+    (global.fetch as any).mockResolvedValue({ ok: true, json: async () => ({ members: [] }) });
+    await fetchSeed(cfg, 'xinnovations');
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://releases.example.test/api/releases/seed?division=xinnovations',
+      expect.any(Object),
+    );
+  });
+
   it('GETs /api/releases/seed and returns the parsed JSON', async () => {
     const body = { members: [], nextReleaseNumber: 1, history: [], currentDizText: null, revision: 0 };
     (global.fetch as any).mockResolvedValue({ ok: true, status: 200, json: async () => body });
 
     const result = await fetchSeed(cfg);
 
-    expect(global.fetch).toHaveBeenCalledWith('https://releases.example.test/api/releases/seed', expect.any(Object));
+    expect(global.fetch).toHaveBeenCalledWith(
+      'https://releases.example.test/api/releases/seed?division=uprough',
+      expect.any(Object),
+    );
     expect(result).toEqual(body);
   });
 

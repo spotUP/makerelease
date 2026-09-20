@@ -1,6 +1,7 @@
 import { openAsBlob } from 'fs';
 import * as path from 'path';
-import { MemberEntry, PublishToWebResult, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
+import { BoardEntry, MemberEntry, PublishToWebResult, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
+import { DEFAULT_DIVISION, DivisionId } from '../shared/divisions';
 import { ReleasesClientConfig } from './config';
 import { trimDizBanner } from './nfo-generator';
 
@@ -39,6 +40,8 @@ export interface DraftEntry {
 
 export interface SeedResponse {
   members: MemberEntry[];
+  /** The boards this division lists in its NFO; Up Rough has none. */
+  boards?: BoardEntry[];
   nextReleaseNumber: number;
   history: ReleaseHistoryEntry[];
   currentDizText: string | null;
@@ -81,8 +84,11 @@ async function getJson<T>(cfg: ReleasesClientConfig, path: string): Promise<T> {
   return body as T;
 }
 
-export async function fetchSeed(cfg: ReleasesClientConfig): Promise<SeedResponse> {
-  return getJson<SeedResponse>(cfg, '/api/releases/seed');
+export async function fetchSeed(
+  cfg: ReleasesClientConfig,
+  division: DivisionId = DEFAULT_DIVISION,
+): Promise<SeedResponse> {
+  return getJson<SeedResponse>(cfg, `/api/releases/seed?division=${encodeURIComponent(division)}`);
 }
 
 export async function checkCodeExists(cfg: ReleasesClientConfig, code: string): Promise<boolean> {
@@ -102,6 +108,8 @@ function toPublishBody(form: ReleaseFormData): Record<string, unknown> {
     entryTitle: form.entryTitle,
     entryCategory: form.entryCategory,
     entryCreators: form.entryCreators,
+    division: form.division,
+    ...(form.boards ? { boards: form.boards } : {}),
     members: form.members,
     description: form.description,
     credits: form.credits,

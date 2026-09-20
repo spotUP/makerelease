@@ -10,6 +10,7 @@ import {
   publishToWeb as publishToWebClient,
   ReleasesApiError,
 } from './releases-client';
+import { DEFAULT_DIVISION, type DivisionId } from '../shared/divisions';
 import { describeStaleDrafts } from './stale-drafts';
 import { generateOutputs } from './nfo-generator';
 import { stageRelease } from './staging';
@@ -56,12 +57,12 @@ async function assertLocalCodeAvailable(makereleaseRoot: string, code: string): 
 export const DRY_RUN_DIR = 'dry-run';
 
 export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: ReleasesClientConfig): void {
-  ipcMain.handle('loadSeedState', async (): Promise<SeedState> => {
+  ipcMain.handle('loadSeedState', async (_event, division: DivisionId = DEFAULT_DIVISION): Promise<SeedState> => {
     // Both in one round trip's worth of time, and a numbering check that
     // fails for any reason must never stop the editor from opening - it is
     // a warning, not a precondition.
     const [seed, numbering] = await Promise.all([
-      fetchSeed(releasesConfig),
+      fetchSeed(releasesConfig, division),
       fetchNumberingCheck(releasesConfig).catch(() => null),
     ]);
     const numberingWarning =
@@ -71,6 +72,7 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
     const staleDraftWarning = describeStaleDrafts(seed.drafts ?? [], Math.floor(Date.now() / 1000));
     return {
       members: seed.members,
+      boards: seed.boards ?? [],
       nextReleaseNumber: seed.nextReleaseNumber,
       history: seed.history,
       currentDizText: seed.currentDizText ?? '',
@@ -119,7 +121,7 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
       // write, no member-roster replacement. nextReleaseNumber is a preview
       // only - a real build racing this one would still get the same
       // number, since dry-run makes no reservation.
-      const seed = await fetchSeed(releasesConfig);
+      const seed = await fetchSeed(releasesConfig, form.division ?? DEFAULT_DIVISION);
       releaseNumber = seed.nextReleaseNumber;
       // Synthesize the entry a real publish would have inserted, so the
       // generated NFO's release-history section previews correctly - the

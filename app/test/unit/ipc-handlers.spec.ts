@@ -80,6 +80,7 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.loadSeedState();
     expect(result).toEqual({
       members: [{ nickname: 'spot', role: 'leader' }],
+      boards: [],
       nextReleaseNumber: 5,
       history: [{ releaseNumber: '4', filenames: 'x', title: 't', category: 'c', creators: 'cr' }],
       currentDizText: 'diz',
@@ -147,7 +148,7 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.buildRelease(null, form, true);
 
     expect(releasesClient.publishRelease).not.toHaveBeenCalled();
-    expect(releasesClient.fetchSeed).toHaveBeenCalledWith(cfg);
+    expect(releasesClient.fetchSeed).toHaveBeenCalledWith(cfg, 'uprough');
     expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(
       [
         { releaseNumber: '8', filenames: 'up-bbbbb.zip', title: 'new thing', category: 'Music', creators: 'spot, qwan' },

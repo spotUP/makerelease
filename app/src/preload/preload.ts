@@ -1,4 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
+import type { DivisionId } from '../shared/divisions';
 import {
   BuildResult,
   DeleteReleaseOutcome,
@@ -9,7 +10,7 @@ import {
 } from '../shared/types';
 
 const api: MakereleaseApi = {
-  loadSeedState: (): Promise<SeedState> => ipcRenderer.invoke('loadSeedState'),
+  loadSeedState: (division: DivisionId): Promise<SeedState> => ipcRenderer.invoke('loadSeedState', division),
   pickFilesAndDirs: (): Promise<string[]> => ipcRenderer.invoke('pickFilesAndDirs'),
   checkCodeAvailability: (code: string): Promise<{ exists: boolean }> =>
     ipcRenderer.invoke('checkCodeAvailability', code),

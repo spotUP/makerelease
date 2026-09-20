@@ -1,3 +1,5 @@
+import type { DivisionId } from './divisions';
+
 export interface MemberEntry {
   nickname: string;
   role: string;
@@ -29,6 +31,8 @@ export type MediaEmbedFormEntry =
   | { type: 'image'; caption: string };
 
 export interface ReleaseFormData {
+  /** Which of the group's two names this release goes out under. */
+  division: DivisionId;
   code: string;
   format: ReleaseFormat;
   releaseName: string;
@@ -44,6 +48,8 @@ export interface ReleaseFormData {
   description: string;
   credits: CreditEntry[];
   mediaEmbeds: MediaEmbedFormEntry[];
+  /** /X only: the boards its NFO lists. Omitted leaves the stored list alone. */
+  boards?: BoardEntry[];
 }
 
 export interface GeneratedOutputs {
@@ -52,8 +58,17 @@ export interface GeneratedOutputs {
   releaseNumber: number;
 }
 
+export interface BoardEntry {
+  name: string;
+  sysop: string;
+  hq: string;
+  status: string;
+}
+
 export interface SeedState {
   members: MemberEntry[];
+  /** Boards the division lists in its NFO; empty for Up Rough. */
+  boards: BoardEntry[];
   nextReleaseNumber: number;
   history: ReleaseHistoryEntry[];
   currentDizText: string;
@@ -145,7 +160,7 @@ export type DeleteReleaseOutcome =
   | { ok: false; message: string; status?: number };
 
 export interface MakereleaseApi {
-  loadSeedState(): Promise<SeedState>;
+  loadSeedState(division: DivisionId): Promise<SeedState>;
   pickFilesAndDirs(): Promise<string[]>;
   checkCodeAvailability(code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
