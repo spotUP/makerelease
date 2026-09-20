@@ -15,9 +15,17 @@ describe('divisions', () => {
     expect(isDivisionId(undefined)).toBe(false);
   });
 
-  it('gives Up Rough one editable line and /X two', () => {
+  it('gives every division exactly one editable line', () => {
     expect(DIVISIONS.uprough.editableDizRows).toHaveLength(1);
-    expect(DIVISIONS.xinnovations.editableDizRows.map((r) => r.label)).toEqual(['Release line', 'Tagline']);
+    expect(DIVISIONS.xinnovations.editableDizRows.map((r) => r.label)).toEqual(['Release line']);
+  });
+
+  it('keeps every banner inside what FILE_ID.DIZ allows: ten rows of 45 columns', () => {
+    for (const division of Object.values(DIVISIONS)) {
+      const lines = division.defaultDizBanner.split('\n');
+      expect(lines.length).toBeLessThanOrEqual(10);
+      for (const line of lines) expect(line.length).toBeLessThanOrEqual(45);
+    }
   });
 
   it('points every editable row at a line that is actually blank in the art', () => {
@@ -31,8 +39,8 @@ describe('divisions', () => {
 
   it('keeps the division name fixed, above the editable rows', () => {
     const lines = DIVISIONS.xinnovations.defaultDizBanner.split('\n');
-    expect(lines[8]).toContain('uP rOUGH /X iNNOVATiONS pRESENTS:');
-    expect(DIVISIONS.xinnovations.editableDizRows.every((r) => r.row > 8)).toBe(true);
+    expect(lines[7]).toContain('uP rOUGH /X iNNOVATiONS pRESENTS:');
+    expect(DIVISIONS.xinnovations.editableDizRows.every((r) => r.row > 7)).toBe(true);
     // The /X art carries its own name, never the plain Up Rough one.
     expect(DIVISIONS.xinnovations.defaultDizBanner).not.toContain('Up Rough Presents:');
     expect(DIVISIONS.uprough.defaultDizBanner).toContain('Up Rough Presents:');

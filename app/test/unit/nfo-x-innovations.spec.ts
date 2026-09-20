@@ -9,7 +9,9 @@ import {
   frameLine,
   listArtFromBanner,
   releaseListBlock,
+  releaseNameInBanner,
   releaseNameLine,
+  renderXInnovationsNfo,
   rosterBlock,
   spacedCaps,
   wrapNotes,
@@ -135,8 +137,8 @@ describe('listArtFromBanner', () => {
     );
     const nameOnly = listArtFromBanner(withTagline);
     expect(nameOnly).toBe(withTagline);
-    // Eleven rows, not twelve: the tagline row is dropped, not blanked.
-    expect(withTagline.split('\n')).toHaveLength(11);
+    // Ten rows: what FILE_ID.DIZ allows, whatever the release itself shipped.
+    expect(withTagline.split('\n')).toHaveLength(10);
   });
 });
 
@@ -150,5 +152,70 @@ describe('boards against the original', () => {
       { name: 'sANCTUARY', sysop: 'sANDMAN', hq: 'sHQ', status: 'ASK4ACCS' },
     ]);
     expect(block).toEqual(fixture.slice(122, 127));
+  });
+});
+
+describe('sections with nothing in them', () => {
+  const minimal = {
+    releaseName: 'test',
+    releaseDate: '2026-09-21',
+    coder: 'zalo',
+    system: 'aMiEXPRESS',
+    design: 'dino',
+    releaseNotes: 'notes',
+    news: '',
+    members: [],
+    boards: [],
+    releaseList: [],
+  };
+
+  it('never leaves a bare line without a frame on it', () => {
+    // An empty roster or board list used to put an empty string where the
+    // section was, tearing a visible gap through the middle of the drawing.
+    const rendered = renderXInnovationsNfo(minimal);
+    for (const line of rendered.split('\n')) {
+      expect(line === '' || line.length >= 21).toBe(true);
+    }
+  });
+
+  it('keeps every framed line the right width even with nothing to show', () => {
+    for (const line of renderXInnovationsNfo(minimal).split('\n')) {
+      if (line.startsWith('   | %% |')) expect(line).toHaveLength(74);
+    }
+  });
+});
+
+describe('releaseNameInBanner', () => {
+  it('reads the name out of the ten-row art this tool draws', () => {
+    const art = [
+      '|  `\\______|    |_|`\\_/\'\\___/`\\__/l_l_|_|  |',
+      '|     uP rOUGH /X iNNOVATiONS pRESENTS:    |',
+      '|            tHE nEW oNE v1.0              |',
+      "`------------------------------------------'",
+    ].join('\n');
+    expect(releaseNameInBanner(art)).toBe('tHE nEW oNE v1.0');
+  });
+
+  it('reads it out of the taller art the older releases shipped', () => {
+    // up-md15 ships twelve rows with a tagline; up-stw10 ships thirteen with
+    // blank rows around the name. A fixed row index reads the wrong line out
+    // of both.
+    const twelveRow = [
+      '|                                          |',
+      '|     uP rOUGH /X iNNOVATiONS pRESENTS:    |',
+      '|        mORE dOORS cURSOR mENU 1.5        |',
+      '|      uPDATES 4 A bETTER eXPERIENCE!      |',
+      "`------------------------------------------'",
+    ].join('\n');
+    const thirteenRow = [
+      '|     uP rOUGH /X iNNOVATiONS pRESENTS:    |',
+      '|                                          |',
+      '|        Spin The Wheel 1.0 by zALO        |',
+      '|                                          |',
+      "`------------------------------------------'",
+    ].join('\n');
+
+    expect(releaseNameInBanner(twelveRow)).toBe('mORE dOORS cURSOR mENU 1.5');
+    expect(releaseNameInBanner(thirteenRow)).toBe('Spin The Wheel 1.0 by zALO');
   });
 });

@@ -30,6 +30,17 @@ export interface Division {
   editableDizRows: DizRowSpec[];
   /** Whether releases of this division go to the AmiExpress door repository. */
   submitsToDoorRepo: boolean;
+  /**
+   * Whether a release inherits the previous one's banner art.
+   *
+   * Up Rough's art is redrawn over the years and each release carries the
+   * last one's, so nobody has to retype a 45-column drawing. /X's is a fixed
+   * ten-row template owned here: inheriting it would mean building on art of
+   * whatever height the last release happened to ship (they range from 11 to
+   * 13 rows), and the editable row would no longer be where the division
+   * says it is.
+   */
+  inheritsBannerArt: boolean;
 }
 
 export interface DizRowSpec {
@@ -52,9 +63,13 @@ const UP_ROUGH_BANNER = [
   "`------------------------------------------'",
 ].join('\n');
 
-// Same logo, three text rows instead of two: the division's name is fixed on
-// the first, and a release fills in the name and a tagline under it. Taken
-// from UP-MD15's FILE_ID.DIZ.
+// Same logo and the same ten lines as Up Rough's, because that is what
+// FILE_ID.DIZ is allowed to be: the format is capped at ten rows of 45
+// columns, and a taller one gets truncated or refused by BBS software. The
+// /X releases shipped 11 to 13 rows for years, which is why this one is
+// shorter than the art in UP-MD15 - the division's name takes the row Up
+// Rough uses for "Up Rough Presents:", and the release names itself on the
+// next.
 const X_INNOVATIONS_BANNER = [
   '    _ _ __ ___    ____  _ _ __ _________',
   '   | | Y  / _ \\../ __ \\| | Y  / __  | | |',
@@ -63,9 +78,7 @@ const X_INNOVATIONS_BANNER = [
   "|  | | l | |__/'| || | | | | | || |   | |  |",
   '|  | l___| |    | || | | l l | ll | | | |  |',
   "|  `\\______|    |_|`\\_/'\\___/`\\__/l_l_|_|  |",
-  '|                                          |',
   '|     uP rOUGH /X iNNOVATiONS pRESENTS:    |',
-  '|                                          |',
   '|                                          |',
   "`------------------------------------------'",
 ].join('\n');
@@ -77,16 +90,15 @@ export const DIVISIONS: Record<DivisionId, Division> = {
     defaultDizBanner: UP_ROUGH_BANNER,
     editableDizRows: [{ row: 8, label: 'Release line', placeholder: 'HYPOCRISY - A500 HDD DEMO FROM CS 2025' }],
     submitsToDoorRepo: false,
+    inheritsBannerArt: true,
   },
   xinnovations: {
     id: 'xinnovations',
     label: 'Up Rough /X Innovations',
     defaultDizBanner: X_INNOVATIONS_BANNER,
-    editableDizRows: [
-      { row: 9, label: 'Release line', placeholder: 'mORE dOORS cURSOR mENU 1.5' },
-      { row: 10, label: 'Tagline', placeholder: 'uPDATES 4 A bETTER eXPERIENCE!' },
-    ],
+    editableDizRows: [{ row: 8, label: 'Release line', placeholder: 'mORE dOORS cURSOR mENU 1.5' }],
     submitsToDoorRepo: true,
+    inheritsBannerArt: false,
   },
 };
 

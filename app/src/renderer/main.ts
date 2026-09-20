@@ -143,7 +143,11 @@ function buildDizLineInputs(): void {
 }
 
 function seedDizBanner(bannerText: string): void {
-  dizBannerTemplate = bannerText.trim() === '' ? divisionOf(currentDivision).defaultDizBanner : bannerText;
+  const division = divisionOf(currentDivision);
+  // A division with fixed art always starts from its own template; only one
+  // that inherits takes the previous release's drawing.
+  dizBannerTemplate =
+    !division.inheritsBannerArt || bannerText.trim() === '' ? division.defaultDizBanner : bannerText;
   buildDizLineInputs();
   renderDizPreview();
 }

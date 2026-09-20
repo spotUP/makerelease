@@ -1,6 +1,6 @@
 import { BoardEntry, MemberEntry } from '../shared/types';
 import { DIVISIONS } from '../shared/divisions';
-import { applyReleaseLines, readReleaseLineText } from '../shared/diz-release-line';
+import { applyReleaseLines } from '../shared/diz-release-line';
 import { X_INNOVATIONS_NFO_TEMPLATE } from './x-innovations-template';
 
 /**
@@ -214,18 +214,29 @@ export function releaseListBlock(
  */
 export function listArtFromBanner(banner: string): string {
   const division = DIVISIONS.xinnovations;
-  const [nameRow, ...otherRows] = division.editableDizRows;
-  const name = readReleaseLineText(banner, nameRow.row);
-  const filled = applyReleaseLines(division.defaultDizBanner, [{ row: nameRow.row, text: name }]);
-  // The other editable rows are REMOVED, not blanked: an entry in the real
-  // release list is eleven rows, closing straight after the name. Leaving an
-  // empty tagline row behind would make every entry a row taller than the
-  // seven already in the file.
-  const drop = new Set(otherRows.map((spec) => spec.row));
-  return filled
-    .split('\n')
-    .filter((_, i) => !drop.has(i))
-    .join('\n');
+  const [nameRow] = division.editableDizRows;
+  return applyReleaseLines(division.defaultDizBanner, [
+    { row: nameRow.row, text: releaseNameInBanner(banner) },
+  ]);
+}
+
+/**
+ * The release's name as its banner gives it: the first line with anything on
+ * it below the one announcing the division.
+ *
+ * Found by the announcement rather than by row number, because the banners
+ * this reads are not all the same height. The seven releases that predate
+ * this tool ship 11, 12 and 13-row art with the name in a different place in
+ * each, and a fixed index would read a blank row or the frame out of them.
+ */
+export function releaseNameInBanner(banner: string): string {
+  const lines = banner.split('\n');
+  const announced = lines.findIndex((line) => /pRESENTS:|Presents:/i.test(line));
+  for (const line of lines.slice(announced + 1)) {
+    const text = line.replace(/^[|`'\\/]+|[|`'\\/]+$/g, '').trim();
+    if (text && !/^[-_=.\s]+$/.test(text)) return text;
+  }
+  return '';
 }
 
 /**
@@ -240,6 +251,7 @@ export function newsBlock(news: string): string[] {
     .map((line) => line.trim());
   while (lines.length > 0 && lines[0] === '') lines.shift();
   while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  if (lines.length === 0) return [];
   // Centred left-heavy, like the release-name line and unlike the banners.
   const centred = (line: string): string => {
     const text = line.slice(0, FIELD_WIDTH);
@@ -280,15 +292,31 @@ const FIELD_WIDTHS = {
   DESIGN: 10,
 } as const;
 
+/**
+ * Fills a marker with the lines of a block, or removes the marker's line
+ * entirely when the block is empty.
+ *
+ * An empty block used to leave the marker as an empty string, which is a
+ * bare line with no frame on it - a visible gap torn through the middle of
+ * the drawing. A section with nothing in it should simply not take up a row.
+ */
+function fillBlock(template: string, marker: string, lines: string[]): string {
+  if (lines.length === 0) return template.replace(new RegExp(`^${marker}\\n?`, 'm'), '');
+  return template.replace(marker, lines.join('\n'));
+}
+
 export function renderXInnovationsNfo(input: XInnovationsNfoInput): string {
-  return X_INNOVATIONS_NFO_TEMPLATE.replace('{{RELEASE_NAME_LINE}}', releaseNameLine(input.releaseName))
+  const filled = X_INNOVATIONS_NFO_TEMPLATE.replace('{{RELEASE_NAME_LINE}}', releaseNameLine(input.releaseName))
     .replace('{{DATE}}', fitField(input.releaseDate, FIELD_WIDTHS.DATE))
     .replace('{{CODER}}', fitField(input.coder, FIELD_WIDTHS.CODER))
     .replace('{{SYSTEM}}', fitField(input.system, FIELD_WIDTHS.SYSTEM))
-    .replace('{{DESIGN}}', fitField(input.design, FIELD_WIDTHS.DESIGN))
-    .replace('{{NOTES}}', notesBlock(input.releaseNotes).join('\n'))
-    .replace('{{NEWS}}', newsBlock(input.news).join('\n'))
-    .replace('{{ROSTER}}', rosterBlock(input.members).join('\n'))
-    .replace('{{BOARDS}}', boardsBlock(input.boards).join('\n'))
-    .replace('{{RELEASE_LIST}}', releaseListBlock(input.releaseList).join('\n'));
+    .replace('{{DESIGN}}', fitField(input.design, FIELD_WIDTHS.DESIGN));
+
+  return [
+    ['{{NOTES}}', notesBlock(input.releaseNotes)],
+    ['{{NEWS}}', newsBlock(input.news)],
+    ['{{ROSTER}}', rosterBlock(input.members)],
+    ['{{BOARDS}}', boardsBlock(input.boards)],
+    ['{{RELEASE_LIST}}', releaseListBlock(input.releaseList)],
+  ].reduce<string>((art, [marker, lines]) => fillBlock(art, marker as string, lines as string[]), filled);
 }
