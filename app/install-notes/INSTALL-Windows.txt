@@ -1,0 +1,49 @@
+Up Rough Release Maker - Windows
+================================
+
+1. REQUIRED TOOLS
+
+   The app shells out to "lha" and "zip" to pack archives. Windows ships
+   neither, so both have to be on your PATH before a build works.
+
+       lha.exe    e.g. the LHA 2.55 command-line build
+       zip.exe    e.g. the Info-ZIP Windows binary
+
+   Put them in a folder that is on PATH (or add their folder to PATH via
+   Settings > System > About > Advanced system settings > Environment
+   Variables), then restart the app.
+
+   Without them, builds fail with a message naming the missing binary.
+
+2. UNBLOCK THE ZIP FIRST - DO THIS BEFORE EXTRACTING
+
+   Windows tags anything downloaded from the internet, and SmartScreen
+   then refuses to run it. Members have seen this as "Windows blocked the
+   execution" with the app never appearing at all.
+
+   Right-click THIS ZIP FILE -> Properties -> tick "Unblock" -> OK.
+   THEN extract it. Everything that comes out is untagged and runs
+   normally.
+
+   Already extracted? Right-click the .exe -> Properties -> "Unblock",
+   or run it and click "More info" -> "Run anyway".
+
+3. INSTALL
+
+   Pick one:
+
+       Up Rough Release Maker Setup 0.1.0.exe   installer
+       Up Rough Release Maker 0.1.0.exe         portable, no install
+
+4. FIRST LAUNCH
+
+   The build is not code-signed. If you skipped the unblock step above,
+   SmartScreen warns about an unrecognised app: "More info", then
+   "Run anyway". The warning is about the missing signature, not about
+   anything the app does.
+
+5. WHERE YOUR BUILDS GO
+
+       Documents\Up Rough Releases\
+
+   The app prints the full path after every build.
