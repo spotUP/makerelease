@@ -6,11 +6,22 @@ function currentTokenBounds(value: string, caret: number): { start: number; end:
   return { start, end: caret };
 }
 
+export interface CreatorsAutocompleteOptions {
+  /**
+   * False for a field that holds ONE name - a credit row's Name - rather
+   * than a comma-separated list. The whole value is then the search token
+   * and a pick replaces it, instead of appending "<name>, " to a list.
+   */
+  multiple?: boolean;
+}
+
 export function attachCreatorsAutocomplete(
   input: HTMLInputElement,
   list: HTMLUListElement,
   getMembers: () => MemberEntry[],
+  options: CreatorsAutocompleteOptions = {},
 ): void {
+  const multiple = options.multiple !== false;
   let activeIndex = -1;
   let matches: string[] = [];
 
@@ -37,6 +48,13 @@ export function attachCreatorsAutocomplete(
   }
 
   function select(nickname: string): void {
+    if (!multiple) {
+      input.value = nickname;
+      input.setSelectionRange(nickname.length, nickname.length);
+      hide();
+      input.focus();
+      return;
+    }
     const caret = input.selectionStart ?? input.value.length;
     const { start, end } = currentTokenBounds(input.value, caret);
     const before = input.value.slice(0, start).replace(/\s+$/, '');
@@ -52,18 +70,24 @@ export function attachCreatorsAutocomplete(
 
   function update(): void {
     const caret = input.selectionStart ?? input.value.length;
-    const { start, end } = currentTokenBounds(input.value, caret);
+    const { start, end } = multiple
+      ? currentTokenBounds(input.value, caret)
+      : { start: 0, end: input.value.length };
     const token = input.value.slice(start, end).trim().toLowerCase();
     if (!token) {
       hide();
       return;
     }
-    const taken = new Set(
-      input.value
-        .split(',')
-        .map((s) => s.trim().toLowerCase())
-        .filter(Boolean),
-    );
+    // Only a list field can already hold the other names; a single-name
+    // field's own value IS the token being completed.
+    const taken = multiple
+      ? new Set(
+          input.value
+            .split(',')
+            .map((s) => s.trim().toLowerCase())
+            .filter(Boolean),
+        )
+      : new Set<string>();
     matches = getMembers()
       .map((m) => m.nickname)
       .filter((nickname) => nickname.toLowerCase().startsWith(token) && !taken.has(nickname.toLowerCase()))

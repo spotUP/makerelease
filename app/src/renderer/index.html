@@ -65,15 +65,14 @@
         <option value="Science">Science</option>
         <option value="Other">Other</option>
       </select>
-      <label for="entry-creators">Creator(s)</label>
-      <div class="autocomplete-wrap">
-        <input type="text" id="entry-creators" required autocomplete="off" placeholder="nori k, mortimer twang, spot, qwan, exocet" />
-        <ul id="entry-creators-suggestions" class="autocomplete-list" hidden></ul>
-      </div>
     </section>
 
     <section>
-      <h2>6. Credits (optional — for the WordPress post)</h2>
+      <h2>6. Credits</h2>
+      <p class="hint">
+        Who made this. Goes into the WordPress post as a Role/Name list, and the
+        release history entry's creator line is built from these names.
+      </p>
       <table id="credits-table">
         <thead>
           <tr><th>Role</th><th>Name</th><th></th></tr>
@@ -81,6 +80,7 @@
         <tbody id="credits-tbody"></tbody>
       </table>
       <button type="button" id="add-credit-btn">Add credit</button>
+      <div id="creators-preview" class="hint"></div>
     </section>
 
     <section>

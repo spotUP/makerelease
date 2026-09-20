@@ -1,10 +1,10 @@
 import { ReleaseFormat, ReleaseFormData } from '../shared/types';
 import { MemberlistTable } from './memberlist-table.js';
 import { CreditsTable } from './credits-table.js';
+import { creatorsFromCredits } from './credits-creators.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
 import { applyReleaseLineText, findReleaseLineSlot, readReleaseLineText } from './diz-release-line.js';
 import { DEFAULT_DIZ_BANNER } from '../shared/constants.js';
-import { attachCreatorsAutocomplete } from './creators-autocomplete.js';
 import { describeRevoke } from './revoke-message.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -25,8 +25,7 @@ const addMediaEmbedBtn = $<HTMLButtonElement>('add-media-embed-btn');
 const releaseNumberPreview = $<HTMLDivElement>('release-number-preview');
 const entryTitleInput = $<HTMLInputElement>('entry-title');
 const entryCategoryInput = $<HTMLSelectElement>('entry-category');
-const entryCreatorsInput = $<HTMLInputElement>('entry-creators');
-const entryCreatorsSuggestions = $<HTMLUListElement>('entry-creators-suggestions');
+const creatorsPreview = $<HTMLDivElement>('creators-preview');
 const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
 const dizReleaseLineInput = $<HTMLInputElement>('diz-release-line');
 const dizReleaseLineCount = $<HTMLDivElement>('diz-release-line-count');
@@ -49,7 +48,10 @@ const deleteReleaseBtn = $<HTMLButtonElement>('delete-release-btn');
 const deleteStatus = $<HTMLDivElement>('delete-status');
 
 const memberlist = new MemberlistTable(membersTbody);
-const creditsTable = new CreditsTable(creditsTbody);
+const creditsTable = new CreditsTable(creditsTbody, {
+  getMembers: () => memberlist.getMembers(),
+  onChange: () => updateCreatorsPreview(),
+});
 const mediaEmbedsTable = new MediaEmbedsTable(mediaEmbedsContainer, () => window.api.pickImage());
 let nextReleaseNumber = 0;
 let selectedPaths: string[] = [];
@@ -63,7 +65,10 @@ let selectedImagePath: string | null = null;
 // not whatever the form currently shows.
 let lastEmbedImagePaths: string[] = [];
 
-attachCreatorsAutocomplete(entryCreatorsInput, entryCreatorsSuggestions, () => memberlist.getMembers());
+// Typing in a credit row has to refresh the derived creator line too, and
+// rows come and go - one delegated listener on the table body covers every
+// row that will ever exist, which per-input listeners would not.
+creditsTbody.addEventListener('input', () => updateCreatorsPreview());
 
 // Banner art is read-only: whatever the last release used (or the built-in
 // fallback when there is no previous release). Only the release line changes,
@@ -88,6 +93,15 @@ function seedDizBanner(bannerText: string): void {
   dizReleaseLineInput.maxLength = slot.width;
   dizReleaseLineInput.value = readReleaseLineText(dizBannerTemplate).slice(0, slot.width);
   renderDizPreview();
+}
+
+// The creator line the NFO history entry will carry, shown while the credits
+// are typed so nobody has to build to find out what it says.
+function updateCreatorsPreview(): void {
+  const creators = creatorsFromCredits(creditsTable.getCredits());
+  creatorsPreview.textContent = creators
+    ? `Release history creator line: ${creators}`
+    : 'Release history creator line: add a credit with both a role and a name.';
 }
 
 function updateReleaseNumberPreview(): void {
@@ -168,6 +182,7 @@ dizReleaseLineInput.addEventListener('input', renderDizPreview);
 // Show the fallback art immediately - init() re-seeds it once the server
 // answers, and a failed seed load still leaves a usable, framed banner.
 seedDizBanner('');
+updateCreatorsPreview();
 
 addMemberBtn.addEventListener('click', () => memberlist.addRow());
 addCreditBtn.addEventListener('click', () => creditsTable.addRow());
@@ -232,6 +247,17 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
+  // The credits are the only place the release's people are entered, so an
+  // empty table means the NFO history entry would have a blank creator line
+  // and the server would reject the build.
+  const credits = creditsTable.getCredits();
+  const entryCreators = creatorsFromCredits(credits);
+  if (!entryCreators) {
+    buildStatus.textContent = 'Add at least one credit - the release history creator line is built from them.';
+    buildStatus.className = 'status warn';
+    return;
+  }
+
   const mediaEmbeds = mediaEmbedsTable.getMediaEmbeds();
   const embedImagePaths = mediaEmbedsTable.getEmbedImagePaths();
 
@@ -246,10 +272,10 @@ form.addEventListener('submit', async (e) => {
     members: memberlist.getMembers(),
     entryTitle: entryTitleInput.value.trim(),
     entryCategory: entryCategoryInput.value.trim(),
-    entryCreators: entryCreatorsInput.value.trim(),
+    entryCreators,
     selectedPaths,
     description: descriptionInput.value.trim(),
-    credits: creditsTable.getCredits(),
+    credits,
     mediaEmbeds,
   };
 
