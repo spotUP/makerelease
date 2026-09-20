@@ -43,6 +43,8 @@ vi.mock('../../src/main/archiver', () => ({
 
 vi.mock('../../src/main/fs-helpers', () => ({
   pathExists: vi.fn(),
+  ensureDir: vi.fn(),
+  removePath: vi.fn(),
 }));
 
 import { registerIpcHandlers } from '../../src/main/ipc-handlers';
@@ -60,6 +62,8 @@ describe('registerIpcHandlers', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     (fsHelpers.pathExists as any).mockResolvedValue(false);
+    (fsHelpers.ensureDir as any).mockResolvedValue(undefined);
+    (fsHelpers.removePath as any).mockResolvedValue(undefined);
     // Default: the server could not reach the site, so no numbering warning.
     (releasesClient.fetchNumberingCheck as any).mockResolvedValue({ checked: false });
     registerIpcHandlers('/root', cfg);
@@ -193,6 +197,8 @@ describe('registerIpcHandlers', () => {
   it('loadSeedState sets configWarning when running with the placeholder write key', async () => {
     vi.clearAllMocks();
     (fsHelpers.pathExists as any).mockResolvedValue(false);
+    (fsHelpers.ensureDir as any).mockResolvedValue(undefined);
+    (fsHelpers.removePath as any).mockResolvedValue(undefined);
     registerIpcHandlers('/root', { baseUrl: 'https://x', writeKey: 'REPLACE_ME_BEFORE_DISTRIBUTING', isPlaceholderKey: true });
     (releasesClient.fetchSeed as any).mockResolvedValue({
       members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
@@ -284,6 +290,65 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.loadSeedState();
 
     expect(result.staleDraftWarning).toBeUndefined();
+  });
+
+  it('a dry run writes into its own folder, not where a real build lands', async () => {
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 9, history: [], currentDizText: '', revision: 1,
+    });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 9 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    const result = await handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, true);
+
+    expect(result.archivePath).toBe('/root/dry-run/UP-MINDR.LHA');
+    expect(archiver.packArchive).toHaveBeenCalledWith('/tmp/outer', 'MINDR', 'LHA', '/root/dry-run');
+    expect(archiver.finalizeRelease).toHaveBeenCalledWith('/tmp/outer', 'MINDR', '/root/dry-run');
+    expect(fsHelpers.ensureDir).toHaveBeenCalledWith('/root/dry-run');
+  });
+
+  it('builds for real straight after a dry run of the same code', async () => {
+    // The reported failure: the dry run left UP-MINDR where a real build
+    // lands, and assertLocalCodeAvailable then refused the real build with
+    // "already exists locally ... leftover from a previous attempt".
+    (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p.includes('/dry-run/'));
+    (releasesClient.publishRelease as any).mockResolvedValue({ releaseNumber: 9, revision: 2, history: [] });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 9 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    const result = await handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, false);
+
+    expect(result.archivePath).toBe('/root/UP-MINDR.LHA');
+    expect(archiver.packArchive).toHaveBeenCalledWith('/tmp/outer', 'MINDR', 'LHA', '/root');
+  });
+
+  it('a second dry run replaces the previous preview instead of refusing it', async () => {
+    (fsHelpers.pathExists as any).mockResolvedValue(true);
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [], nextReleaseNumber: 9, history: [], currentDizText: '', revision: 1,
+    });
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 9 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+
+    await expect(handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, true)).resolves.toBeTruthy();
+
+    expect(fsHelpers.removePath).toHaveBeenCalledWith('/root/dry-run/UP-MINDR');
+    expect(fsHelpers.removePath).toHaveBeenCalledWith('/root/dry-run/UP-MINDR.LHA');
+  });
+
+  it('still refuses a real build when a real leftover is in the way', async () => {
+    (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-MINDR');
+
+    await expect(handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, false)).rejects.toThrow(
+      /already exists locally/,
+    );
+    expect(releasesClient.publishRelease).not.toHaveBeenCalled();
   });
 
   it('pickImage opens a file dialog restricted to image types and returns the chosen path', async () => {

@@ -14,7 +14,7 @@ import { describeStaleDrafts } from './stale-drafts';
 import { generateOutputs } from './nfo-generator';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
-import { pathExists } from './fs-helpers';
+import { pathExists, ensureDir, removePath } from './fs-helpers';
 import { ReleasesClientConfig } from './config';
 
 // Local pre-flight check, purely filesystem-based (no network call). Guards
@@ -42,6 +42,18 @@ async function assertLocalCodeAvailable(makereleaseRoot: string, code: string): 
     }
   }
 }
+
+/**
+ * Where a dry run writes, under the output root.
+ *
+ * A dry run produces a real archive so it can be opened and inspected, and it
+ * used to write it exactly where a real build lands. That made the obvious
+ * workflow - dry run, look inside, then build for real - fail every time:
+ * assertLocalCodeAvailable saw the preview and could not tell it apart from
+ * the leftovers of a failed attempt, which is the thing it exists to catch.
+ * Giving previews their own folder keeps that guard's meaning intact.
+ */
+export const DRY_RUN_DIR = 'dry-run';
 
 export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: ReleasesClientConfig): void {
   ipcMain.handle('loadSeedState', async (): Promise<SeedState> => {
@@ -88,7 +100,17 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
   });
 
   ipcMain.handle('buildRelease', async (_event, form: ReleaseFormData, dryRun: boolean): Promise<BuildResult> => {
-    await assertLocalCodeAvailable(makereleaseRoot, form.code);
+    const upperCode = form.code.toUpperCase();
+    const outputRoot = dryRun ? path.join(makereleaseRoot, DRY_RUN_DIR) : makereleaseRoot;
+    if (dryRun) {
+      // A preview is disposable by definition, so the newest one replaces
+      // the last instead of refusing to overwrite it.
+      await ensureDir(outputRoot);
+      await removePath(path.join(outputRoot, `UP-${upperCode}`));
+      await removePath(path.join(outputRoot, `UP-${upperCode}.${form.format}`));
+    } else {
+      await assertLocalCodeAvailable(makereleaseRoot, form.code);
+    }
 
     let releaseNumber: number;
     let history: ReleaseHistoryEntry[];
@@ -118,10 +140,10 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
 
     const generated = generateOutputs(history, releaseNumber, form);
     const outerDir = await stageRelease(form, generated);
-    await packArchive(outerDir, form.code, form.format, makereleaseRoot);
-    await finalizeRelease(outerDir, form.code, makereleaseRoot);
+    await packArchive(outerDir, form.code, form.format, outputRoot);
+    await finalizeRelease(outerDir, form.code, outputRoot);
     return {
-      archivePath: path.join(makereleaseRoot, `UP-${form.code.toUpperCase()}.${form.format}`),
+      archivePath: path.join(outputRoot, `UP-${upperCode}.${form.format}`),
       releaseNumber,
       isDryRun: dryRun,
     };

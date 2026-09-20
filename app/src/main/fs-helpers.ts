@@ -14,6 +14,15 @@ export async function pathExists(p: string): Promise<boolean> {
   }
 }
 
+export async function ensureDir(p: string): Promise<void> {
+  await fs.mkdir(p, { recursive: true });
+}
+
+/** Removes a file or a whole folder; a path that is not there is not an error. */
+export async function removePath(p: string): Promise<void> {
+  await fs.rm(p, { recursive: true, force: true });
+}
+
 export async function moveDir(src: string, dest: string): Promise<void> {
   try {
     await fs.rename(src, dest);
