@@ -2,10 +2,11 @@ import { ReleaseFormat, ReleaseFormData } from '../shared/types';
 import { MemberlistTable } from './memberlist-table.js';
 import { BoardsTable } from './boards-table.js';
 import { CreditsTable } from './credits-table.js';
-import { creatorsFromCredits } from './credits-creators.js';
+import { CODER_ROLES, DESIGN_ROLES, creatorsFromCredits, creditNamesForRole } from './credits-creators.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
 import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../shared/diz-release-line.js';
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
+import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -24,15 +25,15 @@ const boardsTbody = $<HTMLTableSectionElement>('boards-tbody');
 const addBoardBtn = $<HTMLButtonElement>('add-board-btn');
 const xFieldsSection = $<HTMLElement>('x-fields-section');
 const xReleaseDateInput = $<HTMLInputElement>('x-release-date');
-const xCoderInput = $<HTMLInputElement>('x-coder');
 const xSystemInput = $<HTMLInputElement>('x-system');
-const xDesignInput = $<HTMLInputElement>('x-design');
+const xCreditsPreview = $<HTMLDivElement>('x-credits-preview');
 const addCreditBtn = $<HTMLButtonElement>('add-credit-btn');
 const mediaEmbedsContainer = $<HTMLElement>('media-embeds-container');
 const addMediaEmbedBtn = $<HTMLButtonElement>('add-media-embed-btn');
 const releaseNumberPreview = $<HTMLDivElement>('release-number-preview');
 const entryTitleInput = $<HTMLInputElement>('entry-title');
 const entryCategoryInput = $<HTMLSelectElement>('entry-category');
+const releaseDateInput = $<HTMLInputElement>('release-date');
 const creatorsPreview = $<HTMLDivElement>('creators-preview');
 const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
 const dizReleaseLinesContainer = $<HTMLDivElement>('diz-release-lines');
@@ -150,7 +151,15 @@ function seedDizBanner(bannerText: string): void {
 // The creator line the NFO history entry will carry, shown while the credits
 // are typed so nobody has to build to find out what it says.
 function updateCreatorsPreview(): void {
-  const creators = creatorsFromCredits(creditsTable.getCredits());
+  const credits = creditsTable.getCredits();
+  const creators = creatorsFromCredits(credits);
+  // The /X NFO's bracketed header fields come from the same credits, so show
+  // what they will say rather than making anybody build to find out.
+  const coder = creditNamesForRole(credits, CODER_ROLES);
+  const design = creditNamesForRole(credits, DESIGN_ROLES);
+  xCreditsPreview.textContent =
+    `NFO header: cODER [${coder || '-'}]  dESIGN [${design || '-'}]` +
+    (coder || design ? '' : ' - add credits with roles like Code or Graphics');
   creatorsPreview.textContent = creators
     ? `Release history creator line: ${creators}`
     : 'Release history creator line: add a credit with both a role and a name.';
@@ -225,6 +234,10 @@ async function init(): Promise<void> {
     // Only /X prints these; showing them for Up Rough would invite filling
     // in fields that go nowhere.
     xFieldsSection.hidden = currentDivision !== 'xinnovations';
+    // Today, unless somebody has already typed a date - reloading the seed
+    // (which switching division does) must not overwrite what they entered.
+    if (xReleaseDateInput.value.trim() === '') xReleaseDateInput.value = todayIso();
+    if (releaseDateInput.value.trim() === '') releaseDateInput.value = todayIso();
     boardsTable.seed(seed.boards);
     memberlist.seed(seed.members);
     nextReleaseNumber = seed.nextReleaseNumber;
@@ -331,12 +344,13 @@ form.addEventListener('submit', async (e) => {
   const boards = boardsTable.getBoards();
   const formData: ReleaseFormData = {
     division: currentDivision,
+    releaseDate: releaseDateInput.value.trim(),
     ...(currentDivision === 'xinnovations'
       ? {
           releaseDate: xReleaseDateInput.value.trim(),
-          coder: xCoderInput.value.trim(),
+          coder: creditNamesForRole(credits, CODER_ROLES),
           system: xSystemInput.value.trim(),
-          design: xDesignInput.value.trim(),
+          design: creditNamesForRole(credits, DESIGN_ROLES),
           // An empty table means "leave the stored list alone", so it is sent
           // as absent rather than as an empty list that would wipe it.
           ...(boards.length > 0 ? { boards } : {}),

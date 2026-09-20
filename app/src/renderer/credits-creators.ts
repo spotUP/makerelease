@@ -24,3 +24,31 @@ export function creatorsFromCredits(credits: CreditEntry[]): string {
   }
   return names.join(', ');
 }
+
+/**
+ * The names credited for a job, for the /X NFO's bracketed fields.
+ *
+ * Coder and Design used to be typed again in their own inputs, which is the
+ * Creator(s) mistake in a second place: the same fact entered twice drifts,
+ * and here it drifts between the NFO's header and its own credits list. The
+ * credit rows are the single place a person is named.
+ *
+ * Roles are matched loosely because people write them freely - "Code",
+ * "Coder", "Additional code" all mean the same job.
+ */
+export function creditNamesForRole(credits: CreditEntry[], pattern: RegExp): string {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const credit of credits) {
+    if (!pattern.test(credit.role.trim())) continue;
+    const name = credit.name.trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    names.push(name);
+  }
+  return names.join(', ');
+}
+
+/** Roles that mean "wrote the code" and "drew it", as people actually type them. */
+export const CODER_ROLES = /cod|program|dev/i;
+export const DESIGN_ROLES = /design|graphic|art|ink|logo|ansi|ascii/i;

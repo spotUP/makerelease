@@ -82,6 +82,14 @@ export function renderNfo(history: ReleaseHistoryEntry[], form: ReleaseFormData,
     form.platformTag ? ` (${form.platformTag})` : ''
   } (UP-${form.code.toUpperCase()}.${form.format})`;
 
+  // Under the "Release named ..." line and above the notes: the two
+  // together say what this release is and when it came out, which is what a
+  // trader reads first. Releases built before the field existed simply have
+  // no such line, rather than a made-up date.
+  const releaseDateLine = form.releaseDate?.trim()
+    ? ' '.repeat(HISTORY_BODY_INDENT) + `Released ${form.releaseDate.trim()}`
+    : null;
+
   const historyBlock = renderHistoryBlock(history);
   const membersBlock = renderMemberBlock(form.members);
 
@@ -91,6 +99,7 @@ export function renderNfo(history: ReleaseHistoryEntry[], form: ReleaseFormData,
     REL_NOTES_HEADING,
     '',
     ' '.repeat(HISTORY_BODY_INDENT) + releaseNotesLine,
+    ...(releaseDateLine ? [releaseDateLine] : []),
     '',
     indentBlock(form.releaseNotesText.trim()),
     '',

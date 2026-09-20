@@ -58,6 +58,9 @@
       <div id="release-number-preview" class="status"></div>
       <label for="entry-title">Title</label>
       <input type="text" id="entry-title" required autocomplete="off" placeholder="fleisch bitte ad 006" />
+      <label for="release-date">Release date</label>
+      <input type="text" id="release-date" autocomplete="off" placeholder="2026-09-21" />
+      <div class="hint">Prefilled with today. Printed in the NFO under the release name.</div>
       <label for="entry-category">Category</label>
       <select id="entry-category" required>
         <option value="" disabled selected>Select a category&hellip;</option>
@@ -68,6 +71,7 @@
         <option value="Graphics">Graphics</option>
         <option value="ASCII">ASCII</option>
         <option value="Tool">Tool</option>
+        <option value="Door">Door</option>
         <option value="Video">Video</option>
         <option value="Science">Science</option>
         <option value="Other">Other</option>
@@ -79,12 +83,10 @@
       <p class="hint">Printed under the logo in the /X NFO. Each is drawn into a fixed-width slot, so anything longer is cut.</p>
       <label for="x-release-date">Release date</label>
       <input type="text" id="x-release-date" autocomplete="off" placeholder="2026-06-20" />
-      <label for="x-coder">Coder</label>
-      <input type="text" id="x-coder" autocomplete="off" placeholder="zALO/uP!.." />
+      <div class="hint">Prefilled with today; change it if the release is dated differently.</div>
       <label for="x-system">System</label>
       <input type="text" id="x-system" autocomplete="off" placeholder="aMiEXPRESS" />
-      <label for="x-design">Design</label>
-      <input type="text" id="x-design" autocomplete="off" placeholder="diNO/uP!.." />
+      <div id="x-credits-preview" class="hint"></div>
 
       <h3>Boards</h3>
       <p class="hint">The board list the NFO prints. Leave empty to keep the list the last /X release published.</p>
