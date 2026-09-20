@@ -61,8 +61,10 @@ describe('centerInSlot', () => {
     expect(centerInSlot('abc', 9)).toBe('   abc   ');
   });
 
-  it('puts the odd leftover space on the right', () => {
-    expect(centerInSlot('abc', 8)).toBe('  abc   ');
+  it('puts the odd leftover space on the right of the text, as the group draws it', () => {
+    // Left-heavy: the release-name line, the group-news line and all seven
+    // banners in the /X release list are drawn this way.
+    expect(centerInSlot('abc', 8)).toBe('   abc  ');
   });
 
   it('hard-cuts text longer than the slot', () => {
@@ -79,7 +81,7 @@ describe('applyReleaseLineText', () => {
     after.forEach((line, i) => {
       if (i !== DIZ_RELEASE_LINE_ROW) expect(line).toBe(before[i]);
     });
-    expect(rowOf(updated)).toBe('|               NEW RELEASE                |');
+    expect(rowOf(updated)).toBe('|                NEW RELEASE               |');
   });
 
   it('keeps the pipes intact when the text is longer than the gap between them', () => {

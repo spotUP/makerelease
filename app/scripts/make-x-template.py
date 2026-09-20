@@ -19,10 +19,11 @@ REGIONS = [
     (26, 26, '{{RELEASE_NAME_LINE}}'),
     (29, 29, '{{FIELD_LINE_1}}'),
     (30, 30, '{{FIELD_LINE_2}}'),
-    (39, 93, '{{NOTES}}'),
+    (39, 87, '{{NOTES}}'),
+    (94, 98, '{{NEWS}}'),
     (107, 113, '{{ROSTER}}'),
     (123, 127, '{{BOARDS}}'),
-    (138, 255, '{{RELEASE_LIST}}'),
+    (138, 254, '{{RELEASE_LIST}}'),
 ]
 
 out = []
@@ -69,6 +70,6 @@ export const X_INNOVATIONS_NFO_TEMPLATE = %s;
 
 open(OUT, 'w').write(header)
 print('markers:', sorted(set(m for m in ['{{DATE}}', '{{CODER}}', '{{SYSTEM}}', '{{DESIGN}}', '{{RELEASE_NAME}}',
-                                         '{{NOTES}}', '{{ROSTER}}', '{{BOARDS}}', '{{RELEASE_LIST}}']
+                                         '{{NOTES}}', '{{NEWS}}', '{{ROSTER}}', '{{BOARDS}}', '{{RELEASE_LIST}}']
                             if m in template)))
 print('template lines:', len(template.split('\n')))

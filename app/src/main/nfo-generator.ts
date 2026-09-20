@@ -156,6 +156,7 @@ export function generateOutputs(
         system: form.system ?? '',
         design: form.design ?? '',
         releaseNotes: form.releaseNotesText,
+        news: form.newsText,
         members: form.members,
         boards: form.boards ?? [],
         releaseList,

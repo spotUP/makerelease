@@ -53,7 +53,8 @@ describe('wrapNotes', () => {
   it('breaks a line too wide for the frame, keeping its indent', () => {
     const wrapped = wrapNotes(`    ${'word '.repeat(30).trim()}`);
     expect(wrapped.length).toBeGreaterThan(1);
-    for (const line of wrapped) expect(line.length).toBeLessThanOrEqual(FIELD_WIDTH - 2);
+    // One column goes to the space that sets notes in from the gutter.
+    for (const line of wrapped) expect(line.length).toBeLessThanOrEqual(FIELD_WIDTH - 1);
     expect(wrapped[1].startsWith('    ')).toBe(true);
   });
 });
@@ -134,6 +135,20 @@ describe('listArtFromBanner', () => {
     );
     const nameOnly = listArtFromBanner(withTagline);
     expect(nameOnly).toBe(withTagline);
-    expect(withTagline.split('\n')).toHaveLength(12);
+    // Eleven rows, not twelve: the tagline row is dropped, not blanked.
+    expect(withTagline.split('\n')).toHaveLength(11);
+  });
+});
+
+describe('boards against the original', () => {
+  it('matches the real table row for row', () => {
+    const block = boardsBlock([
+      { name: 'uPTOWN', sysop: 'sPOT', hq: 'wEBHQ', status: 'SOON' },
+      { name: 'diGiTAL hiGHWAY', sysop: 'zALO', hq: 'sHQ', status: 'ASK4IT' },
+      { name: 'tHE yARD', sysop: 'zANER', hq: 'gHQ', status: 'tEMP-dOWN' },
+      { name: 'fiRST diViSiON', sysop: 'hAMLET', hq: 'sHQ', status: '1337-ONLY' },
+      { name: 'sANCTUARY', sysop: 'sANDMAN', hq: 'sHQ', status: 'ASK4ACCS' },
+    ]);
+    expect(block).toEqual(fixture.slice(122, 127));
   });
 });

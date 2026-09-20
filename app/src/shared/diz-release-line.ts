@@ -54,11 +54,17 @@ export function readReleaseLineText(banner: string, row: number = DEFAULT_ROW): 
   return line.slice(slot.start, slot.end).trim();
 }
 
-/** Centres `text` inside the slot, clipping anything that does not fit. */
+/**
+ * Centres `text` inside the slot, clipping anything that does not fit.
+ *
+ * Left-heavy on an odd remainder, which is how the group centres everything
+ * they draw by hand - the release-name line, the group-news line and all
+ * seven banners embedded in the /X release list agree on it.
+ */
 export function centerInSlot(text: string, width: number): string {
   const clipped = text.trim().slice(0, width);
   const pad = width - clipped.length;
-  const left = Math.floor(pad / 2);
+  const left = Math.ceil(pad / 2);
   return ' '.repeat(left) + clipped + ' '.repeat(pad - left);
 }
 

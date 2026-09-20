@@ -56,7 +56,10 @@ export function releaseNameLine(releaseName: string): string {
  * indented list), so a line that already fits is left exactly as typed and
  * only over-long ones are broken.
  */
-export function wrapNotes(notes: string, width = FIELD_WIDTH - 2): string[] {
+// One column is spent on the space that sets the notes in from the gutter,
+// so a note line has FIELD_WIDTH - 1 to live in. Taking one column too few
+// wraps a line that fitted in the original and grows the whole NFO by a row.
+export function wrapNotes(notes: string, width = FIELD_WIDTH - 1): string[] {
   const out: string[] = [];
   for (const raw of notes.replace(/\r\n/g, '\n').split('\n')) {
     const line = raw.replace(/\s+$/, '');
@@ -135,20 +138,31 @@ export function spacedCaps(role: string): string {
 }
 
 /**
- * The boards table: name, sysop and HQ tag dot-led out to a right-aligned
- * status, exactly as the original draws it.
+ * The boards table, on the fixed columns the original is drawn on: the board
+ * name starts at column 2, the sysop at 22, the HQ tag ends at 36 and the
+ * status ends at 56, with dots filling every gap. Measured off the real file
+ * rather than guessed - the HQ column is right-aligned, which no amount of
+ * looking at one row would have told you.
  */
+const BOARD_NAME_COL = 2;
+const BOARD_SYSOP_COL = 22;
+const BOARD_HQ_END = 36;
+const BOARD_STATUS_END = 56;
+
+function dotsBetween(from: number, to: number): string {
+  return to > from ? '.'.repeat(to - from) : '';
+}
+
 export function boardsBlock(boards: BoardEntry[]): string[] {
-  const nameWidth = Math.max(...boards.map((b) => b.name.length), 0);
-  const sysopWidth = Math.max(...boards.map((b) => b.sysop.length), 0);
-  const hqWidth = Math.max(...boards.map((b) => b.hq.length), 0);
   return boards.map((board) => {
-    const name = `${board.name} ${'.'.repeat(Math.max(1, nameWidth + 4 - board.name.length))}`;
-    const sysop = `${board.sysop} ${'.'.repeat(Math.max(1, sysopWidth + 4 - board.sysop.length))}`;
-    const hq = `${board.hq} ${'.'.repeat(Math.max(1, hqWidth + 4 - board.hq.length))}`;
-    const left = `  ${name} ${sysop} ${hq} `;
-    const status = board.status;
-    return frameLine(`${left}${status.padStart(Math.max(0, FIELD_WIDTH - 2 - left.length))}`);
+    let line = ' '.repeat(BOARD_NAME_COL) + board.name + ' ';
+    line += dotsBetween(line.length, BOARD_SYSOP_COL - 1) + ' ';
+    line += board.sysop + ' ';
+    const hqStart = BOARD_HQ_END - board.hq.length;
+    line += dotsBetween(line.length, hqStart - 1) + ' ' + board.hq + ' ';
+    const statusStart = BOARD_STATUS_END - board.status.length;
+    line += dotsBetween(line.length, statusStart - 1) + ' ' + board.status;
+    return frameLine(line);
   });
 }
 
@@ -160,6 +174,9 @@ export function boardsBlock(boards: BoardEntry[]): string[] {
  * every entry in the real NFO carries the fixed "pRESENTS:" line and one
  * name line, including releases whose own FILE_ID.DIZ has more.
  */
+/** Where an embedded banner starts inside the field, measured off the file. */
+const LIST_ART_INDENT = 7;
+
 export function releaseListBlock(
   entries: ReadonlyArray<{ displayNumber: string; art: string }>,
 ): string[] {
@@ -169,11 +186,19 @@ export function releaseListBlock(
     out.push(frameLine());
     out.push(frameLine(`  ${entry.displayNumber}:`));
     for (const artLine of entry.art.split('\n')) {
-      out.push(frameLine(centerInField(artLine)));
+      // Indented, not centred: the whole block sits at a fixed column so the
+      // art keeps its own shape. Centring each line separately makes the
+      // short rows of the logo drift against the long ones.
+      out.push(frameLine(' '.repeat(LIST_ART_INDENT) + artLine));
     }
     out.push(frameLine());
     out.push(frameLine());
   }
+  // The list closes with a rule of its own, the way the original does, so
+  // the section ends rather than running into the footer art.
+  out.push(ENTRY_RULE);
+  out.push(frameLine());
+  out.push(frameLine());
   return out;
 }
 
@@ -189,12 +214,40 @@ export function releaseListBlock(
  */
 export function listArtFromBanner(banner: string): string {
   const division = DIVISIONS.xinnovations;
-  const [nameRow] = division.editableDizRows;
+  const [nameRow, ...otherRows] = division.editableDizRows;
   const name = readReleaseLineText(banner, nameRow.row);
-  return applyReleaseLines(
-    division.defaultDizBanner,
-    division.editableDizRows.map((spec) => ({ row: spec.row, text: spec.row === nameRow.row ? name : '' })),
-  );
+  const filled = applyReleaseLines(division.defaultDizBanner, [{ row: nameRow.row, text: name }]);
+  // The other editable rows are REMOVED, not blanked: an entry in the real
+  // release list is eleven rows, closing straight after the name. Leaving an
+  // empty tagline row behind would make every entry a row taller than the
+  // seven already in the file.
+  const drop = new Set(otherRows.map((spec) => spec.row));
+  return filled
+    .split('\n')
+    .filter((_, i) => !drop.has(i))
+    .join('\n');
+}
+
+/**
+ * The group-news block under its own drawn heading. The original sets one
+ * centred line between two blank rows on each side, which is the shape this
+ * keeps however many lines the news runs to.
+ */
+export function newsBlock(news: string): string[] {
+  const lines = news
+    .replace(/\r\n/g, '\n')
+    .split('\n')
+    .map((line) => line.trim());
+  while (lines.length > 0 && lines[0] === '') lines.shift();
+  while (lines.length > 0 && lines[lines.length - 1] === '') lines.pop();
+  // Centred left-heavy, like the release-name line and unlike the banners.
+  const centred = (line: string): string => {
+    const text = line.slice(0, FIELD_WIDTH);
+    const pad = FIELD_WIDTH - text.length;
+    const left = Math.ceil(pad / 2);
+    return ' '.repeat(left) + text + ' '.repeat(pad - left);
+  };
+  return [frameLine(), frameLine(), ...lines.map((line) => frameLine(centred(line))), frameLine(), frameLine()];
 }
 
 export interface XInnovationsNfoInput {
@@ -204,6 +257,7 @@ export interface XInnovationsNfoInput {
   system: string;
   design: string;
   releaseNotes: string;
+  news: string;
   members: MemberEntry[];
   boards: BoardEntry[];
   /** Newest first, each with the banner art its list entry shows. */
@@ -233,6 +287,7 @@ export function renderXInnovationsNfo(input: XInnovationsNfoInput): string {
     .replace('{{SYSTEM}}', fitField(input.system, FIELD_WIDTHS.SYSTEM))
     .replace('{{DESIGN}}', fitField(input.design, FIELD_WIDTHS.DESIGN))
     .replace('{{NOTES}}', notesBlock(input.releaseNotes).join('\n'))
+    .replace('{{NEWS}}', newsBlock(input.news).join('\n'))
     .replace('{{ROSTER}}', rosterBlock(input.members).join('\n'))
     .replace('{{BOARDS}}', boardsBlock(input.boards).join('\n'))
     .replace('{{RELEASE_LIST}}', releaseListBlock(input.releaseList).join('\n'));
