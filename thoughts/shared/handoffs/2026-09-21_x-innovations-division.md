@@ -43,14 +43,20 @@ already existed, one has no surviving archive, and their posts had to carry
 their own dates.
 
 **Which dates are evidence and which are not.** oo1 (Jan 5), oo2 (Feb 7),
-oo3 (Mar 3) and oo7 (Jun 18) come from the newest file inside each archive.
-oo4 (Mar 24), oo5 (Apr 14) and oo6 (May 12) are spaced placeholders: their
-own file dates - Feb 5 for oo5, Jan 22 for oo6 - would sort them before
-releases they came after, and oo4 has no archive at all. If the real dates
-turn up, each is a one-line change.
+oo3 (Mar 3), oo4 (Mar 6) and oo7 (Jun 18) come from the newest file inside
+each archive. **oo5 (Apr 14) and oo6 (May 12) are placeholders**: their own
+file dates - Feb 5 and Jan 22 - would sort them before releases they came
+after. Those two need somebody's memory, not the filesystem's; each is a
+one-line change.
 
-oo4's page says "no copy of up-dgc11.zip is known to survive" rather than
-linking a download that 404s.
+**oo4 was recovered.** `UP-DGC11.zip` turned up on 2026-09-21 and is a real
+v1.1, not a duplicate of v1.0: the same file sizes, but a colour change and
+a date bug fixed (`MM-DD-YY` to `DD-MM-YY`). The archive is on the site, the
+post offers it, the catalogue names it, and its date is now evidence rather
+than a guess. It carries no FILE_ID.DIZ, so its banner is still the one
+recovered from UP-MD15's release list - the only record of how it was drawn.
+The door repository already had the file, which its sha256 check said when
+the submission was tried.
 
 ## What a division is
 
@@ -103,6 +109,8 @@ carries, which is what a real build does too.
 
 ## Next Steps
 
+0. **Two dates are guesses.** oo5 and oo6, above. Everything else about the
+   seven is sourced.
 1. **A real /X release has still never been made.** Everything around it is
    exercised - the generator by a golden test and by spot's dry run, the
    WordPress pipeline by seven real posts - but no /X build has taken a
