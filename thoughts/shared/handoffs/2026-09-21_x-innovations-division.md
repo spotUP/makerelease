@@ -73,9 +73,10 @@ carries, which is what a real build does too.
 
 ## Next Steps
 
-1. **A /X dry run from the app itself.** The pipeline was driven headlessly
-   against live data and the output is correct, but the Electron UI and the
-   archive packing have never run for a /X release.
+1. ~~A /X dry run from the app~~ **done** - spot ran one on 2026-09-21 and
+   confirmed the FILE_ID.DIZ and the NFO. What remains untried is a real /X
+   build: taking the number, publishing the post and the door-repo
+   submission.
 2. **The seven /X releases have no WordPress posts.** Backfilling the site
    needs a cover image each, which nobody has chosen - that is the blocker,
    not the code.
