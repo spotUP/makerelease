@@ -14,13 +14,43 @@ phases done. Reference release: `~/Downloads/up-md15`, fixture at
 
 ## State
 
+Working end to end, with one gap named at the bottom.
+
 - Both divisions live. Up Rough at 219, next 220. /X at oo7, next **oo8**.
 - /X has its own roster (18 members in three groups) and five boards,
   backfilled from UP-MD15.NFO.
-- Seven /X releases backfilled from the archives in `~/Downloads/releaes`.
+- Seven /X releases backfilled from the archives in `~/Downloads/releaes`,
+  and **all seven now have WordPress posts**: covers rendered from their own
+  FILE_ID.DIZ in Topaz, filed under Tools plus a new `/X Innovations`
+  category, dated so the site lists them oo1 to oo7 in order.
+- The generated FILE_ID.DIZ and NFO were checked by spot from the app and
+  are right.
 - The app is installed and verified; the three member zips on the Desktop
   are rebuilt from this code.
 - Both repos pushed. Server deployed.
+
+## The site backfill
+
+`scripts/diz-cover.py` renders a FILE_ID.DIZ as a cover image: the DIZ is
+already the artwork, drawn on an 80-column screen in the Amiga's own font, so
+a cover is that art in Topaz - light grey on near-black at 3x, the colours
+the release index uses. Covers are in `~/Desktop/x-innovations-covers/`.
+
+`scripts/publish-historical.ts` gives a backfilled release its post. It is a
+script rather than a route on purpose: `POST /:code/publish` is for a release
+being made now and rightly insists on an archive to upload, while these seven
+already existed, one has no surviving archive, and their posts had to carry
+their own dates.
+
+**Which dates are evidence and which are not.** oo1 (Jan 5), oo2 (Feb 7),
+oo3 (Mar 3) and oo7 (Jun 18) come from the newest file inside each archive.
+oo4 (Mar 24), oo5 (Apr 14) and oo6 (May 12) are spaced placeholders: their
+own file dates - Feb 5 for oo5, Jan 22 for oo6 - would sort them before
+releases they came after, and oo4 has no archive at all. If the real dates
+turn up, each is a one-line change.
+
+oo4's page says "no copy of up-dgc11.zip is known to survive" rather than
+linking a download that 404s.
 
 ## What a division is
 
@@ -73,13 +103,12 @@ carries, which is what a real build does too.
 
 ## Next Steps
 
-1. ~~A /X dry run from the app~~ **done** - spot ran one on 2026-09-21 and
-   confirmed the FILE_ID.DIZ and the NFO. What remains untried is a real /X
-   build: taking the number, publishing the post and the door-repo
-   submission.
-2. **The seven /X releases have no WordPress posts.** Backfilling the site
-   needs a cover image each, which nobody has chosen - that is the blocker,
-   not the code.
+1. **A real /X release has still never been made.** Everything around it is
+   exercised - the generator by a golden test and by spot's dry run, the
+   WordPress pipeline by seven real posts - but no /X build has taken a
+   number, packed an archive and submitted it to the door repository. oo8
+   will be the first.
+2. ~~The seven /X releases have no WordPress posts~~ **done**, see above.
 3. oo4 (dD Global Last Callers v1.1) has the placeholder filename
    `up-dgc11.zip`: its archive is lost everywhere including the door
    repository, and its art came from the NFO's own release list.
