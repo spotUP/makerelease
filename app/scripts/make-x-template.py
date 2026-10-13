@@ -4,10 +4,12 @@ The frame is dipswitch's drawing and stays exactly as drawn; only the regions
 a release actually varies become markers. Regions were measured from the file
 (see the plan) and are 1-based inclusive line numbers.
 """
+import os
 import json
 
-SRC = '/Users/spot/Code/makerelease/app/test/fixtures/UP-MD15.NFO'
-OUT = '/Users/spot/Code/makerelease/app/src/main/x-innovations-template.ts'
+APP = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..'))
+SRC = os.path.join(APP, 'test', 'fixtures', 'UP-MD15.NFO')
+OUT = os.path.join(APP, 'src', 'main', 'x-innovations-template.ts')
 
 lines = open(SRC, encoding='utf-8', errors='replace').read().split('\n')
 
