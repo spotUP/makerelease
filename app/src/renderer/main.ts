@@ -17,6 +17,7 @@ import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
 import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
+import { builtReleaseFor, type BuiltRelease } from './built-release.js';
 import { visibleSections, type SectionVisibility } from '../shared/section-visibility.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -102,15 +103,8 @@ const boardsTable = new BoardsTable(boardsTbody);
 const mediaEmbedsTable = new MediaEmbedsTable(mediaEmbedsContainer, () => window.api.pickImage());
 let nextReleaseNumber = 0;
 let selectedPaths: string[] = [];
-let lastBuiltCode: string | null = null;
-let lastBuiltArchivePath: string | null = null;
+let built: BuiltRelease | null = null;
 let selectedImagePath: string | null = null;
-// Captured at build-success time from mediaEmbedsTable, frozen for the
-// later Publish click — mirrors lastBuiltArchivePath. The form's own
-// media-embed rows could be edited (or cleared) between Build and Publish;
-// Publish must send exactly what was actually built and sent to the server,
-// not whatever the form currently shows.
-let lastEmbedImagePaths: string[] = [];
 
 // Typing in a credit row has to refresh the derived creator line too, and
 // rows come and go - one delegated listener on the table body covers every
@@ -319,7 +313,8 @@ function prefillAminetShort(): void {
  * upload is retried with the same button whichever started it.
  */
 async function uploadLastBuildToAminet(): Promise<void> {
-  if (!lastBuiltArchivePath) return;
+  const release = builtReleaseFor(built, profileSelect.value);
+  if (!release) return;
   const problems = refreshAminetPreview();
   if (problems.length) {
     aminetStatus.textContent = `Not uploaded - fix the Aminet readme first: ${problems.join('; ')}`;
@@ -330,7 +325,7 @@ async function uploadLastBuildToAminet(): Promise<void> {
   aminetStatus.textContent = 'Uploading to Aminet...';
   aminetStatus.className = 'status';
   try {
-    const result = await window.api.uploadToAminet(aminetRequest(), lastBuiltArchivePath);
+    const result = await window.api.uploadToAminet(aminetRequest(), release.archivePath);
     aminetStatus.textContent = `Aminet: ${result.message}.`;
     aminetStatus.className = result.ok ? 'status ok' : 'status warn';
     // Only a failure is worth a second click; a second upload of the same
@@ -374,8 +369,7 @@ async function uploadLastBuildToAminet(): Promise<void> {
  * release's code/build.
  */
 function resetPublishState(): void {
-  lastBuiltCode = null;
-  lastBuiltArchivePath = null;
+  built = null;
   selectedImagePath = null;
   selectedImageDiv.textContent = '';
   publishSection.hidden = true;
@@ -389,7 +383,6 @@ function resetPublishState(): void {
   deleteReleaseBtn.disabled = false;
   deleteStatus.textContent = '';
   deleteStatus.className = 'status';
-  lastEmbedImagePaths = [];
 }
 
 function renderSelectedFiles(): void {
@@ -538,6 +531,9 @@ function numberHeadings(): void {
 }
 
 async function init(): Promise<void> {
+  // A build belongs to the profile that made it; once the profile is switched
+  // or reloaded, its Publish and Aminet state must not stay on screen.
+  resetPublishState();
   try {
     const seed = await window.api.loadSeedState(profileSelect.value);
     applyProfile(seed.profile);
@@ -754,8 +750,7 @@ form.addEventListener('submit', async (e) => {
       // Aminet is the only place left to send it.
       buildStatus.textContent = `Built: ${result.archivePath}`;
       buildStatus.className = 'status ok';
-      lastBuiltCode = code;
-      lastBuiltArchivePath = result.archivePath;
+      built = { profileId: formData.profileId, code, archivePath: result.archivePath, embedImagePaths: [] };
       aminetSection.hidden = false;
       aminetUploadBtn.disabled = false;
       prefillAminetShort();
@@ -774,9 +769,7 @@ form.addEventListener('submit', async (e) => {
             }`
           : '');
       buildStatus.className = 'status ok';
-      lastBuiltCode = code;
-      lastBuiltArchivePath = result.archivePath;
-      lastEmbedImagePaths = embedImagePaths;
+      built = { profileId: formData.profileId, code, archivePath: result.archivePath, embedImagePaths };
       publishSection.hidden = false;
       publishBtn.disabled = !selectedImagePath;
       // Shown now so the readme can be filled in while the cover image is
@@ -802,12 +795,13 @@ pickImageBtn.addEventListener('click', async () => {
   if (picked) {
     selectedImagePath = picked;
     selectedImageDiv.textContent = picked;
-    publishBtn.disabled = !lastBuiltArchivePath;
+    publishBtn.disabled = !builtReleaseFor(built, profileSelect.value);
   }
 });
 
 publishBtn.addEventListener('click', async () => {
-  if (!lastBuiltCode || !lastBuiltArchivePath || !selectedImagePath) return;
+  const release = builtReleaseFor(built, profileSelect.value);
+  if (!release || !selectedImagePath) return;
   // With the Aminet box ticked, an incomplete readme stops the whole Publish
   // before anything is sent: the two are one action to the user, and the
   // website half cannot be redone to pick up the other half.
@@ -822,11 +816,11 @@ publishBtn.addEventListener('click', async () => {
   publishStatus.className = 'status';
   try {
     const result = await window.api.publishToWeb(
-      profileSelect.value,
-      lastBuiltCode,
-      lastBuiltArchivePath,
+      release.profileId,
+      release.code,
+      release.archivePath,
       selectedImagePath,
-      lastEmbedImagePaths,
+      release.embedImagePaths,
     );
     if (result.ok) {
       publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl}).`;
@@ -913,10 +907,8 @@ deleteReleaseBtn.addEventListener('click', async () => {
       // release leaves this session's own build alone. deleteStatus stays as
       // it is either way: it may carry a WordPress-post URL the user still
       // has to act on.
-      if (deletedCode === lastBuiltCode) {
-        lastBuiltCode = null;
-        lastBuiltArchivePath = null;
-        lastEmbedImagePaths = [];
+      if (deletedCode === builtReleaseFor(built, profileSelect.value)?.code) {
+        built = null;
         publishSection.hidden = true;
         publishStatus.textContent = '';
         publishStatus.className = 'status';
