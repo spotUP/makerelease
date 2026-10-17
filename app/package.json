@@ -1,9 +1,9 @@
 {
   "name": "makerelease",
   "version": "0.1.0",
-  "description": "Up Rough release archive maker",
+  "description": "Release archive maker for demoscene groups: NFO, DIZ, LHA or ZIP, Aminet upload",
   "private": true,
-  "homepage": "https://www.uprough.net",
+  "homepage": "https://github.com/spotUP/makerelease",
   "author": {
     "name": "Up Rough",
     "email": "spotup@gmail.com"
@@ -29,7 +29,7 @@
   },
   "build": {
     "appId": "net.uprough.makerelease",
-    "productName": "Up Rough Release Maker",
+    "productName": "makerelease",
     "directories": {
       "output": "release"
     },

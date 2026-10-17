@@ -1,74 +1,76 @@
-# makerelease
+# makerelease: developer notes
 
-Electron app for building Up Rough release archives. Talks to the
-`releases-doorserver` API for release numbering, the member roster, and
-release history — see `src/main/releases-client.ts`.
+User documentation is in the [root README](../README.md). This page is for
+working on the app itself.
 
-## Distributing a real build
+## Commands
 
-Publishing a release (`POST /api/releases` in `src/main/releases-client.ts`)
-requires the `X-Release-Key` header, sourced from `RELEASES_WRITE_KEY`. A
-packaged `.app` launched from Finder inherits no shell environment, so this
-key must be baked in at **build time**, not read from `process.env` at
-runtime.
-
-To produce a real distributable build with a working write key:
+All commands run from `app/`.
 
 ```sh
-RELEASES_WRITE_KEY=<the real key> npm run dist
+npm install
+npm start            # build main, preload and renderer, then launch Electron
+npm run typecheck    # main, preload and renderer projects
+npm test             # vitest run, suites under test/unit/
+npx vitest run test/unit/<name>.spec.ts
+npm run dist         # electron-builder for this system
 ```
 
-This runs `scripts/inject-release-key.js` before compiling, which writes the
-key into `src/main/config.generated.ts`. That file is gitignored and
-regenerated automatically (`npm install`'s `postinstall` hook, and again by
-`npm run dist`) — it always exists locally with either the real key or a
-`null` placeholder, so plain dev builds and a fresh checkout keep compiling
-without ever needing the key committed. `src/main/config.ts` imports that
-constant and prefers it over everything else at runtime.
+## Layout
 
-If you build without setting `RELEASES_WRITE_KEY`, the app falls back to the
-`REPLACE_ME_BEFORE_DISTRIBUTING` placeholder key, which the server always
-rejects with 401. The app detects this and shows a warning in the UI on
-startup (`configWarning` in `SeedState`) instead of only logging to
-main-process stdout, which a Finder-launched user would never see.
+- `src/main/` Electron main process: profiles, build, staging, archiving,
+  backends, Aminet upload.
+- `src/renderer/` the form and its previews.
+- `src/shared/` code both sides use: profile parsing, the placeholder
+  template language, naming, the DIZ release line, the Aminet readme.
+- `test/unit/` vitest suites. `test/fixtures/` byte-exact NFO and DIZ files.
 
-For local development against a local/staging `releases-doorserver`, set
-`RELEASES_WRITE_KEY` (and optionally `RELEASES_API_BASE_URL`) as a normal
-env var before `npm start` — no injection step needed; see the resolution
-order documented at the top of `src/main/config.ts`.
+## How a build flows
 
-## Uploading to Aminet
+1. `profiles.ts` loads `profile.json` and the templates from the user data
+   folder.
+2. `backendFor` in `backend.ts` picks the backend named in the profile:
+   `none` builds on disk only, `releases-doorserver` numbers and publishes
+   through a server.
+3. `generateOutputs` in `nfo-generator.ts` dispatches on the profile's
+   renderer: `placeholder` fills the group's templates, `uprough` and
+   `xinnovations` draw the two built-in layouts.
+4. `staging.ts` lays out the release folder and `archiver.ts` runs `lha` or
+   `zip`.
 
-The Publish step has an "Also upload to Aminet" box, ticked by default. When it
-is ticked, a successful publish to uprough.net is followed by an anonymous FTP
-upload of the archive and a matching `.readme` to `ftp://main.aminet.net/new`,
-as Aminet's uploading instructions ask. The readme is composed from the
-description, release notes and credits of the form, previewed live before the
-Publish button does anything, and written next to the archive (for example
-`UP-HYPOC.LHA` gets `up-hypoc.readme`) so a failed upload can be redone by
-hand. Uploader name, email, Aminet directory and architecture are remembered
-in the app between releases.
+Each path has a reachability test (`test/unit/reach-*.spec.ts`) that drives
+the real IPC handlers.
 
-The upload runs through `curl`, which ships with macOS, Windows 10 and later
-and every Linux distribution. A missing `curl`, a refused upload or an
-incomplete readme is reported next to the publish result; the website publish
-itself is unaffected. Aminet is only tried after the website took the release,
-never at build time, and never when the publish failed.
+## Golden output
 
-Aminet cannot be undone from the app: a Revoke removes the release from
-uprough.net but the Aminet copy stays. Ask the Aminet team to remove it, or
-upload a corrected archive under the same file name, which replaces it.
+The `uprough` and `xinnovations` renderers must keep producing the same
+bytes. `test/unit/ur-golden.spec.ts` and `test/unit/x-golden.spec.ts` compare
+them with fixtures. Update a fixture only from a measured source, never by
+retyping it.
 
-## Production server
+## Up Rough and /X Innovations profiles
 
-`RELEASES_API_BASE_URL` defaults to `https://www.uprough.net` (see
-`DEFAULT_BASE_URL` in `src/main/config.ts`) — `releases-doorserver` runs
-there, path-mounted at `/api/releases/*` on the same host and nginx vhost as
-the WordPress site (not on its own `releases.uprough.net` subdomain — that
-DNS record doesn't exist). Full server-side deployment details — host,
-paths, pm2 setup, nginx config, how to update it, how to rotate the
-`RELEASES_WRITE_KEY`/WordPress credentials — live in
-[`releases-doorserver/DEPLOYMENT.md`](https://github.com/spotUP/releases-doorserver/blob/main/DEPLOYMENT.md)
-(separate repo). The real `RELEASES_WRITE_KEY` for that server is not
-committed anywhere — get it from whoever ran the deploy, or generate a new
-one and update the server's `ecosystem.config.cjs` to match.
+These groups use `"backend": "releases-doorserver"` with a `server` entry:
+
+```json
+"server": { "baseUrl": "https://releases.uprough.net", "writeKey": "<key>" }
+```
+
+Builds carry no key; the key lives in the profile on the machine that
+publishes. Two environment variables override the profile for local work
+against another server:
+
+| Variable | Overrides |
+|---|---|
+| `RELEASES_API_BASE_URL` | `server.baseUrl` |
+| `RELEASES_WRITE_KEY` | `server.writeKey` |
+
+Without a valid key the server rejects a publish with 401, and the window
+says so on startup. The server is the separate `releases-doorserver`
+repository, which documents its own deployment.
+
+## Aminet upload
+
+The upload runs `curl` against `ftp://main.aminet.net/new`. There is no
+sandbox: an upload is public once a moderator approves it, so never exercise
+it outside a real release. Tests replace `curl`.
