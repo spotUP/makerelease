@@ -60,8 +60,11 @@ export const GOLD_HISTORY: ReleaseHistoryEntry[] = [
 export const GOLD_NFO_PATH = path.join(__dirname, '../fixtures/UP-GOLD.NFO');
 export const GOLD_DIZ_PATH = path.join(__dirname, '../fixtures/UP-GOLD.DIZ');
 
+export const GOLD_PROFILE = { filePrefix: 'UP-', label: 'Up Rough', url: 'https://uprough.net', renderer: 'uprough' } as const;
+
 export function renderGold(): { nfoText: string; dizText: string } {
-  const out = generateOutputs({ filePrefix: 'UP-' }, GOLD_HISTORY, GOLD_RELEASE_NUMBER, GOLD_FORM);
+  const out = generateOutputs(GOLD_PROFILE, GOLD_HISTORY, GOLD_RELEASE_NUMBER, GOLD_FORM);
+  if (out.nfoText === null) throw new Error('the Up Rough renderer always writes an NFO');
   return { nfoText: out.nfoText, dizText: out.dizText };
 }
 

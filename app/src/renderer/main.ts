@@ -59,6 +59,7 @@ const cleanupSection = $<HTMLElement>('cleanup-section');
 const creatorsPreview = $<HTMLDivElement>('creators-preview');
 const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
 const dizReleaseLinesContainer = $<HTMLDivElement>('diz-release-lines');
+const templateStatus = $<HTMLDivElement>('template-status');
 
 const pickFilesBtn = $<HTMLButtonElement>('pick-files-btn');
 const selectedFilesList = $<HTMLUListElement>('selected-files-list');
@@ -506,6 +507,7 @@ function applyVisibility(v: SectionVisibility): void {
   dizLineSection.hidden = !v.dizReleaseLine && !v.dizPreviewOnly;
   dizReleaseLinesContainer.hidden = !v.dizReleaseLine;
   dizReleaseLineHint.hidden = !v.dizReleaseLine;
+  templateStatus.hidden = !v.dizPreviewOnly;
   for (const input of dizLineInputs) input.required = v.dizReleaseLine;
   cleanupSection.hidden = !v.revoke;
   aminetCheckbox.parentElement!.hidden = !v.publishWebsite;
@@ -550,6 +552,7 @@ async function init(): Promise<void> {
     // After the banner, which rebuilds the release-line inputs whose
     // required flag this sets.
     applyVisibility(visibleSections(seed.profile));
+    scheduleTemplatePreview();
     updateReleaseNumberPreview();
     // Both can be set at once (an unconfigured build against a drifted
     // catalogue), and neither must hide the other.
@@ -610,6 +613,87 @@ pickFilesBtn.addEventListener('click', async () => {
   renderSelectedFiles();
 });
 
+/**
+ * A placeholder profile's DIZ is the group's own file_id.diz with the form
+ * filled in, so the preview asks main to render it from the current form
+ * and the template files as they are on disk now.
+ */
+let templatePreviewTimer: ReturnType<typeof setTimeout> | undefined;
+let templatePreviewRequest = 0;
+
+function scheduleTemplatePreview(): void {
+  clearTimeout(templatePreviewTimer);
+  if (!visibility.dizPreviewOnly) return;
+  templatePreviewTimer = setTimeout(() => void refreshTemplatePreview(), 250);
+}
+
+async function refreshTemplatePreview(): Promise<void> {
+  if (!visibility.dizPreviewOnly) return;
+  const request = ++templatePreviewRequest;
+  const code = codeInput.value.trim().toUpperCase() || 'X'.repeat(currentProfile?.codeLength ?? 5);
+  try {
+    const preview = await window.api.previewOutputs(readForm(code));
+    // A slower answer to an older request must not overwrite a newer one.
+    if (request !== templatePreviewRequest || !preview) return;
+    dizBannerPreview.textContent = preview.dizText;
+    const notes = [...preview.problems];
+    if (!preview.hasNfoTemplate) notes.push('No release.nfo template in this profile, so the archive gets no NFO.');
+    templateStatus.textContent = notes.join('\n');
+    templateStatus.className = preview.problems.length ? 'status warn' : 'status';
+  } catch (err) {
+    if (request !== templatePreviewRequest) return;
+    templateStatus.textContent = err instanceof Error ? err.message : String(err);
+    templateStatus.className = 'status warn';
+  }
+}
+
+form.addEventListener('input', scheduleTemplatePreview);
+form.addEventListener('change', scheduleTemplatePreview);
+
+/**
+ * The form as it would be sent to main. The build and the template preview
+ * both read it here, so the preview shows exactly what a build would write.
+ */
+function readForm(code: string): ReleaseFormData {
+  const credits = creditsTable.getCredits();
+  // A hidden section sends nothing, whatever rows it held before the
+  // group was switched.
+  const mediaEmbeds = visibility.mediaEmbeds ? mediaEmbedsTable.getMediaEmbeds() : [];
+
+  const boards = boardsTable.getBoards();
+  return {
+    profileId: profileSelect.value,
+    releaseDate: releaseDateInput.value.trim(),
+    ...(currentDivision === 'xinnovations'
+      ? {
+          releaseDate: xReleaseDateInput.value.trim(),
+          coder: creditNamesForRole(credits, CODER_ROLES),
+          system: xSystemInput.value.trim(),
+          design: creditNamesForRole(credits, DESIGN_ROLES),
+          // An empty table means "leave the stored list alone", so it is sent
+          // as absent rather than as an empty list that would wipe it.
+          ...(boards.length > 0 ? { boards } : {}),
+        }
+      : {}),
+    ...(visibility.releaseNumberText ? { releaseNumberText: releaseNumberTextInput.value.trim() } : {}),
+    code,
+    format: getSelectedFormat(),
+    releaseName: releaseNameInput.value.trim(),
+    platformTag: platformTagInput.value.trim(),
+    releaseNotesText: releaseNotesTextArea.value,
+    newsText: newsTextArea.value,
+    dizBannerText: currentDizBannerText(),
+    members: memberlist.getMembers(),
+    entryTitle: visibility.historyEntry ? entryTitleInput.value.trim() : '',
+    entryCategory: visibility.historyEntry ? entryCategoryInput.value.trim() : '',
+    entryCreators: creatorsFromCredits(credits),
+    selectedPaths,
+    description: descriptionInput.value.trim(),
+    credits,
+    mediaEmbeds,
+  };
+}
+
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
 
@@ -640,51 +724,14 @@ form.addEventListener('submit', async (e) => {
   // The credits are the only place the release's people are entered, so an
   // empty table means the NFO history entry would have a blank creator line
   // and the server would reject the build.
-  const credits = creditsTable.getCredits();
-  const entryCreators = creatorsFromCredits(credits);
-  if (!entryCreators) {
+  if (!creatorsFromCredits(creditsTable.getCredits())) {
     buildStatus.textContent = 'Add at least one credit - the release history creator line is built from them.';
     buildStatus.className = 'status warn';
     return;
   }
 
-  // A hidden section sends nothing, whatever rows it held before the
-  // group was switched.
-  const mediaEmbeds = visibility.mediaEmbeds ? mediaEmbedsTable.getMediaEmbeds() : [];
+  const formData = readForm(code);
   const embedImagePaths = visibility.mediaEmbeds ? mediaEmbedsTable.getEmbedImagePaths() : [];
-
-  const boards = boardsTable.getBoards();
-  const formData: ReleaseFormData = {
-    profileId: profileSelect.value,
-    releaseDate: releaseDateInput.value.trim(),
-    ...(currentDivision === 'xinnovations'
-      ? {
-          releaseDate: xReleaseDateInput.value.trim(),
-          coder: creditNamesForRole(credits, CODER_ROLES),
-          system: xSystemInput.value.trim(),
-          design: creditNamesForRole(credits, DESIGN_ROLES),
-          // An empty table means "leave the stored list alone", so it is sent
-          // as absent rather than as an empty list that would wipe it.
-          ...(boards.length > 0 ? { boards } : {}),
-        }
-      : {}),
-    ...(visibility.releaseNumberText ? { releaseNumberText: releaseNumberTextInput.value.trim() } : {}),
-    code,
-    format: getSelectedFormat(),
-    releaseName: releaseNameInput.value.trim(),
-    platformTag: platformTagInput.value.trim(),
-    releaseNotesText: releaseNotesTextArea.value,
-    newsText: newsTextArea.value,
-    dizBannerText: currentDizBannerText(),
-    members: memberlist.getMembers(),
-    entryTitle: visibility.historyEntry ? entryTitleInput.value.trim() : '',
-    entryCategory: visibility.historyEntry ? entryCategoryInput.value.trim() : '',
-    entryCreators,
-    selectedPaths,
-    description: descriptionInput.value.trim(),
-    credits,
-    mediaEmbeds,
-  };
 
   const dryRun = dryRunCheckbox.checked;
 

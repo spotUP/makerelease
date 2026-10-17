@@ -96,6 +96,7 @@ button {
 button.danger { background: var(--danger); color: var(--fg); }
 
 .status { font-size: 0.85rem; margin-top: 0.4rem; }
+#template-status { white-space: pre-line; }
 .status.warn { color: var(--danger); }
 .status.ok { color: #4caf50; }
 

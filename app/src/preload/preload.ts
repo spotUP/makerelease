@@ -6,6 +6,7 @@ import {
   BuildResult,
   DeleteReleaseOutcome,
   MakereleaseApi,
+  OutputsPreview,
   PublishToWebOutcome,
   ReleaseFormData,
   SeedState,
@@ -20,6 +21,8 @@ const api: MakereleaseApi = {
     ipcRenderer.invoke('checkCodeAvailability', profileId, code),
   buildRelease: (form: ReleaseFormData, dryRun: boolean): Promise<BuildResult> =>
     ipcRenderer.invoke('buildRelease', form, dryRun),
+  previewOutputs: (form: ReleaseFormData): Promise<OutputsPreview | null> =>
+    ipcRenderer.invoke('previewOutputs', form),
   pickImage: (): Promise<string | null> => ipcRenderer.invoke('pickImage'),
   publishToWeb: (
     profileId: string,

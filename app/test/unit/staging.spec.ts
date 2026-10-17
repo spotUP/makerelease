@@ -87,6 +87,14 @@ describe('stageRelease', () => {
     expect(await fs.readFile(path.join(outerDir, 'file_id.diz'), 'latin1')).toBe('diz text');
   });
 
+  it('writes no NFO when the profile has no NFO template', async () => {
+    const src = await tempSource('gfx', ['dip-fast.png']);
+    const outerDir = await stageRelease(UR, form([src]), { ...generated, nfoText: null });
+    const releaseDir = path.join(outerDir, path.basename(outerDir));
+    expect((await fs.readdir(releaseDir)).filter((f) => /\.nfo$/i.test(f))).toEqual([]);
+    expect(await fs.readFile(path.join(outerDir, 'file_id.diz'), 'latin1')).toBe('diz text');
+  });
+
   it('copies a selected file straight into the release dir', async () => {
     const dir = await tempSource('loose', ['dip-ev26.ans']);
     const outerDir = await stageRelease(UR, form([path.join(dir, 'dip-ev26.ans')]), generated);

@@ -67,7 +67,8 @@ export interface ReleaseFormData {
 }
 
 export interface GeneratedOutputs {
-  nfoText: string;
+  /** null: a placeholder profile without a release.nfo template ships no NFO. */
+  nfoText: string | null;
   dizText: string;
   releaseNumber: number;
 }
@@ -121,6 +122,16 @@ export interface DoorSubmissionOutcome {
   ok: boolean;
   message: string;
   id?: number;
+}
+
+/** What the window shows while a placeholder profile's form is filled in. */
+export interface OutputsPreview {
+  dizText: string;
+  /** null when the profile has no release.nfo, or when a template problem stops rendering. */
+  nfoText: string | null;
+  hasNfoTemplate: boolean;
+  /** Each as "<file> line N: <problem>"; empty when both templates render. */
+  problems: string[];
 }
 
 export interface BuildResult {
@@ -219,6 +230,8 @@ export interface MakereleaseApi {
   pickFilesAndDirs(): Promise<string[]>;
   checkCodeAvailability(profileId: string, code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
+  /** A placeholder profile's NFO and DIZ as they would build now; null for the code renderers. */
+  previewOutputs(form: ReleaseFormData): Promise<OutputsPreview | null>;
   pickImage(): Promise<string | null>;
   publishToWeb(
     profileId: string,

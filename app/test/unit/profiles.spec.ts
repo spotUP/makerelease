@@ -92,4 +92,26 @@ describe('profiles on disk', () => {
     expect(templates.nfo).toBe('RéÛ\n');
     expect(templates.diz).toBe('°±²');
   });
+
+  it('turns CRLF and lone CR line endings into LF', async () => {
+    await writeProfile('demo', VALID);
+    await fs.writeFile(path.join(dir, 'demo', 'release.nfo'), 'a\r\nb\rc\n', 'latin1');
+    await fs.writeFile(path.join(dir, 'demo', 'file_id.diz'), 'x\r\n', 'latin1');
+
+    expect(await readTemplates(dir, 'demo')).toEqual({ nfo: 'a\nb\nc\n', diz: 'x\n' });
+  });
+
+  it('reads a missing release.nfo as no NFO template', async () => {
+    await writeProfile('demo', VALID);
+    await fs.writeFile(path.join(dir, 'demo', 'file_id.diz'), 'x\n', 'latin1');
+
+    expect(await readTemplates(dir, 'demo')).toEqual({ nfo: null, diz: 'x\n' });
+  });
+
+  it('refuses a profile without file_id.diz, naming the file', async () => {
+    await writeProfile('demo', VALID);
+    await fs.writeFile(path.join(dir, 'demo', 'release.nfo'), 'x\n', 'latin1');
+
+    await expect(readTemplates(dir, 'demo')).rejects.toThrow('file_id.diz: could not be read');
+  });
 });

@@ -4,6 +4,7 @@ import {
   AminetUploadOutcome,
   AminetUploadRequest,
   BuildResult,
+  OutputsPreview,
   DeleteReleaseOutcome,
   PublishToWebOutcome,
   ReleaseFormData,
@@ -11,9 +12,10 @@ import {
 } from '../shared/types';
 import { divisionIdOf, summarize, type GroupProfile, type ProfileListEntry } from '../shared/profile';
 import { archiveFileName, releaseBaseName } from '../shared/naming';
-import { isProfileLoadError, listProfiles, loadProfile } from './profiles';
+import { isProfileLoadError, listProfiles, loadProfile, readTemplates } from './profiles';
 import { backendFor, deleteFailure, publishFailure } from './backend';
 import { generateOutputs } from './nfo-generator';
+import { placeholderProblems, renderPlaceholderOutputs } from './nfo-placeholder';
 import { uploadToAminet } from './aminet';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
@@ -126,7 +128,8 @@ export function registerIpcHandlers(
     const { releaseNumber, history } = dryRun ? await backend.preview(form) : await backend.create(form);
     const releaseList = await backend.releaseList(form, releaseNumber);
 
-    const generated = generateOutputs(profile, history, releaseNumber, form, releaseList);
+    const templates = profile.renderer === 'placeholder' ? await readTemplates(profilesDir, profile.id) : undefined;
+    const generated = generateOutputs(profile, history, releaseNumber, form, releaseList, templates);
     const outerDir = await stageRelease(profile, form, generated);
     await packArchive(profile, outerDir, form.code, form.format, outputRoot);
     await finalizeRelease(profile, outerDir, form.code, outputRoot);
@@ -140,6 +143,21 @@ export function registerIpcHandlers(
       isDryRun: dryRun,
       ...(doorSubmission ? { doorSubmission } : {}),
     };
+  });
+
+  // Template files are re-read on every call, so an edit to release.nfo or
+  // file_id.diz shows up in the window without reloading anything.
+  ipcMain.handle('previewOutputs', async (_event, form: ReleaseFormData): Promise<OutputsPreview | null> => {
+    const profile = await loadProfile(profilesDir, form.profileId);
+    if (profile.renderer !== 'placeholder') return null;
+    const templates = await readTemplates(profilesDir, profile.id);
+    const problems = placeholderProblems(profile, templates, form);
+    const hasNfoTemplate = templates.nfo !== null;
+    if (problems.length) {
+      return { dizText: '', nfoText: null, hasNfoTemplate, problems };
+    }
+    const { dizText, nfoText } = renderPlaceholderOutputs(profile, templates, form);
+    return { dizText, nfoText, hasNfoTemplate, problems };
   });
 
   ipcMain.handle('pickImage', async (): Promise<string | null> => {

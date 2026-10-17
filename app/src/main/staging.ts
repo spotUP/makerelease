@@ -19,7 +19,9 @@ export async function stageRelease(
   await fs.mkdir(innerDir, { recursive: true });
 
   await writeLatin1(path.join(outerDir, 'file_id.diz'), generated.dizText);
-  await writeLatin1(path.join(innerDir, `${releaseDir}.NFO`), generated.nfoText);
+  if (generated.nfoText !== null) {
+    await writeLatin1(path.join(innerDir, `${releaseDir}.NFO`), generated.nfoText);
+  }
 
   for (const src of form.selectedPaths) {
     // A selected folder that is itself called <PREFIX><CODE> is the release folder

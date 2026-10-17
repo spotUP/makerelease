@@ -1,6 +1,7 @@
 import { renderXInnovationsNfo } from './nfo-x-innovations';
 import { GeneratedOutputs, MemberEntry, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
-import type { ProfileSummary } from '../shared/profile';
+import type { GroupProfile, ProfileSummary } from '../shared/profile';
+import { renderPlaceholderOutputs, type ProfileTemplates } from './nfo-placeholder';
 import { archiveFileName } from '../shared/naming';
 import {
   BANNER,
@@ -131,22 +132,28 @@ export function renderDiz(form: ReleaseFormData): string {
 }
 
 /**
- * The two divisions ship completely different NFOs - Up Rough's plain
- * 80-column layout and /X Innovations' framed drawing - so which renderer
- * runs is decided here, once, from the release's own division.
+ * Which renderer runs is decided here, once, from the profile: Up Rough's
+ * plain 80-column layout, /X Innovations' framed drawing, or a group's own
+ * template files with placeholders filled in.
  *
  * `releaseList` is only needed by /X, whose NFO lists every previous release
- * as its own banner art rather than as a line of text.
+ * as its own banner art rather than as a line of text. `templates` is only
+ * needed by the placeholder renderer.
  */
 export function generateOutputs(
-  profile: Pick<ProfileSummary, 'filePrefix'>,
+  profile: Pick<GroupProfile, 'filePrefix' | 'label' | 'url' | 'renderer'>,
   history: ReleaseHistoryEntry[],
   releaseNumber: number,
   form: ReleaseFormData,
   releaseList: ReadonlyArray<{ displayNumber: string; art: string }> = [],
+  templates?: ProfileTemplates,
 ): GeneratedOutputs {
+  if (profile.renderer === 'placeholder') {
+    if (!templates) throw new Error(`${profile.label}: the placeholder renderer needs the profile's template files`);
+    return renderPlaceholderOutputs(profile, templates, form);
+  }
   const dizText = renderDiz(form);
-  if (form.division === 'xinnovations') {
+  if (profile.renderer === 'xinnovations') {
     return {
       nfoText: renderXInnovationsNfo({
         releaseName: form.entryTitle,

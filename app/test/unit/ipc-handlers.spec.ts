@@ -11,6 +11,7 @@ vi.mock('electron', () => ({
 // Profiles come from parseProfile on fixed JSON, so every handler sees exactly
 // what a real profile.json would give it; only the disk read is skipped (the
 // real one is covered by profiles.spec.ts and reach-profiles.spec.ts).
+const TEMPLATES = { nfo: "{{group}}\n", diz: "{{code}}\n" };
 const PROFILE_JSON: Record<string, unknown> = {
   uprough: {
     label: 'Up Rough', url: 'https://uprough.net', filePrefix: 'UP-', renderer: 'uprough',
@@ -38,6 +39,7 @@ vi.mock('../../src/main/profiles', async () => {
       return parseProfile(PROFILE_JSON[id], id, `${id}/profile.json`);
     }),
     listProfiles: vi.fn(),
+    readTemplates: vi.fn(async () => TEMPLATES),
     isProfileLoadError: (entry: { error?: string }) => typeof entry.error === 'string',
   };
 });
@@ -181,6 +183,7 @@ describe('registerIpcHandlers', () => {
       7,
       { ...form, division: 'uprough' },
       [],
+      undefined, // code renderers read no template files
     );
     expect(result.releaseNumber).toBe(7);
     expect(result.archivePath).toContain('UP-AAAAA.LHA');
@@ -222,6 +225,7 @@ describe('registerIpcHandlers', () => {
       8,
       { ...form, division: 'uprough' },
       [],
+      undefined, // code renderers read no template files
     );
     expect(result.releaseNumber).toBe(8);
     expect(result.isDryRun).toBe(true);
@@ -660,7 +664,7 @@ describe('registerIpcHandlers', () => {
     // A placeholder profile has no division, so whatever the window sent is dropped.
     const sentForm = (nfoGenerator.generateOutputs as any).mock.calls[0][3];
     expect(sentForm.division).toBeUndefined();
-    expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(EX, [], 0, sentForm, []);
+    expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(EX, [], 0, sentForm, [], TEMPLATES);
     expect(archiver.packArchive).toHaveBeenCalledWith(EX, '/tmp/outer', 'DEMO1', 'LHA', '/root');
     expect(result.archivePath).toBe('/root/EX-DEMO1.LHA');
   });

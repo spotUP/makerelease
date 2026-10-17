@@ -1,6 +1,8 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { GroupProfile, PROFILE_FILE, TEMPLATE_FILES, parseProfile } from '../shared/profile';
+import { normaliseLineEndings } from '../shared/placeholder-template';
+import type { ProfileTemplates } from './nfo-placeholder';
 import { writeLatin1 } from './encoding';
 import { pathExists } from './fs-helpers';
 import {
@@ -63,17 +65,24 @@ export async function listProfiles(profilesDir: string): Promise<Array<GroupProf
   );
 }
 
-/** The two template files of a placeholder profile, read as Latin-1 like the NFOs they become. */
-export async function readTemplates(profilesDir: string, id: string): Promise<{ nfo: string; diz: string }> {
-  const read = async (name: string): Promise<string> => {
+/**
+ * The template files of a placeholder profile, read as Latin-1 like the NFOs
+ * they become, line endings normalised to LF. release.nfo is optional: a
+ * group that ships only a file_id.diz leaves it out.
+ */
+export async function readTemplates(profilesDir: string, id: string): Promise<ProfileTemplates> {
+  const read = async (name: string, optional: boolean): Promise<string | null> => {
     const file = path.join(profilesDir, id, name);
     try {
-      return (await fs.readFile(file)).toString('latin1');
+      return normaliseLineEndings((await fs.readFile(file)).toString('latin1'));
     } catch (err) {
+      if (optional && (err as NodeJS.ErrnoException).code === 'ENOENT') return null;
       throw new Error(`${file}: could not be read (${(err as Error).message})`);
     }
   };
-  return { nfo: await read(TEMPLATE_FILES.nfo), diz: await read(TEMPLATE_FILES.diz) };
+  const nfo = await read(TEMPLATE_FILES.nfo, true);
+  const diz = (await read(TEMPLATE_FILES.diz, false)) as string;
+  return { nfo, diz };
 }
 
 /**

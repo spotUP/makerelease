@@ -78,7 +78,7 @@ describe('renderHistoryBlock', () => {
   });
 });
 
-const UR = { filePrefix: 'UP-' };
+const UR = { filePrefix: 'UP-', label: 'Up Rough', url: 'https://uprough.net', renderer: 'uprough' } as const;
 
 const sampleForm: ReleaseFormData = {
   profileId: 'uprough',
