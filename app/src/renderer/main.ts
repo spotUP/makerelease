@@ -1,4 +1,11 @@
-import { ReleaseFormat, ReleaseFormData } from '../shared/types';
+import { AminetUploadRequest, ReleaseFormat, ReleaseFormData } from '../shared/types';
+import {
+  AMINET_ARCHITECTURES,
+  AMINET_COMMON_TYPES,
+  AMINET_SHORT_MAX,
+  aminetReadmeProblems,
+  renderAminetReadme,
+} from '../shared/aminet-readme.js';
 import { MemberlistTable } from './memberlist-table.js';
 import { BoardsTable } from './boards-table.js';
 import { CreditsTable } from './credits-table.js';
@@ -50,6 +57,17 @@ const pickImageBtn = $<HTMLButtonElement>('pick-image-btn');
 const selectedImageDiv = $<HTMLDivElement>('selected-image');
 const publishBtn = $<HTMLButtonElement>('publish-btn');
 const publishStatus = $<HTMLDivElement>('publish-status');
+const aminetCheckbox = $<HTMLInputElement>('aminet-checkbox');
+const aminetFields = $<HTMLElement>('aminet-fields');
+const aminetShortInput = $<HTMLInputElement>('aminet-short');
+const aminetTypeInput = $<HTMLInputElement>('aminet-type');
+const aminetTypeList = $<HTMLDataListElement>('aminet-type-list');
+const aminetArchitectureInput = $<HTMLInputElement>('aminet-architecture');
+const aminetArchitectureList = $<HTMLDataListElement>('aminet-architecture-list');
+const aminetUploaderNameInput = $<HTMLInputElement>('aminet-uploader-name');
+const aminetUploaderEmailInput = $<HTMLInputElement>('aminet-uploader-email');
+const aminetReadmePreview = $<HTMLPreElement>('aminet-readme-preview');
+const aminetReadmeProblemsDiv = $<HTMLDivElement>('aminet-readme-problems');
 
 const revokeCodeInput = $<HTMLInputElement>('revoke-code');
 const deleteReleaseBtn = $<HTMLButtonElement>('delete-release-btn');
@@ -178,6 +196,126 @@ function updateReleaseNumberPreview(): void {
 function getSelectedFormat(): ReleaseFormat {
   const checked = document.querySelector<HTMLInputElement>('input[name="format"]:checked');
   return (checked?.value as ReleaseFormat) ?? 'LHA';
+}
+
+// ---- Aminet ---------------------------------------------------------------
+//
+// The .readme is composed here, from the same form fields the NFO is built
+// from, and previewed live; the exact previewed text is what Publish sends
+// to main for upload. Who uploads (name, email) and where (directory,
+// architecture) hardly change between releases, so they are remembered in
+// localStorage - the one per-user setting this app has outside the server.
+
+const AMINET_STORAGE_KEY = 'aminet-uploader';
+
+interface AminetRemembered {
+  uploaderName: string;
+  uploaderEmail: string;
+  type: string;
+  architecture: string;
+}
+
+function loadAminetRemembered(): Partial<AminetRemembered> {
+  try {
+    const raw = localStorage.getItem(AMINET_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? (parsed as Partial<AminetRemembered>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveAminetRemembered(): void {
+  const remembered: AminetRemembered = {
+    uploaderName: aminetUploaderNameInput.value,
+    uploaderEmail: aminetUploaderEmailInput.value,
+    type: aminetTypeInput.value,
+    architecture: aminetArchitectureInput.value,
+  };
+  try {
+    localStorage.setItem(AMINET_STORAGE_KEY, JSON.stringify(remembered));
+  } catch {
+    // Storage full or disabled: the fields still work for this session.
+  }
+}
+
+function fillDatalist(list: HTMLDataListElement, values: readonly string[]): void {
+  list.replaceChildren(
+    ...values.map((value) => {
+      const option = document.createElement('option');
+      option.value = value;
+      return option;
+    }),
+  );
+}
+
+function aminetReadmeText(): string {
+  return renderAminetReadme({
+    short: aminetShortInput.value.trim(),
+    type: aminetTypeInput.value.trim(),
+    architecture: aminetArchitectureInput.value.trim(),
+    uploaderEmail: aminetUploaderEmailInput.value.trim(),
+    uploaderName: aminetUploaderNameInput.value.trim(),
+    division: currentDivision,
+    entryCreators: creatorsFromCredits(creditsTable.getCredits()),
+    description: descriptionInput.value.trim(),
+    releaseNotesText: releaseNotesTextArea.value,
+    credits: creditsTable.getCredits(),
+  });
+}
+
+/** Re-renders the preview and lists what the Aminet checklist still misses. */
+function refreshAminetPreview(): string[] {
+  aminetFields.hidden = !aminetCheckbox.checked;
+  if (!aminetCheckbox.checked) return [];
+  const text = aminetReadmeText();
+  aminetReadmePreview.textContent = text;
+  const problems = aminetReadmeProblems(text);
+  aminetReadmeProblemsDiv.textContent = problems.length ? `Aminet readme: ${problems.join('; ')}` : 'Aminet readme is complete.';
+  aminetReadmeProblemsDiv.className = problems.length ? 'status warn' : 'status ok';
+  return problems;
+}
+
+/** The request Publish sends, or null when the Aminet box is unticked. */
+function aminetRequest(): AminetUploadRequest | null {
+  if (!aminetCheckbox.checked) return null;
+  return { readmeText: aminetReadmeText(), uploaderEmail: aminetUploaderEmailInput.value.trim() };
+}
+
+/**
+ * Called after a successful build: the description is usually the best
+ * Short: there is, but only when it fits Aminet's 40 columns; a longer one
+ * is left for the user to shorten rather than cut mid-word.
+ */
+function prefillAminetShort(): void {
+  if (aminetShortInput.value.trim()) return;
+  const description = descriptionInput.value.trim();
+  if (description && description.length <= AMINET_SHORT_MAX) aminetShortInput.value = description;
+}
+
+{
+  fillDatalist(aminetTypeList, AMINET_COMMON_TYPES);
+  fillDatalist(aminetArchitectureList, AMINET_ARCHITECTURES);
+  const remembered = loadAminetRemembered();
+  aminetUploaderNameInput.value = remembered.uploaderName ?? '';
+  aminetUploaderEmailInput.value = remembered.uploaderEmail ?? '';
+  aminetTypeInput.value = remembered.type ?? '';
+  aminetArchitectureInput.value = remembered.architecture ?? AMINET_ARCHITECTURES[0];
+  for (const input of [aminetUploaderNameInput, aminetUploaderEmailInput, aminetTypeInput, aminetArchitectureInput]) {
+    input.addEventListener('input', () => {
+      saveAminetRemembered();
+      refreshAminetPreview();
+    });
+  }
+  aminetShortInput.addEventListener('input', () => refreshAminetPreview());
+  aminetCheckbox.addEventListener('change', () => refreshAminetPreview());
+  // The body of the readme follows the form, so a late edit to the
+  // description, notes or credits must show up in the preview too.
+  for (const input of [descriptionInput, releaseNotesTextArea]) {
+    input.addEventListener('input', () => refreshAminetPreview());
+  }
+  creditsTbody.addEventListener('input', () => refreshAminetPreview());
 }
 
 /**
@@ -411,6 +549,8 @@ form.addEventListener('submit', async (e) => {
       lastEmbedImagePaths = embedImagePaths;
       publishSection.hidden = false;
       publishBtn.disabled = !selectedImagePath;
+      prefillAminetShort();
+      refreshAminetPreview();
       // Pre-fill the revoke box with what was just built: that is the release
       // a mistake is most likely to be about, and it is the only one the
       // server will accept anyway until something newer exists.
@@ -435,6 +575,15 @@ pickImageBtn.addEventListener('click', async () => {
 
 publishBtn.addEventListener('click', async () => {
   if (!lastBuiltCode || !lastBuiltArchivePath || !selectedImagePath) return;
+  // An incomplete Aminet readme stops the whole Publish, before anything is
+  // sent: the website publish and the Aminet upload are one action to the
+  // user, and the website half cannot be redone to pick up the other half.
+  const aminetProblems = refreshAminetPreview();
+  if (aminetProblems.length) {
+    publishStatus.textContent = `Not published — fix the Aminet readme first, or untick "Also upload to Aminet": ${aminetProblems.join('; ')}`;
+    publishStatus.className = 'status warn';
+    return;
+  }
   publishBtn.disabled = true;
   publishStatus.textContent = 'Publishing... (this can take a while for a large archive, please wait)';
   publishStatus.className = 'status';
@@ -444,10 +593,14 @@ publishBtn.addEventListener('click', async () => {
       lastBuiltArchivePath,
       selectedImagePath,
       lastEmbedImagePaths,
+      aminetRequest(),
     );
     if (result.ok) {
-      publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl})`;
-      publishStatus.className = 'status ok';
+      const aminetNote = result.aminetUpload ? ` Aminet: ${result.aminetUpload.message}.` : '';
+      publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl}).${aminetNote}`;
+      // The website publish succeeded either way; a failed Aminet upload is
+      // shown as a warning so it is not mistaken for a failed publish.
+      publishStatus.className = result.aminetUpload && !result.aminetUpload.ok ? 'status warn' : 'status ok';
       // A real, successful publish — leave publishBtn disabled. A stray
       // second click would just 409; nothing more needs to happen for this
       // build once it's published.

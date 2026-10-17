@@ -131,9 +131,35 @@ export interface BuildResult {
   doorSubmission?: DoorSubmissionOutcome;
 }
 
+/**
+ * What the renderer sends along with a Publish when the "upload to Aminet"
+ * box is ticked. The readme text is the exact text the renderer previewed;
+ * main normalises and re-checks it but does not compose it, so what the user
+ * saw is what Aminet gets.
+ */
+export interface AminetUploadRequest {
+  readmeText: string;
+  /** Doubles as the anonymous-FTP password, as Aminet asks. */
+  uploaderEmail: string;
+}
+
+/**
+ * Result of the Aminet upload. Never a thrown error: Aminet is a courtesy
+ * mirror, and a failure there must not make a successful website publish
+ * look failed. `readmePath` is where the .readme was written (next to the
+ * archive), so a failed upload can be redone by hand.
+ */
+export interface AminetUploadOutcome {
+  ok: boolean;
+  message: string;
+  readmePath?: string;
+}
+
 export interface PublishToWebResult {
   archiveUrl: string;
   wordpressPostUrl: string;
+  /** Present only when the Publish asked for an Aminet upload. */
+  aminetUpload?: AminetUploadOutcome;
 }
 
 /**
@@ -188,6 +214,7 @@ export interface MakereleaseApi {
     archivePath: string,
     imagePath: string,
     embedImagePaths: string[],
+    aminet: AminetUploadRequest | null,
   ): Promise<PublishToWebOutcome>;
   deleteRelease(code: string): Promise<DeleteReleaseOutcome>;
 }

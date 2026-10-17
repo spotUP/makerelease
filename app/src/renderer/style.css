@@ -31,7 +31,7 @@ section { margin-bottom: 1.5rem; }
 
 label { display: block; margin-top: 0.5rem; font-size: 0.85rem; }
 
-input[type="text"], textarea, select {
+input[type="text"], input[type="email"], textarea, select {
   width: 100%;
   background: #111;
   color: var(--fg);
@@ -43,6 +43,23 @@ input[type="text"], textarea, select {
 textarea.monospace, textarea#release-notes-text, textarea#news-text {
   font-family: ui-monospace, Menlo, monospace;
 }
+
+pre.aminet-readme-preview {
+  width: 78ch;
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre;
+  font-family: ui-monospace, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.25;
+  padding: 0.6rem;
+  margin-top: 0.4rem;
+  border: 1px solid #333;
+  background: #111;
+}
+.aminet-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1rem; margin-top: 0.6rem; }
+.aminet-grid label { display: block; }
+.aminet-grid label:first-child { grid-column: 1 / -1; }
 
 pre.diz-banner-preview {
   width: 45ch;

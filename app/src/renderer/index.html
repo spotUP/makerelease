@@ -154,6 +154,33 @@
     <h2>11. Publish to uprough.net</h2>
     <button type="button" id="pick-image-btn">Choose cover image...</button>
     <div id="selected-image" class="status"></div>
+
+    <label><input type="checkbox" id="aminet-checkbox" checked /> Also upload to Aminet (ftp://main.aminet.net/new, public once a moderator has approved it)</label>
+    <div id="aminet-fields">
+      <div class="aminet-grid">
+        <label>Short description (shown in the Aminet index, 40 characters at most)
+          <input type="text" id="aminet-short" maxlength="40" />
+        </label>
+        <label>Aminet directory
+          <input type="text" id="aminet-type" list="aminet-type-list" placeholder="demo/aga" />
+          <datalist id="aminet-type-list"></datalist>
+        </label>
+        <label>Architecture
+          <input type="text" id="aminet-architecture" list="aminet-architecture-list" />
+          <datalist id="aminet-architecture-list"></datalist>
+        </label>
+        <label>Uploader name
+          <input type="text" id="aminet-uploader-name" autocomplete="name" />
+        </label>
+        <label>Uploader email (Aminet uses it as the FTP password and for questions about the upload)
+          <input type="email" id="aminet-uploader-email" autocomplete="email" />
+        </label>
+      </div>
+      <p class="hint">The .readme Aminet gets, built from the description, release notes and credits above. It is written next to the archive as well.</p>
+      <pre id="aminet-readme-preview" class="aminet-readme-preview"></pre>
+      <div id="aminet-readme-problems" class="status"></div>
+    </div>
+
     <button type="button" id="publish-btn" disabled>Publish</button>
     <div id="publish-status" class="status"></div>
   </section>

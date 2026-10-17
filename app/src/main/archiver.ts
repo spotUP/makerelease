@@ -1,26 +1,7 @@
-import { execFile } from 'child_process';
-import { promisify } from 'util';
 import * as path from 'path';
 import { ReleaseFormat } from '../shared/types';
 import { pathExists, moveDir } from './fs-helpers';
-
-const execFileAsync = promisify(execFile);
-
-// GUI-launched apps (macOS Finder/Dock, Linux AppImage/desktop entries) often
-// inherit a minimal PATH that skips these common install locations, even
-// though a login shell would find the binary fine. Append them rather than
-// hardcoding one absolute path, so any of the standard install locations work.
-const EXTRA_PATH_DIRS: Partial<Record<NodeJS.Platform, string[]>> = {
-  darwin: ['/opt/homebrew/bin', '/usr/local/bin'],
-  linux: ['/usr/local/bin', '/usr/bin', '/bin'],
-};
-
-function envWithExtraPath(): NodeJS.ProcessEnv {
-  const extra = EXTRA_PATH_DIRS[process.platform] ?? [];
-  if (extra.length === 0) return process.env;
-  const sep = process.platform === 'win32' ? ';' : ':';
-  return { ...process.env, PATH: `${process.env.PATH ?? ''}${sep}${extra.join(sep)}` };
-}
+import { runExternal } from './external-tool';
 
 const INSTALL_HINTS: Partial<Record<NodeJS.Platform, string>> = {
   darwin: 'install it with "brew install lha" (or "brew install zip")',
@@ -29,15 +10,7 @@ const INSTALL_HINTS: Partial<Record<NodeJS.Platform, string>> = {
 };
 
 async function runArchiver(bin: string, args: string[], cwd: string): Promise<void> {
-  try {
-    await execFileAsync(bin, args, { cwd, env: envWithExtraPath() });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === 'ENOENT') {
-      const hint = INSTALL_HINTS[process.platform] ?? 'install it and ensure it is on your PATH';
-      throw new Error(`"${bin}" was not found on your PATH — ${hint}.`);
-    }
-    throw err;
-  }
+  await runExternal(bin, args, { cwd, installHint: INSTALL_HINTS[process.platform] });
 }
 
 export async function packArchive(

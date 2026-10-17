@@ -1,6 +1,14 @@
 import { dialog, ipcMain } from 'electron';
 import * as path from 'path';
-import { BuildResult, DeleteReleaseOutcome, PublishToWebOutcome, ReleaseFormData, ReleaseHistoryEntry, SeedState } from '../shared/types';
+import {
+  AminetUploadRequest,
+  BuildResult,
+  DeleteReleaseOutcome,
+  PublishToWebOutcome,
+  ReleaseFormData,
+  ReleaseHistoryEntry,
+  SeedState,
+} from '../shared/types';
 import {
   fetchSeed,
   fetchManifest,
@@ -16,6 +24,7 @@ import { describeStaleDrafts } from './stale-drafts';
 import { generateOutputs } from './nfo-generator';
 import { listArtFromBanner } from './nfo-x-innovations';
 import { submitDoor } from './door-repo-client';
+import { uploadToAminet } from './aminet';
 import { stageRelease } from './staging';
 import { packArchive, finalizeRelease } from './archiver';
 import { pathExists, ensureDir, removePath } from './fs-helpers';
@@ -195,10 +204,16 @@ export function registerIpcHandlers(makereleaseRoot: string, releasesConfig: Rel
       archivePath: string,
       imagePath: string,
       embedImagePaths: string[],
+      aminet: AminetUploadRequest | null = null,
     ): Promise<PublishToWebOutcome> => {
       try {
         const result = await publishToWebClient(releasesConfig, code, archivePath, imagePath, embedImagePaths);
-        return { ok: true, ...result };
+        // Aminet only after the website took the release: a publish the
+        // server refused (409, number taken) must not leave a copy on a
+        // public archive nobody can revoke from here. The Aminet result is
+        // reported alongside, never thrown - the website publish succeeded.
+        const aminetUpload = aminet ? await uploadToAminet(aminet, archivePath) : undefined;
+        return { ok: true, ...result, ...(aminetUpload ? { aminetUpload } : {}) };
       } catch (err) {
         // Return a plain discriminated result rather than throwing: Electron
         // prepends `Error invoking remote method '<channel>': Error: ` to a

@@ -15,6 +15,7 @@ import {
   HISTORY_HEADING,
 } from '../shared/constants';
 import { toAsciiSafe } from './encoding';
+import { wrapWords } from '../shared/text-wrap';
 
 function indentBlock(text: string, indent = HISTORY_BODY_INDENT): string {
   return text
@@ -28,25 +29,6 @@ export function renderMemberBlock(members: MemberEntry[]): string {
   return members
     .map((m) => ' '.repeat(HISTORY_BODY_INDENT) + m.nickname.padEnd(padWidth) + m.role)
     .join('\n');
-}
-
-function wrapWords(text: string, firstWidth: number, contWidth: number): string[] {
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = '';
-  let width = firstWidth;
-  for (const word of words) {
-    const candidate = current ? `${current} ${word}` : word;
-    if (candidate.length > width && current) {
-      lines.push(current);
-      current = word;
-      width = contWidth;
-    } else {
-      current = candidate;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.length ? lines : [''];
 }
 
 export function renderHistoryEntry(entry: ReleaseHistoryEntry): string[] {

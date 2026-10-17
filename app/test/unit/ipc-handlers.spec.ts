@@ -46,6 +46,10 @@ vi.mock('../../src/main/door-repo-client', () => ({
   submitDoor: vi.fn(),
 }));
 
+vi.mock('../../src/main/aminet', () => ({
+  uploadToAminet: vi.fn(),
+}));
+
 vi.mock('../../src/main/fs-helpers', () => ({
   pathExists: vi.fn(),
   ensureDir: vi.fn(),
@@ -61,6 +65,7 @@ import * as staging from '../../src/main/staging';
 import * as archiver from '../../src/main/archiver';
 import * as fsHelpers from '../../src/main/fs-helpers';
 import * as doorRepo from '../../src/main/door-repo-client';
+import * as aminet from '../../src/main/aminet';
 
 describe('registerIpcHandlers', () => {
   const cfg = { baseUrl: 'https://x', writeKey: 'k', isPlaceholderKey: false };
@@ -506,6 +511,35 @@ describe('registerIpcHandlers', () => {
     const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(result).toEqual({ ok: true, archiveUrl: 'a', wordpressPostUrl: 'b' });
     expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
+  });
+
+  it('publishToWeb uploads to Aminet only after the website took the release, and reports the outcome alongside', async () => {
+    (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
+    (aminet.uploadToAminet as any).mockResolvedValue({ ok: false, message: 'curl missing', readmePath: '/tmp/archive.readme' });
+    const request = { readmeText: 'Short: x\n', uploaderEmail: 'me@example.com' };
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], request);
+    expect(result).toEqual({
+      ok: true,
+      archiveUrl: 'a',
+      wordpressPostUrl: 'b',
+      aminetUpload: { ok: false, message: 'curl missing', readmePath: '/tmp/archive.readme' },
+    });
+    expect(aminet.uploadToAminet).toHaveBeenCalledWith(request, '/tmp/archive.lha');
+  });
+
+  it('publishToWeb skips Aminet when the box was unticked (null request) and when the website publish failed', async () => {
+    (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
+    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], null);
+    expect(result).toEqual({ ok: true, archiveUrl: 'a', wordpressPostUrl: 'b' });
+    expect(aminet.uploadToAminet).not.toHaveBeenCalled();
+
+    (releasesClient.publishToWeb as any).mockRejectedValue(new ReleasesApiError('taken', { status: 409 }));
+    const failed = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], {
+      readmeText: 'Short: x\n',
+      uploaderEmail: 'me@example.com',
+    });
+    expect(failed.ok).toBe(false);
+    expect(aminet.uploadToAminet).not.toHaveBeenCalled();
   });
 
   it('publishToWeb returns an ok:false outcome for a plain (non-409) ReleasesApiError, not a thrown Error', async () => {

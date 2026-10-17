@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { DivisionId } from '../shared/divisions';
 import {
+  AminetUploadRequest,
   BuildResult,
   DeleteReleaseOutcome,
   MakereleaseApi,
@@ -22,8 +23,9 @@ const api: MakereleaseApi = {
     archivePath: string,
     imagePath: string,
     embedImagePaths: string[],
+    aminet: AminetUploadRequest | null,
   ): Promise<PublishToWebOutcome> =>
-    ipcRenderer.invoke('publishToWeb', code, archivePath, imagePath, embedImagePaths),
+    ipcRenderer.invoke('publishToWeb', code, archivePath, imagePath, embedImagePaths, aminet),
   deleteRelease: (code: string): Promise<DeleteReleaseOutcome> => ipcRenderer.invoke('deleteRelease', code),
 };
 

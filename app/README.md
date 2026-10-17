@@ -37,6 +37,28 @@ For local development against a local/staging `releases-doorserver`, set
 env var before `npm start` — no injection step needed; see the resolution
 order documented at the top of `src/main/config.ts`.
 
+## Uploading to Aminet
+
+The Publish step has an "Also upload to Aminet" box, ticked by default. When it
+is ticked, a successful publish to uprough.net is followed by an anonymous FTP
+upload of the archive and a matching `.readme` to `ftp://main.aminet.net/new`,
+as Aminet's uploading instructions ask. The readme is composed from the
+description, release notes and credits of the form, previewed live before the
+Publish button does anything, and written next to the archive (for example
+`UP-HYPOC.LHA` gets `up-hypoc.readme`) so a failed upload can be redone by
+hand. Uploader name, email, Aminet directory and architecture are remembered
+in the app between releases.
+
+The upload runs through `curl`, which ships with macOS, Windows 10 and later
+and every Linux distribution. A missing `curl`, a refused upload or an
+incomplete readme is reported next to the publish result; the website publish
+itself is unaffected. Aminet is only tried after the website took the release,
+never at build time, and never when the publish failed.
+
+Aminet cannot be undone from the app: a Revoke removes the release from
+uprough.net but the Aminet copy stays. Ask the Aminet team to remove it, or
+upload a corrected archive under the same file name, which replaces it.
+
 ## Production server
 
 `RELEASES_API_BASE_URL` defaults to `https://www.uprough.net` (see
