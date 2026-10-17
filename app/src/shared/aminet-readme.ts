@@ -1,5 +1,5 @@
 import type { CreditEntry } from './types';
-import { wrapWords } from './text-wrap';
+import { wrapWords } from './text-wrap.js';
 
 /**
  * The .readme that travels with every Aminet upload, in the format the

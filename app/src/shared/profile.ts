@@ -1,4 +1,4 @@
-import { isDivisionId, type DivisionId } from './divisions';
+import { isDivisionId, type DivisionId } from './divisions.js';
 import type { MemberEntry } from './types';
 
 /**
