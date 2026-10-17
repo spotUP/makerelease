@@ -609,7 +609,7 @@ produces an app named makerelease.
 Done on a new branch of the private repo, then a new repository.
 
 1. Scrub list, each hit fixed or deleted, counted from the grep output:
-   `grep -rniE "hippoplayer|\.bak-|/etc/nginx|sites-available|ssh |scp " --exclude-dir=node_modules --exclude-dir=dist .`
+   `grep -rniE "[h]ippoplayer|\.[b]ak-|/etc/[n]ginx|sites-[a]vailable|[s]sh |[s]cp " --exclude-dir=node_modules --exclude-dir=dist .`
    over `app/`, `thoughts/shared/`, `RULES.md`, `README.md`. Expected hits
    today: `app/src/main/config.ts` (deleted in phase 1) and the research and
    plan docs under `thoughts/shared/` that quote server paths; rewrite those
@@ -622,7 +622,7 @@ Done on a new branch of the private repo, then a new repository.
 
    ```sh
    git checkout --orphan public
-   git add app RULES.md CLAUDE.md README.md LICENSE .gitignore thoughts/shared
+   git add app RULES.md CLAUDE.md README.md LICENSE .gitignore thoughts/shared/plans thoughts/shared/research
    git commit -m "makerelease: release archive maker for demoscene groups"
    git remote add public git@github.com:spotUP/makerelease.git
    git push public public:main
@@ -637,6 +637,38 @@ Done on a new branch of the private repo, then a new repository.
 
 Manual (spot): confirm the GitHub account is `spotUP` before the push
 (`gh auth status`); confirm the private repo description edit.
+
+## Implementation notes (deviations from the plan as written)
+
+Recorded during implement; each was checked against the decisions above.
+
+- Phase 0: the golden fixtures are produced with `vite-node`, not `tsx`
+  (already a dependency through vitest).
+- Phase 1: `config.generated.ts` stays git-ignored rather than deleted,
+  because it may still hold a real key on a maintainer's machine; the plan's
+  `config.generated` grep excludes that file. The legacy `UP-*` ignore lines
+  stay for older leftovers. `registerIpcHandlers` takes the profiles folder,
+  an output-root function and the environment. `ProfileSummary` gained `url`.
+- Phase 2: `division` is optional in the form and set by main from the
+  profile. The backend interface gained `publishFailure` and
+  `deleteFailure` for the window's messages. The doorserver tests stay in
+  `ipc-handlers.spec.ts`. `uploadToAminet` takes the group's details from
+  the profile. The release date moved to section 2 for every renderer;
+  section headings are numbered by `numberHeadings` so hidden sections
+  leave no gaps.
+- Phase 3: `release.nfo` is optional (spot, mid-implement): without it the
+  build writes no NFO and the window says so. A fixed-width field is the
+  whole marker's width, braces included. Template problems show in
+  `#template-status` with their line numbers. The example NFO uses all 15
+  placeholders. The reach sentinel is `SENTINEL-7F3A {{group}}`.
+  `readForm` was extracted in the renderer so preview and build read the
+  same form.
+- Phase 5: the scrub grep writes each word with a character class
+  (`[h]ippoplayer`) so this plan does not match itself. The 2026-08-24
+  plans were rewritten to say "the server" and "copy" instead of host paths
+  and SCP. `thoughts/shared/handoffs/` holds host names, addresses and
+  backup paths, so it stays in the private repo and is left out of the
+  public commit.
 
 ## Automated verification summary
 

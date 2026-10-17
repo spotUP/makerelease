@@ -241,7 +241,7 @@ static secret compared with `crypto.timingSafeEqual`, not a login system.
 
 - Any public browsable web page (Phase 1's `/manifest` endpoint exists for a
   future one, but no frontend ships in this phase).
-- SCP upload of the built archive to `www.uprough.net`.
+- Upload of the built archive to `www.uprough.net`.
 - WordPress post publishing.
 
 Both are Phase 2.

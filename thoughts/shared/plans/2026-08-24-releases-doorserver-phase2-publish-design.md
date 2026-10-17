@@ -1,11 +1,11 @@
 ---
 date: 2026-08-24
-topic: releases-doorserver Phase 2 - SCP + WordPress publish pipeline
-tags: [releases-doorserver, makerelease, wordpress, scp, design]
+topic: releases-doorserver Phase 2 - archive copy + WordPress publish pipeline
+tags: [releases-doorserver, makerelease, wordpress, design]
 status: draft
 ---
 
-# Phase 2: SCP + WordPress publish pipeline
+# Phase 2: archive copy + WordPress publish pipeline
 
 ## Context
 
@@ -25,7 +25,7 @@ This is deliberately a **separate phase and a separate spec**, not folded
 into Phase 1, because it introduces a materially different trust boundary:
 Phase 1's write endpoint only ever touches release metadata (text fields);
 this phase's endpoint receives a large binary upload and, server-side, uses
-real production SSH and WordPress credentials for `www.uprough.net`. It is
+real production server and WordPress credentials for `www.uprough.net`. It is
 reviewable, buildable, and deployable independently of Phase 1's own
 correctness.
 
@@ -44,8 +44,8 @@ deliberate action taken only when the member is satisfied with the build.
 
 **`releases-doorserver` and `www.uprough.net` (WordPress) run on the same
 box** (confirmed by the user - same host as `bbs.uprough.net`). This
-simplifies the "SCP" step to a local filesystem copy, not a real SSH/SCP
-network hop - no SSH key is needed at all. Only a WordPress Application
+simplifies the copy step to a local filesystem copy, not a network
+hop - no remote-login key is needed at all. Only a WordPress Application
 Password (WP's built-in mechanism, confirmed available) is required as a
 real credential, held **only** on the `releases-doorserver` host as server
 config (env vars, following the same "configured or refuse to start" policy
@@ -57,7 +57,7 @@ and hands over the archive bytes + post content; the server does the local
 file copy and the WordPress API call using its own credentials.
 
 This also means the "publish" endpoint's file-copy step is simpler and more
-reliable than a network SCP would be (no connection/auth failure mode for
+reliable than a network copy would be (no connection/auth failure mode for
 that half of the pipeline - a local `fs.copyFile` either succeeds or hits a
 real filesystem error like disk-full or permissions, both worth surfacing
 distinctly but neither is a network-flakiness concern).
@@ -78,7 +78,7 @@ Multipart fields:
   steps can never disagree about what release they're describing).
 
 Server-side steps, in order, each with its own error surfaced distinctly
-back to the app (a partial failure - e.g. SCP succeeds, WordPress post fails
+back to the app (a partial failure - e.g. the copy succeeds, WordPress post fails
 - must be reported as exactly that, not a generic "publish failed", so a
 retry doesn't re-upload an archive that's already in place):
 
@@ -88,8 +88,8 @@ retry doesn't re-upload an archive that's already in place):
    the download link Phase 1 already computes - `releases.uprough.net`'s
    `/manifest` and any future browsing page - is correct the moment this
    step completes). The exact source-of-truth local path for that directory
-   (e.g. `/var/www/uprough.net/releases/` or wherever the live site's
-   `/releases/` URL actually resolves to on disk) is a deployment-time config
+   (wherever the live site's `/releases/` URL
+   actually resolves to on disk) is a deployment-time config
    value (`WORDPRESS_RELEASES_DIR` env var), not hardcoded - the operator
    sets it when deploying, matching this project's existing "configured, no
    defaults" convention.
@@ -128,7 +128,7 @@ retry doesn't re-upload an archive that's already in place):
      The WordPress-side categories the app never produces (Diskmag, Links
      for You, News, People, Radio Dirty) are simply never targeted - no
      mapping needed for them.
-4. Record the publish result (WordPress post URL, SCP completion) back onto
+4. Record the publish result (WordPress post URL, archive copy completion) back onto
    the `releases` row (new columns: `published_at`, `wordpress_post_url`) so
    a second publish attempt on an already-published release can be detected
    and confirmed with the user rather than silently double-posting.
@@ -169,7 +169,7 @@ v1 (WordPress's own edit UI already covers that case).
   confirmed against the real WordPress category list.
 - **File transfer**: `releases-doorserver` and `www.uprough.net` share a
   host, so this is a local file copy (`WORDPRESS_RELEASES_DIR` config path),
-  not a network SCP/SSH hop - no SSH key needed.
+  not a network hop - no remote-login key needed.
 - **WordPress auth**: Application Passwords, confirmed available on the real
   site.
 
