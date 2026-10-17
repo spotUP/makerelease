@@ -5,14 +5,26 @@ import {
   AminetUploadRequest,
   BuildResult,
   OutputsPreview,
+  ProfileEditOutcome,
+  ProfileEditRequest,
+  ProfileEditState,
   DeleteReleaseOutcome,
   PublishToWebOutcome,
   ReleaseFormData,
   SeedState,
 } from '../shared/types';
-import { divisionIdOf, summarize, type GroupProfile, type ProfileListEntry } from '../shared/profile';
+import { divisionIdOf, slugifyProfileId, summarize, type GroupProfile, type ProfileListEntry } from '../shared/profile';
 import { archiveFileName, releaseBaseName } from '../shared/naming';
-import { isProfileLoadError, listProfiles, loadProfile, readTemplates } from './profiles';
+import {
+  deleteProfile,
+  isProfileLoadError,
+  listProfiles,
+  loadProfile,
+  readTemplateFile,
+  readTemplates,
+  saveProfile,
+} from './profiles';
+import { EXAMPLE_DIZ_TEMPLATE, EXAMPLE_NFO_TEMPLATE } from './example-profile';
 import { backendFor, deleteFailure, publishFailure } from './backend';
 import { generateOutputs } from './nfo-generator';
 import { placeholderProblems, renderPlaceholderOutputs } from './nfo-placeholder';
@@ -83,6 +95,55 @@ export function registerIpcHandlers(
     // shell.openPath reports failure as a non-empty string rather than a throw.
     const problem = await shell.openPath(profilesDir);
     if (problem) throw new Error(`Could not open ${profilesDir}: ${problem}`);
+  });
+
+  ipcMain.handle('newProfileDraft', async (): Promise<ProfileEditState> => {
+    const taken = (await listProfiles(profilesDir)).map((entry) => entry.id);
+    return {
+      profile: {
+        id: slugifyProfileId('new group', taken),
+        label: 'New Group',
+        url: '',
+        filePrefix: '',
+        codeLength: 5,
+        renderer: 'placeholder',
+        backend: 'none',
+        members: [],
+      },
+      templates: { nfo: EXAMPLE_NFO_TEMPLATE, diz: EXAMPLE_DIZ_TEMPLATE },
+    };
+  });
+
+  ipcMain.handle('loadProfileForEdit', async (_event, id: string): Promise<ProfileEditState> => {
+    const profile = await loadProfile(profilesDir, id);
+    // The code renderers keep no template files in the profile folder.
+    const templates =
+      profile.renderer === 'placeholder' ? await readTemplates(profilesDir, id) : { nfo: null, diz: '' };
+    return { profile, templates };
+  });
+
+  ipcMain.handle(
+    'saveProfile',
+    async (_event, request: ProfileEditRequest): Promise<ProfileEditOutcome> => saveProfile(profilesDir, request),
+  );
+
+  ipcMain.handle(
+    'deleteProfile',
+    async (_event, id: string): Promise<ProfileEditOutcome> =>
+      deleteProfile(profilesDir, id, (folder) => shell.trashItem(folder)),
+  );
+
+  ipcMain.handle('importTemplate', async (): Promise<{ text: string; name: string } | null> => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: [
+        { name: 'Templates', extensions: ['nfo', 'diz', 'txt'] },
+        { name: 'All files', extensions: ['*'] },
+      ],
+    });
+    if (result.canceled || result.filePaths.length === 0) return null;
+    const file = result.filePaths[0];
+    return { text: (await readTemplateFile(file, false)) as string, name: path.basename(file) };
   });
 
   ipcMain.handle('loadSeedState', async (_event, profileId: string): Promise<SeedState> => {

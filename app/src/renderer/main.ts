@@ -19,6 +19,7 @@ import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
 import { builtReleaseFor, type BuiltRelease } from './built-release.js';
 import { LatestOnly } from './latest-only.js';
+import { createProfileEditor, type ProfileEditorMode } from './profile-editor.js';
 import { visibleSections, type SectionVisibility } from '../shared/section-visibility.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -29,6 +30,10 @@ const profileSelect = $<HTMLSelectElement>('profile-select');
 const openProfilesBtn = $<HTMLButtonElement>('open-profiles-btn');
 const reloadProfilesBtn = $<HTMLButtonElement>('reload-profiles-btn');
 const profileStatus = $<HTMLDivElement>('profile-status');
+const editProfileBtn = $<HTMLButtonElement>('edit-profile-btn');
+const duplicateProfileBtn = $<HTMLButtonElement>('duplicate-profile-btn');
+const newProfileBtn = $<HTMLButtonElement>('new-profile-btn');
+const deleteProfileBtn = $<HTMLButtonElement>('delete-profile-btn');
 const codeStatus = $<HTMLDivElement>('code-status');
 const releaseNameInput = $<HTMLInputElement>('release-name');
 const platformTagInput = $<HTMLInputElement>('platform-tag');
@@ -410,6 +415,14 @@ function renderSelectedFiles(): void {
 // follow, rather than each being patched in its own place.
 const PROFILE_STORAGE_KEY = 'profile-id';
 
+function rememberProfileId(id: string): void {
+  try {
+    localStorage.setItem(PROFILE_STORAGE_KEY, id);
+  } catch {
+    // Storage disabled: the choice still holds for this session.
+  }
+}
+
 function rememberedProfileId(): string | null {
   try {
     return localStorage.getItem(PROFILE_STORAGE_KEY);
@@ -456,11 +469,7 @@ async function loadProfiles(): Promise<void> {
 }
 
 profileSelect.addEventListener('change', () => {
-  try {
-    localStorage.setItem(PROFILE_STORAGE_KEY, profileSelect.value);
-  } catch {
-    // Storage disabled: the choice still holds for this session.
-  }
+  rememberProfileId(profileSelect.value);
   void init();
 });
 
@@ -474,6 +483,43 @@ openProfilesBtn.addEventListener('click', async () => {
 });
 
 reloadProfilesBtn.addEventListener('click', () => void loadProfiles());
+
+const profileEditor = createProfileEditor();
+
+async function editProfile(mode: ProfileEditorMode): Promise<void> {
+  try {
+    const takenIds = Array.from(profileSelect.options, (option) => option.value);
+    const savedId = await profileEditor.open(mode, profileSelect.value || null, takenIds);
+    if (savedId === null) return;
+    rememberProfileId(savedId);
+    await loadProfiles();
+  } catch (err) {
+    profileStatus.textContent = err instanceof Error ? err.message : String(err);
+    profileStatus.className = 'status warn';
+  }
+}
+
+newProfileBtn.addEventListener('click', () => void editProfile('new'));
+editProfileBtn.addEventListener('click', () => void editProfile('edit'));
+duplicateProfileBtn.addEventListener('click', () => void editProfile('duplicate'));
+
+deleteProfileBtn.addEventListener('click', async () => {
+  const id = profileSelect.value;
+  const label = profileSelect.selectedOptions[0]?.textContent ?? id;
+  if (!id || !window.confirm(`Move the group "${label}" to the Trash?`)) return;
+  try {
+    const outcome = await window.api.deleteProfile(id);
+    if (!outcome.ok) {
+      profileStatus.textContent = outcome.error;
+      profileStatus.className = 'status warn';
+      return;
+    }
+    await loadProfiles();
+  } catch (err) {
+    profileStatus.textContent = err instanceof Error ? err.message : String(err);
+    profileStatus.className = 'status warn';
+  }
+});
 
 function applyProfile(profile: ProfileSummary): void {
   currentProfile = profile;
