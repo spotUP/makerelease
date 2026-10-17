@@ -1,5 +1,4 @@
 import type { CreditEntry } from './types';
-import { divisionOf, type DivisionId } from './divisions';
 import { wrapWords } from './text-wrap';
 
 /**
@@ -62,7 +61,8 @@ export interface AminetReadmeInput {
   architecture: string;
   uploaderEmail: string;
   uploaderName: string;
-  division: DivisionId;
+  /** The group the release is signed with: its name and website. */
+  group: { label: string; url: string };
   /** The release history creator line, i.e. who made it. */
   entryCreators: string;
   description: string;
@@ -114,14 +114,17 @@ function trimBlankEdges(lines: string[]): string[] {
   return out;
 }
 
-export function renderAminetReadme(input: AminetReadmeInput): string {
-  const division = divisionOf(input.division);
-  const creators = input.entryCreators.trim();
-  const author = creators ? `${division.label} (${creators})` : division.label;
+/** One credit as "Role: Name", the form both the readme and the placeholder renderer print. */
+export function formatCreditLine(c: CreditEntry): string {
+  return `${c.role.trim()}: ${c.name.trim()}`;
+}
 
-  const credits = input.credits
-    .filter((c) => c.role.trim() || c.name.trim())
-    .map((c) => `  ${c.role.trim()}: ${c.name.trim()}`);
+export function renderAminetReadme(input: AminetReadmeInput): string {
+  const { label, url } = input.group;
+  const creators = input.entryCreators.trim();
+  const author = creators ? `${label} (${creators})` : label;
+
+  const credits = input.credits.filter((c) => c.role.trim() || c.name.trim()).map((c) => `  ${formatCreditLine(c)}`);
 
   const body: string[] = [
     ...wrapParagraph(input.description),
@@ -129,7 +132,7 @@ export function renderAminetReadme(input: AminetReadmeInput): string {
     ...trimBlankEdges(wrapPreformatted(input.releaseNotesText)),
     ...(credits.length ? ['', 'Credits:', ...credits.flatMap((line) => wrapPreformatted(line))] : []),
     '',
-    `Released by ${division.label} - https://www.uprough.net`,
+    `Released by ${label} - ${url}`,
   ];
 
   return [

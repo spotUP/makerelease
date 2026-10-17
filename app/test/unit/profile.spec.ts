@@ -82,7 +82,7 @@ describe('profile helpers', () => {
   it('summarize leaves out the server block, so the write key never reaches the window', () => {
     const summary = summarize(parse(SERVER));
     expect(summary).toEqual({
-      id: 'demo', label: 'Demo', filePrefix: '', codeLength: 5, renderer: 'uprough', backend: 'releases-doorserver',
+      id: 'demo', label: 'Demo', url: 'https://demo.net', filePrefix: '', codeLength: 5, renderer: 'uprough', backend: 'releases-doorserver',
     });
     expect(JSON.stringify(summary)).not.toContain('secret');
   });

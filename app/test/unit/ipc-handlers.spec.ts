@@ -112,7 +112,7 @@ describe('registerIpcHandlers', () => {
   const UR = expect.objectContaining({ id: 'uprough', filePrefix: 'UP-' });
   const SEED_BASE = {
     profile: {
-      id: 'uprough', label: 'Up Rough', filePrefix: 'UP-',
+      id: 'uprough', label: 'Up Rough', url: 'https://uprough.net', filePrefix: 'UP-',
       codeLength: 5, renderer: 'uprough', backend: 'releases-doorserver',
     },
     outputRoot: '/root',
@@ -565,32 +565,17 @@ describe('registerIpcHandlers', () => {
     expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
   });
 
-  it('publishToWeb uploads to Aminet only after the website took the release, and reports the outcome alongside', async () => {
-    (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
+  it('uploadToAminet hands the request and archive to the Aminet uploader and returns its outcome', async () => {
     (aminet.uploadToAminet as any).mockResolvedValue({ ok: false, message: 'curl missing', readmePath: '/tmp/archive.readme' });
     const request = { readmeText: 'Short: x\n', uploaderEmail: 'me@example.com' };
-    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], request);
-    expect(result).toEqual({
-      ok: true,
-      archiveUrl: 'a',
-      wordpressPostUrl: 'b',
-      aminetUpload: { ok: false, message: 'curl missing', readmePath: '/tmp/archive.readme' },
-    });
+    const result = await handlers.uploadToAminet(null, request, '/tmp/archive.lha');
+    expect(result).toEqual({ ok: false, message: 'curl missing', readmePath: '/tmp/archive.readme' });
     expect(aminet.uploadToAminet).toHaveBeenCalledWith(request, '/tmp/archive.lha');
   });
 
-  it('publishToWeb skips Aminet when the box was unticked (null request) and when the website publish failed', async () => {
+  it('publishToWeb never uploads to Aminet itself; the window does that as its own step', async () => {
     (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
-    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], null);
-    expect(result).toEqual({ ok: true, archiveUrl: 'a', wordpressPostUrl: 'b' });
-    expect(aminet.uploadToAminet).not.toHaveBeenCalled();
-
-    (releasesClient.publishToWeb as any).mockRejectedValue(new ReleasesApiError('taken', { status: 409 }));
-    const failed = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], {
-      readmeText: 'Short: x\n',
-      uploaderEmail: 'me@example.com',
-    });
-    expect(failed.ok).toBe(false);
+    await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(aminet.uploadToAminet).not.toHaveBeenCalled();
   });
 
@@ -706,7 +691,7 @@ describe('registerIpcHandlers', () => {
 
     expect(listProfiles).toHaveBeenCalledWith('/profiles');
     expect(result).toEqual([
-      { id: 'example', label: 'Example Group', filePrefix: 'EX-', codeLength: 5, renderer: 'placeholder', backend: 'none' },
+      { id: 'example', label: 'Example Group', url: 'https://example.net', filePrefix: 'EX-', codeLength: 5, renderer: 'placeholder', backend: 'none' },
       { id: 'broken', error: 'broken/profile.json: filePrefix is missing' },
     ]);
   });

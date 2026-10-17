@@ -32,6 +32,9 @@
       <input type="text" id="release-name" required autocomplete="off" placeholder="'FLEISCH BITTE AD 006'" />
       <label for="platform-tag">Platform tag (optional, shown in parentheses)</label>
       <input type="text" id="platform-tag" autocomplete="off" placeholder="A1200" />
+      <label for="release-date">Release date</label>
+      <input type="text" id="release-date" autocomplete="off" placeholder="2026-09-21" />
+      <div class="hint">Prefilled with today. Printed in the NFO under the release name.</div>
       <label for="description-text">Description (short — the first line of the WordPress post)</label>
       <input type="text" id="description-text" required autocomplete="off" placeholder="Fleisch Bitte AD 006 released at Revision 2026." />
       <label for="release-notes-text">Release notes (the WordPress post's main body, and the NFO's release notes)</label>
@@ -55,14 +58,18 @@
       <button type="button" id="add-member-btn">Add member</button>
     </section>
 
-    <section>
+    <section id="section-release-number" hidden>
+      <h2>5. Release number</h2>
+      <label for="release-number-text">Release number, as it should print</label>
+      <input type="text" id="release-number-text" autocomplete="off" placeholder="042" />
+      <div class="hint">Optional. This group has no release server to count releases, so the number is whatever you type here.</div>
+    </section>
+
+    <section id="section-history-entry">
       <h2>5. Release history entry</h2>
       <div id="release-number-preview" class="status"></div>
       <label for="entry-title">Title</label>
       <input type="text" id="entry-title" required autocomplete="off" placeholder="fleisch bitte ad 006" />
-      <label for="release-date">Release date</label>
-      <input type="text" id="release-date" autocomplete="off" placeholder="2026-09-21" />
-      <div class="hint">Prefilled with today. Printed in the NFO under the release name.</div>
       <label for="entry-category">Category</label>
       <select id="entry-category" required>
         <option value="" disabled selected>Select a category&hellip;</option>
@@ -117,15 +124,15 @@
       <div id="creators-preview" class="hint"></div>
     </section>
 
-    <section>
+    <section id="section-media-embeds">
       <h2>7. Media embeds (optional — YouTube videos or images in the WordPress post)</h2>
       <div id="media-embeds-container"></div>
       <button type="button" id="add-media-embed-btn">Add media embed</button>
     </section>
 
-    <section>
+    <section id="section-diz-line">
       <h2>8. Diz release line</h2>
-      <p class="hint">
+      <p class="hint" id="diz-release-line-hint">
         The file_id.diz banner art is inherited from the last release and cannot be edited here.
         Only the release line changes &mdash; it is centered between the frame characters automatically.
       </p>
@@ -153,11 +160,19 @@
   </form>
 
   <section id="publish-section" hidden>
-    <h2>11. Publish to uprough.net</h2>
+    <h2>11. Publish to the group website</h2>
     <button type="button" id="pick-image-btn">Choose cover image...</button>
     <div id="selected-image" class="status"></div>
 
-    <label><input type="checkbox" id="aminet-checkbox" checked /> Also upload to Aminet (ftp://main.aminet.net/new, public once a moderator has approved it)</label>
+    <label><input type="checkbox" id="aminet-checkbox" checked /> Also upload to Aminet once the website publish has succeeded (fill in the Aminet section below)</label>
+
+    <button type="button" id="publish-btn" disabled>Publish</button>
+    <div id="publish-status" class="status"></div>
+  </section>
+
+  <section id="section-aminet" hidden>
+    <h2>12. Upload to Aminet</h2>
+    <p class="hint">Uploads the built archive and its .readme to ftp://main.aminet.net/new. It is public once a moderator has approved it.</p>
     <div id="aminet-fields">
       <div class="aminet-grid">
         <label>Short description (shown in the Aminet index, 40 characters at most)
@@ -183,8 +198,8 @@
       <div id="aminet-readme-problems" class="status"></div>
     </div>
 
-    <button type="button" id="publish-btn" disabled>Publish</button>
-    <div id="publish-status" class="status"></div>
+    <button type="button" id="aminet-upload-btn" disabled>Upload to Aminet</button>
+    <div id="aminet-status" class="status"></div>
   </section>
 
   <section id="cleanup-section">

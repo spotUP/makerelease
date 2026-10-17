@@ -14,7 +14,7 @@ const input: AminetReadmeInput = {
   architecture: 'm68k-amigaos',
   uploaderEmail: 'spot@uprough.net',
   uploaderName: 'Spot',
-  division: 'uprough',
+  group: { label: 'Up Rough', url: 'https://www.uprough.net' },
   entryCreators: 'Spot, Dipswitch',
   description: 'Hypocrisy, our AGA demo for Chaos Constructions 2025.',
   releaseNotesText: 'Needs 2MB chip and a hard drive.\nTested on A1200/030.',
@@ -38,7 +38,7 @@ describe('renderAminetReadme', () => {
     expect(lines[7]).toBe('Hypocrisy, our AGA demo for Chaos Constructions 2025.');
   });
 
-  it('keeps the release notes line breaks, lists the non-empty credits and signs off with the division', () => {
+  it('keeps the release notes line breaks, lists the non-empty credits and signs off with the group label and URL', () => {
     const text = renderAminetReadme(input);
     expect(text).toContain('Needs 2MB chip and a hard drive.\nTested on A1200/030.');
     expect(text).toContain('Credits:\n  Code: Spot\n  Music: Dipswitch\n');
@@ -58,9 +58,14 @@ describe('renderAminetReadme', () => {
     expect(aminetReadmeProblems(text)).toEqual([]);
   });
 
-  it('labels the author with the division alone when nobody is named', () => {
-    const text = renderAminetReadme({ ...input, entryCreators: '', division: 'xinnovations' });
-    expect(text).toContain('Author:       Up Rough /X Innovations\n');
+  it('labels the author with the group alone when nobody is named', () => {
+    const text = renderAminetReadme({
+      ...input,
+      entryCreators: '',
+      group: { label: 'Example Group', url: 'https://example.net' },
+    });
+    expect(text).toContain('Author:       Example Group\n');
+    expect(text.trimEnd().split('\n').pop()).toBe('Released by Example Group - https://example.net');
   });
 });
 

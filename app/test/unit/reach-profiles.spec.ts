@@ -35,7 +35,7 @@ describe('group profiles reach the window', () => {
 
     const first = await handlers.listProfiles(null);
     expect(first).toEqual([
-      { id: 'example', label: 'Example Group', filePrefix: 'EX-', codeLength: 5, renderer: 'placeholder', backend: 'none' },
+      { id: 'example', label: 'Example Group', url: 'https://example.net', filePrefix: 'EX-', codeLength: 5, renderer: 'placeholder', backend: 'none' },
     ]);
     expect(await fs.readFile(path.join(profilesDir, 'example', 'file_id.diz'))).toEqual(
       Buffer.from(EXAMPLE_DIZ_TEMPLATE, 'latin1'),

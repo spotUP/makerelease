@@ -144,8 +144,7 @@ export interface BuildResult {
 }
 
 /**
- * What the renderer sends along with a Publish when the "upload to Aminet"
- * box is ticked. The readme text is the exact text the renderer previewed;
+ * What the renderer sends to upload a built release to Aminet. The readme text is the exact text the renderer previewed;
  * main normalises and re-checks it but does not compose it, so what the user
  * saw is what Aminet gets.
  */
@@ -170,8 +169,6 @@ export interface AminetUploadOutcome {
 export interface PublishToWebResult {
   archiveUrl: string;
   wordpressPostUrl: string;
-  /** Present only when the Publish asked for an Aminet upload. */
-  aminetUpload?: AminetUploadOutcome;
 }
 
 /**
@@ -229,7 +226,7 @@ export interface MakereleaseApi {
     archivePath: string,
     imagePath: string,
     embedImagePaths: string[],
-    aminet: AminetUploadRequest | null,
   ): Promise<PublishToWebOutcome>;
+  uploadToAminet(request: AminetUploadRequest, archivePath: string): Promise<AminetUploadOutcome>;
   deleteRelease(profileId: string, code: string): Promise<DeleteReleaseOutcome>;
 }

@@ -17,6 +17,7 @@ import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
 import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
+import { visibleSections, type SectionVisibility } from '../shared/section-visibility.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
@@ -48,6 +49,13 @@ const releaseNumberPreview = $<HTMLDivElement>('release-number-preview');
 const entryTitleInput = $<HTMLInputElement>('entry-title');
 const entryCategoryInput = $<HTMLSelectElement>('entry-category');
 const releaseDateInput = $<HTMLInputElement>('release-date');
+const releaseNumberTextInput = $<HTMLInputElement>('release-number-text');
+const releaseNumberSection = $<HTMLElement>('section-release-number');
+const historyEntrySection = $<HTMLElement>('section-history-entry');
+const mediaEmbedsSection = $<HTMLElement>('section-media-embeds');
+const dizLineSection = $<HTMLElement>('section-diz-line');
+const dizReleaseLineHint = $<HTMLElement>('diz-release-line-hint');
+const cleanupSection = $<HTMLElement>('cleanup-section');
 const creatorsPreview = $<HTMLDivElement>('creators-preview');
 const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
 const dizReleaseLinesContainer = $<HTMLDivElement>('diz-release-lines');
@@ -65,7 +73,6 @@ const selectedImageDiv = $<HTMLDivElement>('selected-image');
 const publishBtn = $<HTMLButtonElement>('publish-btn');
 const publishStatus = $<HTMLDivElement>('publish-status');
 const aminetCheckbox = $<HTMLInputElement>('aminet-checkbox');
-const aminetFields = $<HTMLElement>('aminet-fields');
 const aminetShortInput = $<HTMLInputElement>('aminet-short');
 const aminetTypeInput = $<HTMLInputElement>('aminet-type');
 const aminetTypeList = $<HTMLDataListElement>('aminet-type-list');
@@ -75,14 +82,19 @@ const aminetUploaderNameInput = $<HTMLInputElement>('aminet-uploader-name');
 const aminetUploaderEmailInput = $<HTMLInputElement>('aminet-uploader-email');
 const aminetReadmePreview = $<HTMLPreElement>('aminet-readme-preview');
 const aminetReadmeProblemsDiv = $<HTMLDivElement>('aminet-readme-problems');
+const aminetSection = $<HTMLElement>('section-aminet');
+const aminetUploadBtn = $<HTMLButtonElement>('aminet-upload-btn');
+const aminetStatus = $<HTMLDivElement>('aminet-status');
 
 const revokeCodeInput = $<HTMLInputElement>('revoke-code');
 const deleteReleaseBtn = $<HTMLButtonElement>('delete-release-btn');
 const deleteStatus = $<HTMLDivElement>('delete-status');
 
 const memberlist = new MemberlistTable(membersTbody);
+// Which form sections the chosen group sees; replaced by applyProfile().
+let visibility: SectionVisibility = visibleSections({ renderer: DEFAULT_DIVISION, backend: 'releases-doorserver' });
 const creditsTable = new CreditsTable(creditsTbody, {
-  getMembers: () => memberlist.getMembers(),
+  getMembers: () => (visibility.creatorsAutocomplete ? memberlist.getMembers() : []),
   onChange: () => updateCreatorsPreview(),
 });
 const boardsTable = new BoardsTable(boardsTbody);
@@ -266,7 +278,7 @@ function aminetReadmeText(): string {
     architecture: aminetArchitectureInput.value.trim(),
     uploaderEmail: aminetUploaderEmailInput.value.trim(),
     uploaderName: aminetUploaderNameInput.value.trim(),
-    division: currentDivision,
+    group: { label: currentProfile?.label ?? '', url: currentProfile?.url ?? '' },
     entryCreators: creatorsFromCredits(creditsTable.getCredits()),
     description: descriptionInput.value.trim(),
     releaseNotesText: releaseNotesTextArea.value,
@@ -276,8 +288,6 @@ function aminetReadmeText(): string {
 
 /** Re-renders the preview and lists what the Aminet checklist still misses. */
 function refreshAminetPreview(): string[] {
-  aminetFields.hidden = !aminetCheckbox.checked;
-  if (!aminetCheckbox.checked) return [];
   const text = aminetReadmeText();
   aminetReadmePreview.textContent = text;
   const problems = aminetReadmeProblems(text);
@@ -286,9 +296,8 @@ function refreshAminetPreview(): string[] {
   return problems;
 }
 
-/** The request Publish sends, or null when the Aminet box is unticked. */
-function aminetRequest(): AminetUploadRequest | null {
-  if (!aminetCheckbox.checked) return null;
+/** What the Upload to Aminet step sends: exactly the previewed readme. */
+function aminetRequest(): AminetUploadRequest {
   return { readmeText: aminetReadmeText(), uploaderEmail: aminetUploaderEmailInput.value.trim() };
 }
 
@@ -301,6 +310,36 @@ function prefillAminetShort(): void {
   if (aminetShortInput.value.trim()) return;
   const description = descriptionInput.value.trim();
   if (description && description.length <= AMINET_SHORT_MAX) aminetShortInput.value = description;
+}
+
+/**
+ * Uploads the last real build to Aminet. Both the Upload button and the
+ * website Publish (when its Aminet box is ticked) end up here, so a failed
+ * upload is retried with the same button whichever started it.
+ */
+async function uploadLastBuildToAminet(): Promise<void> {
+  if (!lastBuiltArchivePath) return;
+  const problems = refreshAminetPreview();
+  if (problems.length) {
+    aminetStatus.textContent = `Not uploaded - fix the Aminet readme first: ${problems.join('; ')}`;
+    aminetStatus.className = 'status warn';
+    return;
+  }
+  aminetUploadBtn.disabled = true;
+  aminetStatus.textContent = 'Uploading to Aminet...';
+  aminetStatus.className = 'status';
+  try {
+    const result = await window.api.uploadToAminet(aminetRequest(), lastBuiltArchivePath);
+    aminetStatus.textContent = `Aminet: ${result.message}.`;
+    aminetStatus.className = result.ok ? 'status ok' : 'status warn';
+    // Only a failure is worth a second click; a second upload of the same
+    // file would just sit in Aminet's queue twice.
+    aminetUploadBtn.disabled = result.ok;
+  } catch (err) {
+    aminetStatus.textContent = `Aminet upload failed: ${err instanceof Error ? err.message : String(err)}`;
+    aminetStatus.className = 'status warn';
+    aminetUploadBtn.disabled = false;
+  }
 }
 
 {
@@ -318,7 +357,6 @@ function prefillAminetShort(): void {
     });
   }
   aminetShortInput.addEventListener('input', () => refreshAminetPreview());
-  aminetCheckbox.addEventListener('change', () => refreshAminetPreview());
   // The body of the readme follows the form, so a late edit to the
   // description, notes or credits must show up in the preview too.
   for (const input of [descriptionInput, releaseNotesTextArea]) {
@@ -343,6 +381,10 @@ function resetPublishState(): void {
   publishStatus.textContent = '';
   publishStatus.className = 'status';
   publishBtn.disabled = true;
+  aminetSection.hidden = true;
+  aminetStatus.textContent = '';
+  aminetStatus.className = 'status';
+  aminetUploadBtn.disabled = true;
   deleteReleaseBtn.disabled = false;
   deleteStatus.textContent = '';
   deleteStatus.className = 'status';
@@ -447,13 +489,56 @@ function applyProfile(profile: ProfileSummary): void {
     `${profile.codeLength}-character code - becomes ${releaseBaseName(profile, '<CODE>')}`;
 }
 
+/**
+ * Hides what the chosen group has no use for. A hidden section's required
+ * fields stop being required, or the browser would refuse to submit a form
+ * whose missing field nobody can see.
+ */
+function applyVisibility(v: SectionVisibility): void {
+  visibility = v;
+  xFieldsSection.hidden = !v.xFields;
+  historyEntrySection.hidden = !v.historyEntry;
+  entryTitleInput.required = v.historyEntry;
+  entryCategoryInput.required = v.historyEntry;
+  releaseNumberPreview.hidden = !v.releaseNumberPreview;
+  releaseNumberSection.hidden = !v.releaseNumberText;
+  mediaEmbedsSection.hidden = !v.mediaEmbeds;
+  dizLineSection.hidden = !v.dizReleaseLine && !v.dizPreviewOnly;
+  dizReleaseLinesContainer.hidden = !v.dizReleaseLine;
+  dizReleaseLineHint.hidden = !v.dizReleaseLine;
+  for (const input of dizLineInputs) input.required = v.dizReleaseLine;
+  cleanupSection.hidden = !v.revoke;
+  aminetCheckbox.parentElement!.hidden = !v.publishWebsite;
+  // The publish and Aminet sections appear after a build; until then only
+  // their place in the numbering is decided here.
+  publishSection.dataset.profileHidden = String(!v.publishWebsite);
+  aminetSection.dataset.profileHidden = String(!v.aminet);
+  numberHeadings();
+}
+
+/**
+ * Renumbers the "N. Title" headings so a section the group does not see
+ * leaves no gap. Sections shown only after a build (publish, Aminet) keep
+ * their number while hidden, so the numbers do not shift under the user.
+ */
+function numberHeadings(): void {
+  let n = 0;
+  for (const heading of Array.from(document.querySelectorAll<HTMLHeadingElement>('section > h2'))) {
+    const match = /^\d+\.\s+(.*)$/s.exec(heading.textContent ?? '');
+    if (!match) continue;
+    const section = heading.parentElement as HTMLElement;
+    const shownAfterBuild = section === publishSection || section === aminetSection;
+    const off = shownAfterBuild ? section.dataset.profileHidden === 'true' : section.hidden;
+    if (off) continue;
+    n += 1;
+    heading.textContent = `${n}. ${match[1]}`;
+  }
+}
+
 async function init(): Promise<void> {
   try {
     const seed = await window.api.loadSeedState(profileSelect.value);
     applyProfile(seed.profile);
-    // Only /X prints these; showing them for Up Rough would invite filling
-    // in fields that go nowhere.
-    xFieldsSection.hidden = currentDivision !== 'xinnovations';
     // Today, unless somebody has already typed a date - reloading the seed
     // (which switching division does) must not overwrite what they entered.
     if (xReleaseDateInput.value.trim() === '') xReleaseDateInput.value = todayIso();
@@ -462,6 +547,9 @@ async function init(): Promise<void> {
     memberlist.seed(seed.members);
     nextReleaseNumber = seed.nextReleaseNumber;
     seedDizBanner(seed.currentDizText);
+    // After the banner, which rebuilds the release-line inputs whose
+    // required flag this sets.
+    applyVisibility(visibleSections(seed.profile));
     updateReleaseNumberPreview();
     // Both can be set at once (an unconfigured build against a drifted
     // catalogue), and neither must hide the other.
@@ -531,8 +619,9 @@ form.addEventListener('submit', async (e) => {
   resetPublishState();
 
   const code = codeInput.value.trim().toUpperCase();
-  if (!/^[A-Z0-9]{5}$/.test(code)) {
-    buildStatus.textContent = 'Code must be exactly 5 letters/digits.';
+  const codeLength = currentProfile?.codeLength ?? 5;
+  if (!new RegExp(`^[A-Z0-9]{${codeLength}}$`).test(code)) {
+    buildStatus.textContent = `Code must be exactly ${codeLength} letters/digits.`;
     buildStatus.className = 'status warn';
     return;
   }
@@ -541,7 +630,7 @@ form.addEventListener('submit', async (e) => {
     buildStatus.className = 'status warn';
     return;
   }
-  const mediaEmbedsError = mediaEmbedsTable.getValidationError();
+  const mediaEmbedsError = visibility.mediaEmbeds ? mediaEmbedsTable.getValidationError() : null;
   if (mediaEmbedsError) {
     buildStatus.textContent = mediaEmbedsError;
     buildStatus.className = 'status warn';
@@ -559,8 +648,10 @@ form.addEventListener('submit', async (e) => {
     return;
   }
 
-  const mediaEmbeds = mediaEmbedsTable.getMediaEmbeds();
-  const embedImagePaths = mediaEmbedsTable.getEmbedImagePaths();
+  // A hidden section sends nothing, whatever rows it held before the
+  // group was switched.
+  const mediaEmbeds = visibility.mediaEmbeds ? mediaEmbedsTable.getMediaEmbeds() : [];
+  const embedImagePaths = visibility.mediaEmbeds ? mediaEmbedsTable.getEmbedImagePaths() : [];
 
   const boards = boardsTable.getBoards();
   const formData: ReleaseFormData = {
@@ -577,6 +668,7 @@ form.addEventListener('submit', async (e) => {
           ...(boards.length > 0 ? { boards } : {}),
         }
       : {}),
+    ...(visibility.releaseNumberText ? { releaseNumberText: releaseNumberTextInput.value.trim() } : {}),
     code,
     format: getSelectedFormat(),
     releaseName: releaseNameInput.value.trim(),
@@ -585,8 +677,8 @@ form.addEventListener('submit', async (e) => {
     newsText: newsTextArea.value,
     dizBannerText: currentDizBannerText(),
     members: memberlist.getMembers(),
-    entryTitle: entryTitleInput.value.trim(),
-    entryCategory: entryCategoryInput.value.trim(),
+    entryTitle: visibility.historyEntry ? entryTitleInput.value.trim() : '',
+    entryCategory: visibility.historyEntry ? entryCategoryInput.value.trim() : '',
     entryCreators,
     selectedPaths,
     description: descriptionInput.value.trim(),
@@ -602,13 +694,25 @@ form.addEventListener('submit', async (e) => {
   try {
     const result = await window.api.buildRelease(formData, dryRun);
     if (result.isDryRun) {
-      buildStatus.textContent =
-        `Dry run built: ${result.archivePath} (preview release ${result.releaseNumber} — ` +
-        'nothing was sent to the server, no release number was consumed).';
+      buildStatus.textContent = visibility.publishWebsite
+        ? `Dry run built: ${result.archivePath} (preview release ${result.releaseNumber} — ` +
+          'nothing was sent to the server, no release number was consumed).'
+        : `Dry run built: ${result.archivePath}`;
       buildStatus.className = 'status ok';
       // No real release row exists server-side for a dry run — Publish and
       // the cleanup/delete section both stay hidden (resetPublishState()
       // above already did this; nothing further to show here).
+    } else if (!visibility.publishWebsite) {
+      // No release server: the archive on disk is the whole release, and
+      // Aminet is the only place left to send it.
+      buildStatus.textContent = `Built: ${result.archivePath}`;
+      buildStatus.className = 'status ok';
+      lastBuiltCode = code;
+      lastBuiltArchivePath = result.archivePath;
+      aminetSection.hidden = false;
+      aminetUploadBtn.disabled = false;
+      prefillAminetShort();
+      refreshAminetPreview();
     } else {
       buildStatus.textContent =
         `Built release ${result.releaseNumber}: ${result.archivePath} — it is a draft until you ` +
@@ -628,6 +732,9 @@ form.addEventListener('submit', async (e) => {
       lastEmbedImagePaths = embedImagePaths;
       publishSection.hidden = false;
       publishBtn.disabled = !selectedImagePath;
+      // Shown now so the readme can be filled in while the cover image is
+      // picked; its Upload button waits for the website publish.
+      aminetSection.hidden = false;
       prefillAminetShort();
       refreshAminetPreview();
       // Pre-fill the revoke box with what was just built: that is the release
@@ -654,10 +761,10 @@ pickImageBtn.addEventListener('click', async () => {
 
 publishBtn.addEventListener('click', async () => {
   if (!lastBuiltCode || !lastBuiltArchivePath || !selectedImagePath) return;
-  // An incomplete Aminet readme stops the whole Publish, before anything is
-  // sent: the website publish and the Aminet upload are one action to the
-  // user, and the website half cannot be redone to pick up the other half.
-  const aminetProblems = refreshAminetPreview();
+  // With the Aminet box ticked, an incomplete readme stops the whole Publish
+  // before anything is sent: the two are one action to the user, and the
+  // website half cannot be redone to pick up the other half.
+  const aminetProblems = aminetCheckbox.checked ? refreshAminetPreview() : [];
   if (aminetProblems.length) {
     publishStatus.textContent = `Not published — fix the Aminet readme first, or untick "Also upload to Aminet": ${aminetProblems.join('; ')}`;
     publishStatus.className = 'status warn';
@@ -673,14 +780,14 @@ publishBtn.addEventListener('click', async () => {
       lastBuiltArchivePath,
       selectedImagePath,
       lastEmbedImagePaths,
-      aminetRequest(),
     );
     if (result.ok) {
-      const aminetNote = result.aminetUpload ? ` Aminet: ${result.aminetUpload.message}.` : '';
-      publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl}).${aminetNote}`;
-      // The website publish succeeded either way; a failed Aminet upload is
-      // shown as a warning so it is not mistaken for a failed publish.
-      publishStatus.className = result.aminetUpload && !result.aminetUpload.ok ? 'status warn' : 'status ok';
+      publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl}).`;
+      publishStatus.className = 'status ok';
+      // Aminet only after the website has the release, as before; its own
+      // status line keeps a failed upload from reading as a failed publish.
+      aminetUploadBtn.disabled = false;
+      if (aminetCheckbox.checked) await uploadLastBuildToAminet();
       // A real, successful publish — leave publishBtn disabled. A stray
       // second click would just 409; nothing more needs to happen for this
       // build once it's published.
@@ -697,6 +804,7 @@ publishBtn.addEventListener('click', async () => {
         ? `Already published: ${result.wordpressPostUrl}`
         : `Already published: ${result.message}`;
       publishStatus.className = 'status warn';
+      aminetUploadBtn.disabled = false;
       // Already published — leave publishBtn disabled, same as the success
       // path. A genuinely-already-published release doesn't need retrying.
     } else {
@@ -715,6 +823,8 @@ publishBtn.addEventListener('click', async () => {
     publishBtn.disabled = false;
   }
 });
+
+aminetUploadBtn.addEventListener('click', () => void uploadLastBuildToAminet());
 
 deleteReleaseBtn.addEventListener('click', async () => {
   // Read from the input, not from this session's build: a release that needs
@@ -764,6 +874,8 @@ deleteReleaseBtn.addEventListener('click', async () => {
         publishStatus.textContent = '';
         publishStatus.className = 'status';
         publishBtn.disabled = true;
+        aminetSection.hidden = true;
+        aminetUploadBtn.disabled = true;
       }
       deleteReleaseBtn.disabled = false;
     } else if (result.status === 409) {

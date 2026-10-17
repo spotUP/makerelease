@@ -39,6 +39,8 @@ export interface GroupProfile {
 export interface ProfileSummary {
   id: string;
   label: string;
+  /** Printed in the Aminet readme the renderer composes. */
+  url: string;
   filePrefix: string;
   codeLength: number;
   renderer: RendererKind;
@@ -64,6 +66,7 @@ export function summarize(profile: GroupProfile): ProfileSummary {
   return {
     id: profile.id,
     label: profile.label,
+    url: profile.url,
     filePrefix: profile.filePrefix,
     codeLength: profile.codeLength,
     renderer: profile.renderer,

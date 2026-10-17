@@ -1,6 +1,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type { ProfileListEntry } from '../shared/profile';
 import {
+  AminetUploadOutcome,
   AminetUploadRequest,
   BuildResult,
   DeleteReleaseOutcome,
@@ -26,9 +27,10 @@ const api: MakereleaseApi = {
     archivePath: string,
     imagePath: string,
     embedImagePaths: string[],
-    aminet: AminetUploadRequest | null,
   ): Promise<PublishToWebOutcome> =>
-    ipcRenderer.invoke('publishToWeb', profileId, code, archivePath, imagePath, embedImagePaths, aminet),
+    ipcRenderer.invoke('publishToWeb', profileId, code, archivePath, imagePath, embedImagePaths),
+  uploadToAminet: (request: AminetUploadRequest, archivePath: string): Promise<AminetUploadOutcome> =>
+    ipcRenderer.invoke('uploadToAminet', request, archivePath),
   deleteRelease: (profileId: string, code: string): Promise<DeleteReleaseOutcome> =>
     ipcRenderer.invoke('deleteRelease', profileId, code),
 };
