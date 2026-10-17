@@ -1,0 +1,217 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; font-src 'self';" />
+  <title>makerelease</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <h1>makerelease</h1>
+
+  <form id="release-form">
+    <section>
+      <h2>Group</h2>
+      <p class="hint">Which group this release goes out under. Each group is a folder of profiles; edit its profile.json, then press Reload profiles.</p>
+      <select id="profile-select"></select>
+      <button type="button" id="open-profiles-btn">Open profiles folder</button>
+      <button type="button" id="reload-profiles-btn">Reload profiles</button>
+      <div id="profile-status" class="status"></div>
+    </section>
+
+    <section>
+      <h2>1. Filename code</h2>
+      <label for="code" id="code-label">Release code</label>
+      <input type="text" id="code" required autocomplete="off" />
+      <div id="code-status" class="status"></div>
+    </section>
+
+    <section>
+      <h2>2. Release notes</h2>
+      <label for="release-name">Release name (as it appears after "Release named")</label>
+      <input type="text" id="release-name" required autocomplete="off" placeholder="'FLEISCH BITTE AD 006'" />
+      <label for="platform-tag">Platform tag (optional, shown in parentheses)</label>
+      <input type="text" id="platform-tag" autocomplete="off" placeholder="A1200" />
+      <label for="release-date">Release date</label>
+      <input type="text" id="release-date" autocomplete="off" placeholder="2026-09-21" />
+      <div class="hint">Prefilled with today. Printed in the NFO under the release name.</div>
+      <label for="description-text">Description (short — the first line of the WordPress post)</label>
+      <input type="text" id="description-text" required autocomplete="off" placeholder="Fleisch Bitte AD 006 released at Revision 2026." />
+      <label for="release-notes-text">Release notes (the WordPress post's main body, and the NFO's release notes)</label>
+      <textarea id="release-notes-text" rows="6" required></textarea>
+    </section>
+
+    <section>
+      <h2>3. News</h2>
+      <label for="news-text">News</label>
+      <textarea id="news-text" rows="4"></textarea>
+    </section>
+
+    <section>
+      <h2>4. Members</h2>
+      <table id="members-table">
+        <thead>
+          <tr><th>Nickname</th><th>Role</th><th></th></tr>
+        </thead>
+        <tbody id="members-tbody"></tbody>
+      </table>
+      <button type="button" id="add-member-btn">Add member</button>
+    </section>
+
+    <section id="section-release-number" hidden>
+      <h2>5. Release number</h2>
+      <label for="release-number-text">Release number, as it should print</label>
+      <input type="text" id="release-number-text" autocomplete="off" placeholder="042" />
+      <div class="hint">Optional. This group has no release server to count releases, so the number is whatever you type here.</div>
+    </section>
+
+    <section id="section-history-entry">
+      <h2>5. Release history entry</h2>
+      <div id="release-number-preview" class="status"></div>
+      <label for="entry-title">Title</label>
+      <input type="text" id="entry-title" required autocomplete="off" placeholder="fleisch bitte ad 006" />
+      <label for="entry-category">Category</label>
+      <select id="entry-category" required>
+        <option value="" disabled selected>Select a category&hellip;</option>
+        <option value="Demo">Demo</option>
+        <option value="Intro">Intro</option>
+        <option value="Musicdisk">Musicdisk</option>
+        <option value="Music">Music</option>
+        <option value="Graphics">Graphics</option>
+        <option value="ASCII">ASCII</option>
+        <option value="Tool">Tool</option>
+        <option value="Door">Door</option>
+        <option value="Video">Video</option>
+        <option value="Science">Science</option>
+        <option value="Other">Other</option>
+      </select>
+    </section>
+
+    <section id="x-fields-section" hidden>
+      <h2>/X Innovations details</h2>
+      <p class="hint">Printed under the logo in the /X NFO. Each is drawn into a fixed-width slot, so anything longer is cut.</p>
+      <label for="x-release-date">Release date</label>
+      <input type="text" id="x-release-date" autocomplete="off" placeholder="2026-06-20" />
+      <div class="hint">Prefilled with today; change it if the release is dated differently.</div>
+      <label for="x-system">System</label>
+      <input type="text" id="x-system" autocomplete="off" placeholder="aMiEXPRESS" />
+      <div id="x-credits-preview" class="hint"></div>
+
+      <h3>Boards</h3>
+      <p class="hint">The board list the NFO prints. Leave empty to keep the list the last /X release published.</p>
+      <table id="boards-table">
+        <thead>
+          <tr><th>Board</th><th>Sysop</th><th>HQ</th><th>Status</th><th></th></tr>
+        </thead>
+        <tbody id="boards-tbody"></tbody>
+      </table>
+      <button type="button" id="add-board-btn">Add board</button>
+    </section>
+
+    <section>
+      <h2>6. Credits</h2>
+      <p class="hint">
+        Who made this. Goes into the WordPress post as a Role/Name list, and the
+        release history entry's creator line is built from these names.
+      </p>
+      <table id="credits-table">
+        <thead>
+          <tr><th>Role</th><th>Name</th><th></th></tr>
+        </thead>
+        <tbody id="credits-tbody"></tbody>
+      </table>
+      <button type="button" id="add-credit-btn">Add credit</button>
+      <div id="creators-preview" class="hint"></div>
+    </section>
+
+    <section id="section-media-embeds">
+      <h2>7. Media embeds (optional — YouTube videos or images in the WordPress post)</h2>
+      <div id="media-embeds-container"></div>
+      <button type="button" id="add-media-embed-btn">Add media embed</button>
+    </section>
+
+    <section id="section-diz-line">
+      <h2>8. Diz release line</h2>
+      <p class="hint" id="diz-release-line-hint">
+        The file_id.diz banner art is inherited from the last release and cannot be edited here.
+        Only the release line changes &mdash; it is centered between the frame characters automatically.
+      </p>
+      <pre id="diz-banner-preview" class="diz-banner-preview" aria-label="file_id.diz preview"></pre>
+      <div id="template-status" class="status" hidden></div>
+      <div id="diz-release-lines"></div>
+    </section>
+
+    <section>
+      <h2>9. Files to include</h2>
+      <button type="button" id="pick-files-btn">Choose files/folders...</button>
+      <ul id="selected-files-list"></ul>
+    </section>
+
+    <section>
+      <h2>10. Archive format</h2>
+      <label><input type="radio" name="format" value="LHA" checked /> LHA</label>
+      <label><input type="radio" name="format" value="ZIP" /> ZIP</label>
+    </section>
+
+    <section>
+      <label><input type="checkbox" id="dry-run-checkbox" /> Dry run — build and preview the archive locally without touching the server (no release number consumed, nothing published)</label>
+      <button type="submit" id="build-btn">Build release</button>
+      <div id="build-status" class="status"></div>
+    </section>
+  </form>
+
+  <section id="publish-section" hidden>
+    <h2>11. Publish to the group website</h2>
+    <button type="button" id="pick-image-btn">Choose cover image...</button>
+    <div id="selected-image" class="status"></div>
+
+    <label><input type="checkbox" id="aminet-checkbox" checked /> Also upload to Aminet once the website publish has succeeded (fill in the Aminet section below)</label>
+
+    <button type="button" id="publish-btn" disabled>Publish</button>
+    <div id="publish-status" class="status"></div>
+  </section>
+
+  <section id="section-aminet" hidden>
+    <h2>12. Upload to Aminet</h2>
+    <p class="hint">Uploads the built archive and its .readme to ftp://main.aminet.net/new. It is public once a moderator has approved it.</p>
+    <div id="aminet-fields">
+      <div class="aminet-grid">
+        <label>Short description (shown in the Aminet index, 40 characters at most)
+          <input type="text" id="aminet-short" maxlength="40" />
+        </label>
+        <label>Aminet directory
+          <input type="text" id="aminet-type" list="aminet-type-list" placeholder="demo/aga" />
+          <datalist id="aminet-type-list"></datalist>
+        </label>
+        <label>Architecture
+          <input type="text" id="aminet-architecture" list="aminet-architecture-list" />
+          <datalist id="aminet-architecture-list"></datalist>
+        </label>
+        <label>Uploader name
+          <input type="text" id="aminet-uploader-name" autocomplete="name" />
+        </label>
+        <label>Uploader email (Aminet uses it as the FTP password and for questions about the upload)
+          <input type="email" id="aminet-uploader-email" autocomplete="email" />
+        </label>
+      </div>
+      <p class="hint">The .readme Aminet gets, built from the description, release notes and credits above. It is written next to the archive as well.</p>
+      <pre id="aminet-readme-preview" class="aminet-readme-preview"></pre>
+      <div id="aminet-readme-problems" class="status"></div>
+    </div>
+
+    <button type="button" id="aminet-upload-btn" disabled>Upload to Aminet</button>
+    <div id="aminet-status" class="status"></div>
+  </section>
+
+  <section id="cleanup-section">
+    <h2>Revoke a release</h2>
+    <p>Removes the catalog entry, frees the release number <strong>and the code</strong>, deletes the published archive, and moves the WordPress post to the trash (recoverable in wp-admin for 30 days). Works on any release, including one from an earlier session — but only on the most recently created one, so revoke newest first.</p>
+    <label for="revoke-code">Code of the release to revoke</label>
+    <input type="text" id="revoke-code" maxlength="5" placeholder="EVK26" autocomplete="off" />
+    <button type="button" id="delete-release-btn" class="danger">Revoke release</button>
+    <div id="delete-status" class="status"></div>
+  </section>
+
+  <script type="module" src="main.js"></script>
+</body>
+</html>

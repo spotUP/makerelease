@@ -1,0 +1,33 @@
+Up Rough Release Maker - Linux
+==============================
+
+1. REQUIRED TOOLS
+
+   The app shells out to "lha" and "zip" to pack archives. Install both
+   with your package manager, e.g. on Debian/Ubuntu:
+
+       sudo apt install lhasa zip
+
+   Without them, builds fail with a message naming the missing binary.
+
+2. INSTALL
+
+   AppImage - no install, just make it executable:
+
+       chmod +x "Up Rough Release Maker-0.1.0.AppImage"
+       ./"Up Rough Release Maker-0.1.0.AppImage"
+
+   If it refuses to start, your distro is probably missing FUSE 2:
+
+       sudo apt install libfuse2
+
+   Debian/Ubuntu package:
+
+       sudo apt install ./makerelease_0.1.0_amd64.deb
+
+3. WHERE YOUR BUILDS GO
+
+       ~/Documents/Up Rough Releases/
+
+   If your system has no Documents folder configured, the app falls back
+   to your home directory. It prints the full path after every build.

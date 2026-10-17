@@ -1,0 +1,21 @@
+app/node_modules/
+app/dist/
+app/dist-electron/
+app/release/
+# Legacy: written by the removed inject-release-key script and may still hold
+# a real write key on a maintainer's machine. Nothing imports it any more; the
+# key belongs in profiles/uprough/profile.json under userData. Kept ignored
+# until every copy is gone.
+app/src/main/config.generated.ts
+.DS_Store
+thoughts/spot/
+thoughts/searchable/
+# Development build output: releases-out/<profile id>/. Older builds wrote
+# <PREFIX><CODE>/ and <PREFIX><CODE>.<FORMAT> into the repo root, and some
+# maintainers still have those leftovers.
+releases-out/
+UP-*/
+UP-*.LHA
+UP-*.ZIP
+UP-*.lha
+UP-*.zip

@@ -1,0 +1,26 @@
+            Example Group  -  https://example.net
+
+  Release ..: Demo Disk (A500)
+  Code .....: TEST1 (LHA)
+  File .....: EX-TEST1.LHA
+  Number ...: 007
+  Date .....: 2026-10-17
+
+  A demo disk released at the party.
+  By coder and pixelartist
+
+  -- notes -------------------------------------------------------------
+  First line of notes.
+  Second line, $& kept.
+
+  -- news --------------------------------------------------------------
+
+  -- members -----------------------------------------------------------
+  coder        code
+  pixelartist  graphics
+
+  -- credits -----------------------------------------------------------
+  Code: coder
+  Graphics: pixelartist
+
+                 Example Group - https://example.net
