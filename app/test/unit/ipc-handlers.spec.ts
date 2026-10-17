@@ -5,7 +5,7 @@ const handlers: Record<string, (...args: any[]) => any> = {};
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn((channel: string, fn: any) => { handlers[channel] = fn; }) },
   dialog: { showOpenDialog: vi.fn() },
-  shell: { openPath: vi.fn() },
+  shell: { openPath: vi.fn(), trashItem: vi.fn() },
 }));
 
 // Profiles come from parseProfile on fixed JSON, so every handler sees exactly
@@ -39,6 +39,9 @@ vi.mock('../../src/main/profiles', async () => {
       return parseProfile(PROFILE_JSON[id], id, `${id}/profile.json`);
     }),
     listProfiles: vi.fn(),
+    saveProfile: vi.fn(),
+    deleteProfile: vi.fn(),
+    readTemplateFile: vi.fn(),
     readTemplates: vi.fn(async () => TEMPLATES),
     isProfileLoadError: (entry: { error?: string }) => typeof entry.error === 'string',
   };
@@ -99,6 +102,7 @@ vi.mock('../../src/main/fs-helpers', () => ({
 
 import { registerIpcHandlers } from '../../src/main/ipc-handlers';
 import * as electron from 'electron';
+import * as profilesModule from '../../src/main/profiles';
 import * as releasesClient from '../../src/main/releases-client';
 import { ReleasesApiError } from '../../src/main/releases-client';
 import * as nfoGenerator from '../../src/main/nfo-generator';
@@ -710,5 +714,40 @@ describe('registerIpcHandlers', () => {
   it('openProfilesFolder reports a folder the system could not open', async () => {
     (electron.shell.openPath as any).mockResolvedValue('no handler');
     await expect(handlers.openProfilesFolder(null)).rejects.toThrow(/Could not open \/profiles: no handler/);
+  });
+
+  it('the profile editor channels delegate to the profiles module and return its outcome', async () => {
+    const outcome = { ok: false, error: 'profile.json: "url" is missing' };
+    (profilesModule.saveProfile as any).mockResolvedValue(outcome);
+    (profilesModule.deleteProfile as any).mockImplementation(async (_dir: string, _id: string, trash: (p: string) => Promise<void>) => {
+      await trash('/profiles/example');
+      return { ok: true };
+    });
+    const request = { id: 'demo', isNew: true, profile: PROFILE_JSON.example };
+    expect(await handlers.saveProfile(null, request)).toEqual(outcome);
+    expect(profilesModule.saveProfile).toHaveBeenCalledWith('/profiles', request);
+    expect(await handlers.deleteProfile(null, 'example')).toEqual({ ok: true });
+    expect(electron.shell.trashItem).toHaveBeenCalledWith('/profiles/example');
+  });
+
+  it('loadProfileForEdit gives templates for a placeholder profile only; newProfileDraft starts as a placeholder group', async () => {
+    const example = await handlers.loadProfileForEdit(null, 'example');
+    expect(example.profile.id).toBe('example');
+    expect(example.templates).toEqual(TEMPLATES);
+    expect((await handlers.loadProfileForEdit(null, 'uprough')).templates).toEqual({ nfo: null, diz: '' });
+
+    (profilesModule.listProfiles as any).mockResolvedValue([{ id: 'new-group' }]);
+    const draft = await handlers.newProfileDraft(null);
+    expect(draft.profile).toMatchObject({ id: 'new-group-2', renderer: 'placeholder', backend: 'none', codeLength: 5 });
+    expect(draft.templates.diz).toContain('{{group');
+  });
+
+  it('importTemplate returns the decoded file and its name, or null when cancelled', async () => {
+    (electron.dialog.showOpenDialog as any).mockResolvedValueOnce({ canceled: true, filePaths: [] });
+    expect(await handlers.importTemplate(null)).toBeNull();
+    (electron.dialog.showOpenDialog as any).mockResolvedValueOnce({ canceled: false, filePaths: ['/x/art.diz'] });
+    (profilesModule.readTemplateFile as any).mockResolvedValue('ART\n');
+    expect(await handlers.importTemplate(null)).toEqual({ text: 'ART\n', name: 'art.diz' });
+    expect(profilesModule.readTemplateFile).toHaveBeenCalledWith('/x/art.diz', false);
   });
 });

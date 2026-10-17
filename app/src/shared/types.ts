@@ -1,5 +1,5 @@
 import type { DivisionId } from './divisions';
-import type { ProfileListEntry, ProfileSummary } from './profile';
+import type { GroupProfile, ProfileListEntry, ProfileSummary } from './profile';
 
 export interface MemberEntry {
   nickname: string;
@@ -223,9 +223,38 @@ export type DeleteReleaseOutcome =
   | ({ ok: true } & DeleteReleaseResult)
   | { ok: false; message: string; status?: number };
 
+/** A group's NFO (optional) and DIZ template texts, decoded and with LF line endings. */
+export interface ProfileTemplatesText {
+  nfo: string | null;
+  diz: string;
+}
+
+/** A profile as the editor dialog holds it: everything but the id, which is the folder name. */
+export interface ProfileEditRequest {
+  id: string;
+  isNew: boolean;
+  profile: Omit<GroupProfile, 'id'>;
+  /** Omitted for the code renderers, whose template files stay untouched. */
+  templates?: ProfileTemplatesText;
+}
+
+export interface ProfileEditState {
+  profile: GroupProfile;
+  templates: ProfileTemplatesText;
+}
+
+/** Same shape as the publish outcomes: a refusal is returned, not thrown, so its message survives IPC. */
+export type ProfileEditOutcome = { ok: true } | { ok: false; error: string };
+
 export interface MakereleaseApi {
   listProfiles(): Promise<ProfileListEntry[]>;
   openProfilesFolder(): Promise<void>;
+  newProfileDraft(): Promise<ProfileEditState>;
+  loadProfileForEdit(id: string): Promise<ProfileEditState>;
+  saveProfile(request: ProfileEditRequest): Promise<ProfileEditOutcome>;
+  deleteProfile(id: string): Promise<ProfileEditOutcome>;
+  /** Lets the user pick a template file; null when cancelled. */
+  importTemplate(): Promise<{ text: string; name: string } | null>;
   loadSeedState(profileId: string): Promise<SeedState>;
   pickFilesAndDirs(): Promise<string[]>;
   checkCodeAvailability(profileId: string, code: string): Promise<{ exists: boolean }>;

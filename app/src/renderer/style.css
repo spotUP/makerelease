@@ -11,6 +11,7 @@
   --accent: #d98c3f;
   --border: #3a3a3a;
   --danger: #c0392b;
+  --backdrop: rgba(0, 0, 0, 0.6);
 }
 
 * { box-sizing: border-box; }
@@ -147,3 +148,23 @@ button.danger { background: var(--danger); color: var(--fg); }
 }
 .media-embed-row .status { flex: 1 1 120px; min-width: 0; margin: 0; font-size: 0.8rem; overflow-wrap: anywhere; }
 .media-embed-row button { flex: 0 0 auto; }
+
+dialog#profile-dialog {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  width: min(640px, 92vw);
+  max-height: 90vh;
+}
+dialog#profile-dialog::backdrop { background: var(--backdrop); }
+dialog#profile-dialog h3 { font-size: 0.9rem; color: var(--accent); margin-bottom: 0.2rem; }
+dialog#profile-dialog input[type="password"], dialog#profile-dialog input[type="number"] {
+  width: 100%;
+  background: #111;
+  color: var(--fg);
+  border: 1px solid var(--border);
+  padding: 0.4rem;
+  font-size: 0.9rem;
+}
+dialog#profile-dialog [hidden] { display: none; }
+.dialog-actions { margin-top: 1rem; display: flex; gap: 0.5rem; }

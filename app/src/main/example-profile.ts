@@ -1,3 +1,5 @@
+import { serializeProfile } from '../shared/profile';
+
 /**
  * The profile written on first launch, so a new group sees a working setup
  * to copy instead of an empty dropdown. Every placeholder appears once in
@@ -6,19 +8,16 @@
  */
 export const EXAMPLE_PROFILE_ID = 'example';
 
-export const EXAMPLE_PROFILE_JSON = `${JSON.stringify(
-  {
-    label: 'Example Group',
-    url: 'https://example.net',
-    filePrefix: 'EX-',
-    codeLength: 5,
-    renderer: 'placeholder',
-    backend: 'none',
-    members: [{ nickname: 'coder', role: 'code' }],
-  },
-  null,
-  2,
-)}\n`;
+export const EXAMPLE_PROFILE_JSON = serializeProfile({
+  id: EXAMPLE_PROFILE_ID,
+  label: 'Example Group',
+  url: 'https://example.net',
+  filePrefix: 'EX-',
+  codeLength: 5,
+  renderer: 'placeholder',
+  backend: 'none',
+  members: [{ nickname: 'coder', role: 'code' }],
+});
 
 export const EXAMPLE_NFO_TEMPLATE = [
   '            {{group}}  -  {{url}}',

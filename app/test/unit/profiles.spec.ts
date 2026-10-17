@@ -1,13 +1,15 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs/promises';
 import * as os from 'os';
 import * as path from 'path';
 import {
+  deleteProfile,
   ensureExampleProfile,
   isProfileLoadError,
   listProfiles,
   loadProfile,
   readTemplates,
+  saveProfile,
 } from '../../src/main/profiles';
 import { EXAMPLE_DIZ_TEMPLATE, EXAMPLE_NFO_TEMPLATE, EXAMPLE_PROFILE_JSON } from '../../src/main/example-profile';
 
@@ -113,5 +115,66 @@ describe('profiles on disk', () => {
     await fs.writeFile(path.join(dir, 'demo', 'release.nfo'), 'x\n', 'latin1');
 
     await expect(readTemplates(dir, 'demo')).rejects.toThrow('file_id.diz: could not be read');
+  });
+});
+
+describe('loadProfile hardening', () => {
+  it('rejects a bad id before touching the filesystem', async () => {
+    await expect(loadProfile(dir, '../evil')).rejects.toThrow(/folder name "..\/evil" must use only/);
+  });
+
+  it('parses a profile.json that starts with a UTF-8 BOM', async () => {
+    await writeProfile('bom', '﻿' + VALID);
+    expect((await loadProfile(dir, 'bom')).label).toBe('Demo');
+  });
+});
+
+describe('saveProfile and deleteProfile', () => {
+  const profile = { label: 'Demo', url: 'https://demo.net', filePrefix: 'DM-', codeLength: 5, renderer: 'placeholder' as const, backend: 'none' as const, members: [] };
+  const templates = { nfo: 'NFO\n', diz: 'DIZ\n' };
+
+  it('creates a new group with a private profile.json and its templates', async () => {
+    expect(await saveProfile(dir, { id: 'demo', isNew: true, profile, templates })).toEqual({ ok: true });
+    expect((await loadProfile(dir, 'demo')).label).toBe('Demo');
+    expect((await fs.stat(path.join(dir, 'demo', 'profile.json'))).mode & 0o777).toBe(0o600);
+    expect(await readTemplates(dir, 'demo')).toEqual(templates);
+    await expect(fs.stat(path.join(dir, 'demo', 'profile.json.tmp'))).rejects.toThrow();
+  });
+
+  it('refuses a new group whose folder exists, and an edit of a missing folder', async () => {
+    await saveProfile(dir, { id: 'demo', isNew: true, profile, templates });
+    expect(await saveProfile(dir, { id: 'demo', isNew: true, profile })).toEqual({ ok: false, error: 'A group with id demo already exists' });
+    expect(await saveProfile(dir, { id: 'nope', isNew: false, profile })).toMatchObject({ ok: false });
+  });
+
+  it('rejects an invalid profile with the parseProfile message and writes nothing', async () => {
+    const result = await saveProfile(dir, {
+      id: 'bad', isNew: true, profile: { ...profile, backend: 'releases-doorserver', server: { baseUrl: 'https://x', writeKey: '' } }, templates,
+    });
+    expect(result.ok).toBe(false);
+    expect((result as { error: string }).error).toContain('"backend"');
+    await expect(fs.stat(path.join(dir, 'bad'))).rejects.toThrow();
+  });
+
+  it('removes release.nfo for a null nfo and leaves templates byte-identical when omitted', async () => {
+    await saveProfile(dir, { id: 'demo', isNew: true, profile, templates });
+    const before = await fs.readFile(path.join(dir, 'demo', 'file_id.diz'));
+    await saveProfile(dir, { id: 'demo', isNew: false, profile: { ...profile, label: 'Renamed' } });
+    expect(await fs.readFile(path.join(dir, 'demo', 'file_id.diz'))).toEqual(before);
+    expect((await readTemplates(dir, 'demo')).nfo).toBe('NFO\n');
+    await saveProfile(dir, { id: 'demo', isNew: false, profile, templates: { nfo: null, diz: 'DIZ\n' } });
+    expect((await readTemplates(dir, 'demo')).nfo).toBeNull();
+  });
+
+  it('deletes through the trash once, refuses the last group and a bad id', async () => {
+    await saveProfile(dir, { id: 'demo', isNew: true, profile, templates });
+    const trash = vi.fn(async () => undefined);
+    expect(await deleteProfile(dir, 'demo', trash)).toMatchObject({ ok: false });
+    await saveProfile(dir, { id: 'other', isNew: true, profile, templates });
+    expect(await deleteProfile(dir, 'demo', trash)).toEqual({ ok: true });
+    expect(trash).toHaveBeenCalledTimes(1);
+    expect(trash).toHaveBeenCalledWith(path.join(dir, 'demo'));
+    expect(await deleteProfile(dir, '../x', trash)).toMatchObject({ ok: false });
+    expect(trash).toHaveBeenCalledTimes(1);
   });
 });

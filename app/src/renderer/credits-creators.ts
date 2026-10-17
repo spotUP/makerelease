@@ -52,3 +52,13 @@ export function creditNamesForRole(credits: CreditEntry[], pattern: RegExp): str
 /** Roles that mean "wrote the code" and "drew it", as people actually type them. */
 export const CODER_ROLES = /cod|program|dev/i;
 export const DESIGN_ROLES = /design|graphic|art|ink|logo|ansi|ascii/i;
+
+/**
+ * The message blocking a build for missing credits, or null. Only a renderer
+ * whose output carries the creator line (the history entry) needs one; a
+ * group's own template may build without any.
+ */
+export function creditsError(credits: CreditEntry[], needsCreatorLine: boolean): string | null {
+  if (!needsCreatorLine || creatorsFromCredits(credits)) return null;
+  return 'Add at least one credit - the release history creator line is built from them.';
+}

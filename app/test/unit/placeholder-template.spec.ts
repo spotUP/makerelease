@@ -81,7 +81,7 @@ describe('placeholder template language', () => {
   });
 
   it('leaves text that only looks like a placeholder alone', () => {
-    expect(renderTemplate('{{ code }} {code} {{CODE}}', values())).toBe('{{ code }} {code} {{CODE}}');
+    expect(renderTemplate('{{ code }} {code}', values())).toBe('{{ code }} {code}');
   });
 
   it('writes $& and $1 in a value literally', () => {
@@ -106,5 +106,18 @@ describe('placeholder template language', () => {
 
   it('normalises CRLF and lone CR to LF', () => {
     expect(normaliseLineEndings('a\r\nb\rc\n')).toBe('a\nb\nc\n');
+  });
+});
+
+describe('template edge cases', () => {
+  it('reports a placeholder name outside [a-z_] as unknown', () => {
+    const err = errorOf(() => renderTemplate('{{Group}}', values()));
+    expect(err.message).toBe('unknown placeholder {{Group}}');
+  });
+
+  it('strips trailing whitespace from a block line with an empty value', () => {
+    const v = values();
+    v.blocks.notes = ['', 'x'];
+    expect(renderTemplate('| {{notes}} ', v)).toBe('|\n| x ');
   });
 });

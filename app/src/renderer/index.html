@@ -12,8 +12,12 @@
   <form id="release-form">
     <section>
       <h2>Group</h2>
-      <p class="hint">Which group this release goes out under. Each group is a folder of profiles; edit its profile.json, then press Reload profiles.</p>
+      <p class="hint">Which group this release goes out under. Use New, Edit, Duplicate or Delete to manage groups and their templates.</p>
       <select id="profile-select"></select>
+      <button type="button" id="new-profile-btn">New</button>
+      <button type="button" id="edit-profile-btn">Edit</button>
+      <button type="button" id="duplicate-profile-btn">Duplicate</button>
+      <button type="button" id="delete-profile-btn" class="danger">Delete</button>
       <button type="button" id="open-profiles-btn">Open profiles folder</button>
       <button type="button" id="reload-profiles-btn">Reload profiles</button>
       <div id="profile-status" class="status"></div>
@@ -211,6 +215,61 @@
     <button type="button" id="delete-release-btn" class="danger">Revoke release</button>
     <div id="delete-status" class="status"></div>
   </section>
+
+  <dialog id="profile-dialog">
+    <form id="profile-form" method="dialog">
+      <h2 id="profile-dialog-title">Group</h2>
+      <label for="pe-label">Group name</label>
+      <input type="text" id="pe-label" autocomplete="off" />
+      <label for="pe-id">Folder name (fixed once the group is saved)</label>
+      <input type="text" id="pe-id" autocomplete="off" />
+      <label for="pe-url">Website</label>
+      <input type="text" id="pe-url" autocomplete="off" />
+      <label for="pe-prefix">File prefix</label>
+      <input type="text" id="pe-prefix" autocomplete="off" />
+      <label for="pe-code-length">Code length</label>
+      <input type="number" id="pe-code-length" min="1" max="32" step="1" />
+      <label for="pe-renderer">Renderer</label>
+      <select id="pe-renderer">
+        <option value="placeholder">placeholder</option>
+        <option value="uprough">uprough</option>
+        <option value="xinnovations">xinnovations</option>
+      </select>
+      <label for="pe-backend">Backend</label>
+      <select id="pe-backend">
+        <option value="none">none</option>
+        <option value="releases-doorserver">releases-doorserver</option>
+      </select>
+      <div id="pe-server">
+        <label for="pe-base-url">Server address</label>
+        <input type="text" id="pe-base-url" autocomplete="off" />
+        <label for="pe-write-key">Write key</label>
+        <input type="password" id="pe-write-key" autocomplete="off" />
+        <button type="button" id="pe-show-key">Show</button>
+      </div>
+      <h3>Members</h3>
+      <p class="hint" id="pe-members-note">The server's member list replaces this one.</p>
+      <table>
+        <thead><tr><th>Nickname</th><th>Role</th><th></th></tr></thead>
+        <tbody id="pe-members"></tbody>
+      </table>
+      <button type="button" id="pe-add-member">Add member</button>
+      <div id="pe-templates">
+        <h3>Templates</h3>
+        <p class="hint">ASCII art with placeholders in double braces, drawn in PabloDraw or Moebius.</p>
+        <div><strong>file_id.diz</strong> <span id="pe-diz-info" class="hint"></span></div>
+        <button type="button" id="pe-import-diz">Import DIZ</button>
+        <div><strong>release.nfo</strong> <span id="pe-nfo-info" class="hint"></span></div>
+        <button type="button" id="pe-import-nfo">Import NFO</button>
+        <button type="button" id="pe-remove-nfo">Remove NFO</button>
+      </div>
+      <div id="pe-error" class="status warn"></div>
+      <div class="dialog-actions">
+        <button type="button" id="pe-save">Save</button>
+        <button type="button" id="pe-cancel">Cancel</button>
+      </div>
+    </form>
+  </dialog>
 
   <script type="module" src="main.js"></script>
 </body>

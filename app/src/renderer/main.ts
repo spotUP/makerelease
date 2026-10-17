@@ -11,12 +11,15 @@ import {
 import { MemberlistTable } from './memberlist-table.js';
 import { BoardsTable } from './boards-table.js';
 import { CreditsTable } from './credits-table.js';
-import { CODER_ROLES, DESIGN_ROLES, creatorsFromCredits, creditNamesForRole } from './credits-creators.js';
+import { CODER_ROLES, DESIGN_ROLES, creatorsFromCredits, creditNamesForRole, creditsError } from './credits-creators.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
 import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../shared/diz-release-line.js';
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
 import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
+import { builtReleaseFor, type BuiltRelease } from './built-release.js';
+import { LatestOnly } from './latest-only.js';
+import { createProfileEditor, type ProfileEditorMode } from './profile-editor.js';
 import { visibleSections, type SectionVisibility } from '../shared/section-visibility.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -27,6 +30,10 @@ const profileSelect = $<HTMLSelectElement>('profile-select');
 const openProfilesBtn = $<HTMLButtonElement>('open-profiles-btn');
 const reloadProfilesBtn = $<HTMLButtonElement>('reload-profiles-btn');
 const profileStatus = $<HTMLDivElement>('profile-status');
+const editProfileBtn = $<HTMLButtonElement>('edit-profile-btn');
+const duplicateProfileBtn = $<HTMLButtonElement>('duplicate-profile-btn');
+const newProfileBtn = $<HTMLButtonElement>('new-profile-btn');
+const deleteProfileBtn = $<HTMLButtonElement>('delete-profile-btn');
 const codeStatus = $<HTMLDivElement>('code-status');
 const releaseNameInput = $<HTMLInputElement>('release-name');
 const platformTagInput = $<HTMLInputElement>('platform-tag');
@@ -102,15 +109,8 @@ const boardsTable = new BoardsTable(boardsTbody);
 const mediaEmbedsTable = new MediaEmbedsTable(mediaEmbedsContainer, () => window.api.pickImage());
 let nextReleaseNumber = 0;
 let selectedPaths: string[] = [];
-let lastBuiltCode: string | null = null;
-let lastBuiltArchivePath: string | null = null;
+let built: BuiltRelease | null = null;
 let selectedImagePath: string | null = null;
-// Captured at build-success time from mediaEmbedsTable, frozen for the
-// later Publish click — mirrors lastBuiltArchivePath. The form's own
-// media-embed rows could be edited (or cleared) between Build and Publish;
-// Publish must send exactly what was actually built and sent to the server,
-// not whatever the form currently shows.
-let lastEmbedImagePaths: string[] = [];
 
 // Typing in a credit row has to refresh the derived creator line too, and
 // rows come and go - one delegated listener on the table body covers every
@@ -319,7 +319,8 @@ function prefillAminetShort(): void {
  * upload is retried with the same button whichever started it.
  */
 async function uploadLastBuildToAminet(): Promise<void> {
-  if (!lastBuiltArchivePath) return;
+  const release = builtReleaseFor(built, profileSelect.value);
+  if (!release) return;
   const problems = refreshAminetPreview();
   if (problems.length) {
     aminetStatus.textContent = `Not uploaded - fix the Aminet readme first: ${problems.join('; ')}`;
@@ -330,7 +331,7 @@ async function uploadLastBuildToAminet(): Promise<void> {
   aminetStatus.textContent = 'Uploading to Aminet...';
   aminetStatus.className = 'status';
   try {
-    const result = await window.api.uploadToAminet(aminetRequest(), lastBuiltArchivePath);
+    const result = await window.api.uploadToAminet(aminetRequest(), release.archivePath);
     aminetStatus.textContent = `Aminet: ${result.message}.`;
     aminetStatus.className = result.ok ? 'status ok' : 'status warn';
     // Only a failure is worth a second click; a second upload of the same
@@ -374,8 +375,7 @@ async function uploadLastBuildToAminet(): Promise<void> {
  * release's code/build.
  */
 function resetPublishState(): void {
-  lastBuiltCode = null;
-  lastBuiltArchivePath = null;
+  built = null;
   selectedImagePath = null;
   selectedImageDiv.textContent = '';
   publishSection.hidden = true;
@@ -389,7 +389,6 @@ function resetPublishState(): void {
   deleteReleaseBtn.disabled = false;
   deleteStatus.textContent = '';
   deleteStatus.className = 'status';
-  lastEmbedImagePaths = [];
 }
 
 function renderSelectedFiles(): void {
@@ -415,6 +414,14 @@ function renderSelectedFiles(): void {
 // own roster, its own banner art. Reloading the seed is what makes all three
 // follow, rather than each being patched in its own place.
 const PROFILE_STORAGE_KEY = 'profile-id';
+
+function rememberProfileId(id: string): void {
+  try {
+    localStorage.setItem(PROFILE_STORAGE_KEY, id);
+  } catch {
+    // Storage disabled: the choice still holds for this session.
+  }
+}
 
 function rememberedProfileId(): string | null {
   try {
@@ -462,11 +469,7 @@ async function loadProfiles(): Promise<void> {
 }
 
 profileSelect.addEventListener('change', () => {
-  try {
-    localStorage.setItem(PROFILE_STORAGE_KEY, profileSelect.value);
-  } catch {
-    // Storage disabled: the choice still holds for this session.
-  }
+  rememberProfileId(profileSelect.value);
   void init();
 });
 
@@ -480,6 +483,43 @@ openProfilesBtn.addEventListener('click', async () => {
 });
 
 reloadProfilesBtn.addEventListener('click', () => void loadProfiles());
+
+const profileEditor = createProfileEditor();
+
+async function editProfile(mode: ProfileEditorMode): Promise<void> {
+  try {
+    const takenIds = Array.from(profileSelect.options, (option) => option.value);
+    const savedId = await profileEditor.open(mode, profileSelect.value || null, takenIds);
+    if (savedId === null) return;
+    rememberProfileId(savedId);
+    await loadProfiles();
+  } catch (err) {
+    profileStatus.textContent = err instanceof Error ? err.message : String(err);
+    profileStatus.className = 'status warn';
+  }
+}
+
+newProfileBtn.addEventListener('click', () => void editProfile('new'));
+editProfileBtn.addEventListener('click', () => void editProfile('edit'));
+duplicateProfileBtn.addEventListener('click', () => void editProfile('duplicate'));
+
+deleteProfileBtn.addEventListener('click', async () => {
+  const id = profileSelect.value;
+  const label = profileSelect.selectedOptions[0]?.textContent ?? id;
+  if (!id || !window.confirm(`Move the group "${label}" to the Trash?`)) return;
+  try {
+    const outcome = await window.api.deleteProfile(id);
+    if (!outcome.ok) {
+      profileStatus.textContent = outcome.error;
+      profileStatus.className = 'status warn';
+      return;
+    }
+    await loadProfiles();
+  } catch (err) {
+    profileStatus.textContent = err instanceof Error ? err.message : String(err);
+    profileStatus.className = 'status warn';
+  }
+});
 
 function applyProfile(profile: ProfileSummary): void {
   currentProfile = profile;
@@ -537,9 +577,17 @@ function numberHeadings(): void {
   }
 }
 
+const initSwitches = new LatestOnly();
+
 async function init(): Promise<void> {
+  // A build belongs to the profile that made it; once the profile is switched
+  // or reloaded, its Publish and Aminet state must not stay on screen.
+  resetPublishState();
+  const isLatest = initSwitches.begin();
   try {
     const seed = await window.api.loadSeedState(profileSelect.value);
+    // A newer switch started while this seed loaded; its result wins.
+    if (!isLatest()) return;
     applyProfile(seed.profile);
     // Today, unless somebody has already typed a date - reloading the seed
     // (which switching division does) must not overwrite what they entered.
@@ -724,8 +772,9 @@ form.addEventListener('submit', async (e) => {
   // The credits are the only place the release's people are entered, so an
   // empty table means the NFO history entry would have a blank creator line
   // and the server would reject the build.
-  if (!creatorsFromCredits(creditsTable.getCredits())) {
-    buildStatus.textContent = 'Add at least one credit - the release history creator line is built from them.';
+  const creditsProblem = creditsError(creditsTable.getCredits(), visibility.historyEntry);
+  if (creditsProblem) {
+    buildStatus.textContent = creditsProblem;
     buildStatus.className = 'status warn';
     return;
   }
@@ -754,8 +803,7 @@ form.addEventListener('submit', async (e) => {
       // Aminet is the only place left to send it.
       buildStatus.textContent = `Built: ${result.archivePath}`;
       buildStatus.className = 'status ok';
-      lastBuiltCode = code;
-      lastBuiltArchivePath = result.archivePath;
+      built = { profileId: formData.profileId, code, archivePath: result.archivePath, embedImagePaths: [] };
       aminetSection.hidden = false;
       aminetUploadBtn.disabled = false;
       prefillAminetShort();
@@ -774,9 +822,7 @@ form.addEventListener('submit', async (e) => {
             }`
           : '');
       buildStatus.className = 'status ok';
-      lastBuiltCode = code;
-      lastBuiltArchivePath = result.archivePath;
-      lastEmbedImagePaths = embedImagePaths;
+      built = { profileId: formData.profileId, code, archivePath: result.archivePath, embedImagePaths };
       publishSection.hidden = false;
       publishBtn.disabled = !selectedImagePath;
       // Shown now so the readme can be filled in while the cover image is
@@ -802,12 +848,13 @@ pickImageBtn.addEventListener('click', async () => {
   if (picked) {
     selectedImagePath = picked;
     selectedImageDiv.textContent = picked;
-    publishBtn.disabled = !lastBuiltArchivePath;
+    publishBtn.disabled = !builtReleaseFor(built, profileSelect.value);
   }
 });
 
 publishBtn.addEventListener('click', async () => {
-  if (!lastBuiltCode || !lastBuiltArchivePath || !selectedImagePath) return;
+  const release = builtReleaseFor(built, profileSelect.value);
+  if (!release || !selectedImagePath) return;
   // With the Aminet box ticked, an incomplete readme stops the whole Publish
   // before anything is sent: the two are one action to the user, and the
   // website half cannot be redone to pick up the other half.
@@ -822,11 +869,11 @@ publishBtn.addEventListener('click', async () => {
   publishStatus.className = 'status';
   try {
     const result = await window.api.publishToWeb(
-      profileSelect.value,
-      lastBuiltCode,
-      lastBuiltArchivePath,
+      release.profileId,
+      release.code,
+      release.archivePath,
       selectedImagePath,
-      lastEmbedImagePaths,
+      release.embedImagePaths,
     );
     if (result.ok) {
       publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl}).`;
@@ -913,10 +960,8 @@ deleteReleaseBtn.addEventListener('click', async () => {
       // release leaves this session's own build alone. deleteStatus stays as
       // it is either way: it may carry a WordPress-post URL the user still
       // has to act on.
-      if (deletedCode === lastBuiltCode) {
-        lastBuiltCode = null;
-        lastBuiltArchivePath = null;
-        lastEmbedImagePaths = [];
+      if (deletedCode === builtReleaseFor(built, profileSelect.value)?.code) {
+        built = null;
         publishSection.hidden = true;
         publishStatus.textContent = '';
         publishStatus.className = 'status';

@@ -32,7 +32,8 @@ export class TemplateError extends Error {
   }
 }
 
-const MARKER = /\{\{([a-z_]+)( *)\}\}/g;
+// Any name, so a mistyped {{Group}} is reported as unknown instead of left as text.
+const MARKER = /\{\{([^{}\s]+)( *)\}\}/g;
 
 function isScalar(name: string): name is ScalarName {
   return (SCALAR_NAMES as readonly string[]).includes(name);
@@ -73,7 +74,12 @@ function renderLine(text: string, line: number, values: TemplateValues): string[
       throw new TemplateError(line, `block placeholder {{${block[1]}}} must stand alone on its line`);
     }
     const name = block[1] as BlockName;
-    return values.blocks[name].map((value) => prefix + fit(line, name, block[2], block[0], value) + suffix);
+    // An empty value line must not leave the frame's padding behind as
+    // trailing whitespace.
+    return values.blocks[name].map((value) => {
+      const framed = prefix + fit(line, name, block[2], block[0], value) + suffix;
+      return value === '' ? framed.trimEnd() : framed;
+    });
   }
   // A function replacer, never a replacement string: a value holding "$&" or
   // "$1" must come out literally.

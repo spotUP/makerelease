@@ -173,3 +173,33 @@ export function parseProfile(raw: unknown, id: string, file: string): GroupProfi
     members,
   };
 }
+
+/**
+ * The one on-disk format of profile.json: fixed key order, two-space indent,
+ * trailing newline. The id is the folder name and is never written.
+ */
+export function serializeProfile(profile: GroupProfile): string {
+  const body = {
+    label: profile.label,
+    url: profile.url,
+    filePrefix: profile.filePrefix,
+    codeLength: profile.codeLength,
+    renderer: profile.renderer,
+    backend: profile.backend,
+    ...(profile.server ? { server: { baseUrl: profile.server.baseUrl, writeKey: profile.server.writeKey } } : {}),
+    members: profile.members.map((member) => ({ nickname: member.nickname, role: member.role })),
+  };
+  return `${JSON.stringify(body, null, 2)}\n`;
+}
+
+/** A folder name for a new group: the label in [a-z0-9-], made unique with -2, -3 among `taken`. */
+export function slugifyProfileId(label: string, taken: readonly string[]): string {
+  const base =
+    label
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '') || 'group';
+  let id = base;
+  for (let n = 2; taken.includes(id); n += 1) id = `${base}-${n}`;
+  return id;
+}
