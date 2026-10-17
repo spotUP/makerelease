@@ -18,7 +18,8 @@
     "start": "npm run build && electron .",
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "vitest run",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "dist:win": "npm run build && electron-builder --win"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
@@ -34,6 +35,7 @@
       "output": "release"
     },
     "publish": null,
+    "electronLanguages": ["en-US"],
     "files": [
       "dist/**/*",
       "assets/**/*"
@@ -46,7 +48,6 @@
     },
     "win": {
       "target": [
-        { "target": "nsis", "arch": ["x64"] },
         { "target": "portable", "arch": ["x64"] }
       ]
     },

@@ -28,12 +28,11 @@ Up Rough Release Maker - Windows
    Already extracted? Right-click the .exe -> Properties -> "Unblock",
    or run it and click "More info" -> "Run anyway".
 
-3. INSTALL
+3. RUN
 
-   Pick one:
+       makerelease 0.1.0.exe
 
-       Up Rough Release Maker Setup 0.1.0.exe   installer
-       Up Rough Release Maker 0.1.0.exe         portable, no install
+   Portable: nothing to install. Keep the .exe anywhere and run it.
 
 4. FIRST LAUNCH
 
