@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { divisionIdOf, isProfileId, parseProfile, summarize } from '../../src/shared/profile';
+import { divisionIdOf, isProfileId, parseProfile, serializeProfile, slugifyProfileId, summarize } from '../../src/shared/profile';
 
 const FILE = 'profiles/demo/profile.json';
 const MIN = { label: 'Demo', url: 'https://demo.net', renderer: 'placeholder' };
@@ -85,5 +85,42 @@ describe('profile helpers', () => {
       id: 'demo', label: 'Demo', url: 'https://demo.net', filePrefix: '', codeLength: 5, renderer: 'uprough', backend: 'releases-doorserver',
     });
     expect(JSON.stringify(summary)).not.toContain('secret');
+  });
+});
+
+describe('serializeProfile', () => {
+  const minimal = parseProfile({ label: 'Min', url: 'https://min.net', renderer: 'placeholder' }, 'min', 'min/profile.json');
+  const withServer = parseProfile(
+    {
+      label: 'Up Rough', url: 'https://uprough.net', filePrefix: 'UP-', codeLength: 5, renderer: 'uprough',
+      backend: 'releases-doorserver', server: { baseUrl: 'https://x', writeKey: 'k' },
+      members: [{ nickname: 'a', role: 'code' }, { nickname: 'b', role: 'gfx' }],
+    },
+    'uprough',
+    'uprough/profile.json',
+  );
+
+  it.each([['minimal', minimal], ['server and members', withServer]])('round-trips through parseProfile: %s', (_name, profile) => {
+    expect(parseProfile(JSON.parse(serializeProfile(profile)), profile.id, 'x')).toEqual(profile);
+  });
+
+  it('writes keys in a fixed order, no id, and a trailing newline', () => {
+    const text = serializeProfile(withServer);
+    expect(Object.keys(JSON.parse(text))).toEqual(['label', 'url', 'filePrefix', 'codeLength', 'renderer', 'backend', 'server', 'members']);
+    expect(text.endsWith('}\n')).toBe(true);
+    expect(Object.keys(JSON.parse(serializeProfile(minimal)))).not.toContain('server');
+  });
+});
+
+describe('slugifyProfileId', () => {
+  it('lower-cases and joins runs of other characters with a dash', () => {
+    expect(slugifyProfileId('  Up Rough /X!  ', [])).toBe('up-rough-x');
+  });
+  it('falls back to "group" when nothing usable is left', () => {
+    expect(slugifyProfileId('???', [])).toBe('group');
+  });
+  it('adds a numeric suffix on collision', () => {
+    expect(slugifyProfileId('Demo', ['demo'])).toBe('demo-2');
+    expect(slugifyProfileId('Demo', ['demo', 'demo-2'])).toBe('demo-3');
   });
 });

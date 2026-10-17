@@ -7,6 +7,9 @@ import {
   DeleteReleaseOutcome,
   MakereleaseApi,
   OutputsPreview,
+  ProfileEditOutcome,
+  ProfileEditRequest,
+  ProfileEditState,
   PublishToWebOutcome,
   ReleaseFormData,
   SeedState,
@@ -15,6 +18,11 @@ import {
 const api: MakereleaseApi = {
   listProfiles: (): Promise<ProfileListEntry[]> => ipcRenderer.invoke('listProfiles'),
   openProfilesFolder: (): Promise<void> => ipcRenderer.invoke('openProfilesFolder'),
+  newProfileDraft: (): Promise<ProfileEditState> => ipcRenderer.invoke('newProfileDraft'),
+  loadProfileForEdit: (id: string): Promise<ProfileEditState> => ipcRenderer.invoke('loadProfileForEdit', id),
+  saveProfile: (request: ProfileEditRequest): Promise<ProfileEditOutcome> => ipcRenderer.invoke('saveProfile', request),
+  deleteProfile: (id: string): Promise<ProfileEditOutcome> => ipcRenderer.invoke('deleteProfile', id),
+  importTemplate: (): Promise<{ text: string; name: string } | null> => ipcRenderer.invoke('importTemplate'),
   loadSeedState: (profileId: string): Promise<SeedState> => ipcRenderer.invoke('loadSeedState', profileId),
   pickFilesAndDirs: (): Promise<string[]> => ipcRenderer.invoke('pickFilesAndDirs'),
   checkCodeAvailability: (profileId: string, code: string): Promise<{ exists: boolean }> =>
