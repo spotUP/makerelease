@@ -1,11 +1,12 @@
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import * as fs from 'fs';
-import { fetchSeed, checkCodeExists, publishRelease, deleteRelease, publishToWeb, ReleasesApiError } from '../../src/main/releases-client';
+import { clientConfigFor, fetchSeed, checkCodeExists, publishRelease, deleteRelease, publishToWeb, ReleasesApiError } from '../../src/main/releases-client';
 import { ReleaseFormData } from '../../src/shared/types';
 
 const cfg = { baseUrl: 'https://releases.example.test', writeKey: 'secret', isPlaceholderKey: false };
 
 const sampleForm: ReleaseFormData = {
+  profileId: 'uprough',
   code: 'TEST0',
   format: 'LHA',
   releaseName: "'TEST'",
@@ -377,5 +378,27 @@ describe('publishToWeb', () => {
 
     fs.unlinkSync(archivePath);
     fs.unlinkSync(imagePath);
+  });
+});
+
+describe('clientConfigFor', () => {
+  const profile = { id: 'uprough', server: { baseUrl: 'https://releases.example', writeKey: 'from-profile' } };
+
+  it('takes the server and key from the profile', () => {
+    expect(clientConfigFor(profile, {})).toEqual({ baseUrl: 'https://releases.example', writeKey: 'from-profile' });
+  });
+
+  it('lets the environment override both, for local development against another server', () => {
+    expect(
+      clientConfigFor(profile, { RELEASES_API_BASE_URL: 'http://localhost:8787', RELEASES_WRITE_KEY: 'dev' }),
+    ).toEqual({ baseUrl: 'http://localhost:8787', writeKey: 'dev' });
+  });
+
+  it('passes an empty key through, so loadSeedState can warn rather than fail', () => {
+    expect(clientConfigFor({ id: 'x', server: { baseUrl: 'https://r', writeKey: '' } }, {}).writeKey).toBe('');
+  });
+
+  it('refuses a profile without a server block', () => {
+    expect(() => clientConfigFor({ id: 'example' }, {})).toThrow(/"example" has no server block/);
   });
 });

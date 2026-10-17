@@ -1,5 +1,7 @@
 import { renderXInnovationsNfo } from './nfo-x-innovations';
 import { GeneratedOutputs, MemberEntry, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
+import type { ProfileSummary } from '../shared/profile';
+import { archiveFileName } from '../shared/naming';
 import {
   BANNER,
   FOOTER_LINE,
@@ -59,10 +61,15 @@ export function renderHistoryBlock(history: ReleaseHistoryEntry[]): string {
 // just-inserted release's number. The parameter is kept (leading underscore silences
 // noUnusedParameters) so generateOutputs' callers can pass it explicitly, documenting
 // intent at the call site.
-export function renderNfo(history: ReleaseHistoryEntry[], form: ReleaseFormData, _releaseNumber: number): string {
+export function renderNfo(
+  profile: Pick<ProfileSummary, 'filePrefix'>,
+  history: ReleaseHistoryEntry[],
+  form: ReleaseFormData,
+  _releaseNumber: number,
+): string {
   const releaseNotesLine = `Release named ${form.releaseName}${
     form.platformTag ? ` (${form.platformTag})` : ''
-  } (UP-${form.code.toUpperCase()}.${form.format})`;
+  } (${archiveFileName(profile, form.code, form.format)})`;
 
   // Under the "Release named ..." line and above the notes: the two
   // together say what this release is and when it came out, which is what a
@@ -132,6 +139,7 @@ export function renderDiz(form: ReleaseFormData): string {
  * as its own banner art rather than as a line of text.
  */
 export function generateOutputs(
+  profile: Pick<ProfileSummary, 'filePrefix'>,
   history: ReleaseHistoryEntry[],
   releaseNumber: number,
   form: ReleaseFormData,
@@ -157,7 +165,7 @@ export function generateOutputs(
     };
   }
   return {
-    nfoText: renderNfo(history, form, releaseNumber),
+    nfoText: renderNfo(profile, history, form, releaseNumber),
     dizText,
     releaseNumber,
   };

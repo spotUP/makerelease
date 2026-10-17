@@ -1,21 +1,23 @@
 import { app, BrowserWindow, dialog } from 'electron';
 import * as path from 'path';
-import * as fs from 'fs/promises';
 import { registerIpcHandlers } from './ipc-handlers';
-import { loadReleasesClientConfig } from './config';
 import { resolvePackagedOutputRoot } from './output-root';
+import { ensureExampleProfile } from './profiles';
+import type { GroupProfile } from '../shared/profile';
 
 // In dev, __dirname is dist/main/main and resolving 4 levels up reaches the
-// repo root — convenient for local testing. In a PACKAGED build (asar, an
-// AppImage's squashfs mount, an installed .app/.exe), __dirname sits inside
-// the app's own read-only bundle, so the same walk lands somewhere inside
-// (or briefly beside) the install location instead of anywhere writable —
-// on Linux AppImages that showed up as a build failure writing into the
-// AppImage's temporary /tmp/.mount_* directory. Packaged builds get a real,
-// stable, user-writable output folder instead.
-function outputRoot(): string {
-  if (!app.isPackaged) return path.resolve(__dirname, '..', '..', '..', '..');
-  return resolvePackagedOutputRoot((name) => app.getPath(name));
+// repo root; builds then land in releases-out/<profile id>/ there, which is
+// ignored by git. In a PACKAGED build (asar, an AppImage's squashfs mount, an
+// installed .app/.exe), __dirname sits inside the app's own read-only bundle,
+// so the same walk lands somewhere inside the install location instead of
+// anywhere writable - on Linux AppImages that showed up as a build failure
+// writing into the AppImage's temporary /tmp/.mount_* directory. Packaged
+// builds get a real, stable, user-writable folder per group instead.
+function outputRootFor(profile: GroupProfile): string {
+  if (!app.isPackaged) {
+    return path.join(path.resolve(__dirname, '..', '..', '..', '..'), 'releases-out', profile.id);
+  }
+  return resolvePackagedOutputRoot((name) => app.getPath(name), `${profile.label} Releases`);
 }
 
 function createWindow(): void {
@@ -42,22 +44,22 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
-  let makereleaseRoot: string;
+  const profilesDir = path.join(app.getPath('userData'), 'profiles');
   try {
-    makereleaseRoot = outputRoot();
-    await fs.mkdir(makereleaseRoot, { recursive: true });
+    // First run: a working example group, so the window has something to
+    // show and the maintainer has a template to copy.
+    await ensureExampleProfile(profilesDir);
   } catch (err) {
-    // Startup failure with no window yet — a plain throw here would exit
+    // Startup failure with no window yet - a plain throw here would exit
     // silently, so say what went wrong before quitting.
     dialog.showErrorBox(
-      'Up Rough Release Maker',
-      `Could not prepare the folder where builds are saved.\n\n${(err as Error).message}`,
+      'makerelease',
+      `Could not prepare the group profiles folder ${profilesDir}.\n\n${(err as Error).message}`,
     );
     app.quit();
     return;
   }
-  const releasesConfig = loadReleasesClientConfig();
-  registerIpcHandlers(makereleaseRoot, releasesConfig);
+  registerIpcHandlers(profilesDir, outputRootFor);
   createWindow();
 
   app.on('activate', () => {

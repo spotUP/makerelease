@@ -1,5 +1,7 @@
 import * as path from 'path';
 import { ReleaseFormat } from '../shared/types';
+import type { ProfileSummary } from '../shared/profile';
+import { archiveFileName, releaseBaseName } from '../shared/naming';
 import { pathExists, moveDir } from './fs-helpers';
 import { runExternal } from './external-tool';
 
@@ -14,26 +16,33 @@ async function runArchiver(bin: string, args: string[], cwd: string): Promise<vo
 }
 
 export async function packArchive(
+  profile: Pick<ProfileSummary, 'filePrefix'>,
   outerDir: string,
   code: string,
   format: ReleaseFormat,
   makereleaseRoot: string,
 ): Promise<string> {
-  const ext = format === 'LHA' ? 'LHA' : 'ZIP';
-  const finalArchivePath = path.join(makereleaseRoot, `UP-${code.toUpperCase()}.${ext}`);
+  const finalArchivePath = path.join(makereleaseRoot, archiveFileName(profile, code, format));
+  const releaseDir = releaseBaseName(profile, code);
 
   if (format === 'LHA') {
-    await runArchiver('lha', ['a', finalArchivePath, 'file_id.diz', `UP-${code.toUpperCase()}`], outerDir);
+    await runArchiver('lha', ['a', finalArchivePath, 'file_id.diz', releaseDir], outerDir);
   } else {
-    await runArchiver('zip', ['-r', finalArchivePath, 'file_id.diz', `UP-${code.toUpperCase()}`], outerDir);
+    await runArchiver('zip', ['-r', finalArchivePath, 'file_id.diz', releaseDir], outerDir);
   }
   return finalArchivePath;
 }
 
-export async function finalizeRelease(outerDir: string, code: string, makereleaseRoot: string): Promise<string> {
-  const finalDir = path.join(makereleaseRoot, `UP-${code.toUpperCase()}`);
+export async function finalizeRelease(
+  profile: Pick<ProfileSummary, 'filePrefix'>,
+  outerDir: string,
+  code: string,
+  makereleaseRoot: string,
+): Promise<string> {
+  const releaseDir = releaseBaseName(profile, code);
+  const finalDir = path.join(makereleaseRoot, releaseDir);
   if (await pathExists(finalDir)) {
-    throw new Error(`UP-${code.toUpperCase()} already exists in ${makereleaseRoot} — archive was written, but the staged folder was not moved into place`);
+    throw new Error(`${releaseDir} already exists in ${makereleaseRoot} — archive was written, but the staged folder was not moved into place`);
   }
   await moveDir(outerDir, finalDir);
   return finalDir;

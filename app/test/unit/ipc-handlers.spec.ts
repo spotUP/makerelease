@@ -5,7 +5,42 @@ const handlers: Record<string, (...args: any[]) => any> = {};
 vi.mock('electron', () => ({
   ipcMain: { handle: vi.fn((channel: string, fn: any) => { handlers[channel] = fn; }) },
   dialog: { showOpenDialog: vi.fn() },
+  shell: { openPath: vi.fn() },
 }));
+
+// Profiles come from parseProfile on fixed JSON, so every handler sees exactly
+// what a real profile.json would give it; only the disk read is skipped (the
+// real one is covered by profiles.spec.ts and reach-profiles.spec.ts).
+const PROFILE_JSON: Record<string, unknown> = {
+  uprough: {
+    label: 'Up Rough', url: 'https://uprough.net', filePrefix: 'UP-', renderer: 'uprough',
+    backend: 'releases-doorserver', server: { baseUrl: 'https://x', writeKey: 'k' },
+  },
+  xinnovations: {
+    label: 'Up Rough /X Innovations', url: 'https://uprough.net', filePrefix: 'UP-', renderer: 'xinnovations',
+    backend: 'releases-doorserver', server: { baseUrl: 'https://x', writeKey: 'k' },
+  },
+  nokey: {
+    label: 'No Key', url: 'https://uprough.net', filePrefix: 'UP-', renderer: 'uprough',
+    backend: 'releases-doorserver', server: { baseUrl: 'https://x' },
+  },
+  example: {
+    label: 'Example Group', url: 'https://example.net', filePrefix: 'EX-', renderer: 'placeholder',
+    members: [{ nickname: 'coder', role: 'code' }],
+  },
+};
+
+vi.mock('../../src/main/profiles', async () => {
+  const { parseProfile } = await import('../../src/shared/profile');
+  return {
+    loadProfile: vi.fn(async (_dir: string, id: string) => {
+      if (!(id in PROFILE_JSON)) throw new Error(`no profile ${id}`);
+      return parseProfile(PROFILE_JSON[id], id, `${id}/profile.json`);
+    }),
+    listProfiles: vi.fn(),
+    isProfileLoadError: (entry: { error?: string }) => typeof entry.error === 'string',
+  };
+});
 
 vi.mock('../../src/main/releases-client', () => {
   class ReleasesApiError extends Error {
@@ -25,6 +60,10 @@ vi.mock('../../src/main/releases-client', () => {
     publishRelease: vi.fn(),
     deleteRelease: vi.fn(),
     publishToWeb: vi.fn(),
+    clientConfigFor: (profile: { server?: { baseUrl: string; writeKey: string } }) => ({
+      baseUrl: profile.server!.baseUrl,
+      writeKey: profile.server!.writeKey,
+    }),
     ReleasesApiError,
   };
 });
@@ -68,7 +107,16 @@ import * as doorRepo from '../../src/main/door-repo-client';
 import * as aminet from '../../src/main/aminet';
 
 describe('registerIpcHandlers', () => {
-  const cfg = { baseUrl: 'https://x', writeKey: 'k', isPlaceholderKey: false };
+  const cfg = { baseUrl: 'https://x', writeKey: 'k' };
+  const outputRootFor = () => '/root';
+  const UR = expect.objectContaining({ id: 'uprough', filePrefix: 'UP-' });
+  const SEED_BASE = {
+    profile: {
+      id: 'uprough', label: 'Up Rough', filePrefix: 'UP-',
+      codeLength: 5, renderer: 'uprough', backend: 'releases-doorserver',
+    },
+    outputRoot: '/root',
+  };
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -78,7 +126,7 @@ describe('registerIpcHandlers', () => {
     (doorRepo.submitDoor as any).mockResolvedValue({ ok: true, id: 12, message: 'in the queue' });
     // Default: the server could not reach the site, so no numbering warning.
     (releasesClient.fetchNumberingCheck as any).mockResolvedValue({ checked: false });
-    registerIpcHandlers('/root', cfg);
+    registerIpcHandlers('/profiles', outputRootFor);
   });
 
   it('loadSeedState maps the seed response fields into SeedState', async () => {
@@ -89,8 +137,9 @@ describe('registerIpcHandlers', () => {
       currentDizText: 'diz',
       revision: 9,
     });
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
     expect(result).toEqual({
+      ...SEED_BASE,
       members: [{ nickname: 'spot', role: 'leader' }],
       boards: [],
       nextReleaseNumber: 5,
@@ -104,7 +153,7 @@ describe('registerIpcHandlers', () => {
     (releasesClient.fetchSeed as any).mockResolvedValue({
       members: [], nextReleaseNumber: 1, history: [], currentDizText: null, revision: 0,
     });
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
     expect(result.currentDizText).toBe('');
   });
 
@@ -122,14 +171,15 @@ describe('registerIpcHandlers', () => {
     (archiver.packArchive as any).mockResolvedValue(undefined);
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
-    const form = { code: 'AAAAA', format: 'LHA' } as any;
+    const form = { profileId: 'uprough', code: 'AAAAA', format: 'LHA' } as any;
     const result = await handlers.buildRelease(null, form, false);
 
     expect(callOrder).toEqual(['publish', 'generate']);
     expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(
+      UR,
       [{ releaseNumber: '7', filenames: 'up-x.lha', title: 't', category: 'c', creators: 'cr' }],
       7,
-      form,
+      { ...form, division: 'uprough' },
       [],
     );
     expect(result.releaseNumber).toBe(7);
@@ -152,6 +202,7 @@ describe('registerIpcHandlers', () => {
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
     const form = {
+      profileId: 'uprough',
       code: 'BBBBB',
       format: 'ZIP',
       entryTitle: 'new thing',
@@ -163,12 +214,13 @@ describe('registerIpcHandlers', () => {
     expect(releasesClient.publishRelease).not.toHaveBeenCalled();
     expect(releasesClient.fetchSeed).toHaveBeenCalledWith(cfg, 'uprough');
     expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(
+      UR,
       [
         { releaseNumber: '8', filenames: 'up-bbbbb.zip', title: 'new thing', category: 'Music', creators: 'spot, qwan' },
         { releaseNumber: '7', filenames: 'up-old.lha', title: 'old', category: 'Demo', creators: 'spot' },
       ],
       8,
-      form,
+      { ...form, division: 'uprough' },
       [],
     );
     expect(result.releaseNumber).toBe(8);
@@ -177,7 +229,7 @@ describe('registerIpcHandlers', () => {
 
   it('checkCodeAvailability delegates to checkCodeExists', async () => {
     (releasesClient.checkCodeExists as any).mockResolvedValue(true);
-    const result = await handlers.checkCodeAvailability(null, 'AAAAA');
+    const result = await handlers.checkCodeAvailability(null, 'uprough', 'AAAAA');
     expect(result).toEqual({ exists: true });
     expect(releasesClient.checkCodeExists).toHaveBeenCalledWith(cfg, 'AAAAA');
   });
@@ -185,7 +237,7 @@ describe('registerIpcHandlers', () => {
   it('buildRelease throws locally and never calls publishRelease when UP-<CODE> already exists on disk', async () => {
     (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-AAAAA');
 
-    const form = { code: 'AAAAA', format: 'LHA' } as any;
+    const form = { profileId: 'uprough', code: 'AAAAA', format: 'LHA' } as any;
     await expect(handlers.buildRelease(null, form)).rejects.toThrow(/UP-AAAAA already exists locally/);
 
     expect(releasesClient.publishRelease).not.toHaveBeenCalled();
@@ -194,7 +246,7 @@ describe('registerIpcHandlers', () => {
   it('buildRelease throws locally when a stale UP-<CODE>.LHA archive already exists on disk', async () => {
     (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-AAAAA.LHA');
 
-    const form = { code: 'AAAAA', format: 'LHA' } as any;
+    const form = { profileId: 'uprough', code: 'AAAAA', format: 'LHA' } as any;
     await expect(handlers.buildRelease(null, form)).rejects.toThrow(/UP-AAAAA already exists locally/);
 
     expect(releasesClient.publishRelease).not.toHaveBeenCalled();
@@ -203,26 +255,26 @@ describe('registerIpcHandlers', () => {
   it('buildRelease throws locally when a stale UP-<CODE>.ZIP archive already exists on disk', async () => {
     (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-AAAAA.ZIP');
 
-    const form = { code: 'AAAAA', format: 'ZIP' } as any;
+    const form = { profileId: 'uprough', code: 'AAAAA', format: 'ZIP' } as any;
     await expect(handlers.buildRelease(null, form)).rejects.toThrow(/UP-AAAAA already exists locally/);
 
     expect(releasesClient.publishRelease).not.toHaveBeenCalled();
   });
 
-  it('loadSeedState sets configWarning when running with the placeholder write key', async () => {
+  it('loadSeedState sets configWarning when the profile has no write key', async () => {
     vi.clearAllMocks();
     (fsHelpers.pathExists as any).mockResolvedValue(false);
     (fsHelpers.ensureDir as any).mockResolvedValue(undefined);
     (fsHelpers.removePath as any).mockResolvedValue(undefined);
     (doorRepo.submitDoor as any).mockResolvedValue({ ok: true, id: 12, message: 'in the queue' });
-    registerIpcHandlers('/root', { baseUrl: 'https://x', writeKey: 'REPLACE_ME_BEFORE_DISTRIBUTING', isPlaceholderKey: true });
+    registerIpcHandlers('/profiles', outputRootFor);
     (releasesClient.fetchSeed as any).mockResolvedValue({
       members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
     });
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'nokey');
 
-    expect(result.configWarning).toMatch(/RELEASES_WRITE_KEY/);
+    expect(result.configWarning).toMatch(/"nokey" profile has no server write key/);
   });
 
   it('loadSeedState omits configWarning when a real write key is configured', async () => {
@@ -230,7 +282,7 @@ describe('registerIpcHandlers', () => {
       members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
     });
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
 
     expect(result.configWarning).toBeUndefined();
   });
@@ -245,7 +297,7 @@ describe('registerIpcHandlers', () => {
       summary: 'Release numbering disagrees with www.uprough.net: the site already has #217 "Hypocrisy".',
     });
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
 
     expect(result.numberingWarning).toMatch(/#217/);
     expect(result.numberingWarning).toMatch(/NFO/);
@@ -257,7 +309,7 @@ describe('registerIpcHandlers', () => {
     });
     (releasesClient.fetchNumberingCheck as any).mockResolvedValue({ checked: true, ok: true, summary: 'agree' });
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
 
     expect(result.numberingWarning).toBeUndefined();
   });
@@ -268,7 +320,7 @@ describe('registerIpcHandlers', () => {
     });
     (releasesClient.fetchNumberingCheck as any).mockRejectedValue(new Error('releases.uprough.net unreachable'));
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
 
     expect(result.nextReleaseNumber).toBe(3);
     expect(result.numberingWarning).toBeUndefined();
@@ -281,7 +333,7 @@ describe('registerIpcHandlers', () => {
       drafts: [{ code: 'EVK26', releaseNumber: 217, createdAt: twoDaysAgo, entryTitle: 'evoke 2026' }],
     });
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
 
     expect(result.staleDraftWarning).toMatch(/EVK26/);
     expect(result.staleDraftWarning).toMatch(/release 217/);
@@ -293,7 +345,7 @@ describe('registerIpcHandlers', () => {
       drafts: [{ code: 'EVK26', releaseNumber: 218, createdAt: Math.floor(Date.now() / 1000) - 120, entryTitle: 'x' }],
     });
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
 
     expect(result.staleDraftWarning).toBeUndefined();
   });
@@ -303,7 +355,7 @@ describe('registerIpcHandlers', () => {
       members: [], nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
     });
 
-    const result = await handlers.loadSeedState();
+    const result = await handlers.loadSeedState(null, 'uprough');
 
     expect(result.staleDraftWarning).toBeUndefined();
   });
@@ -317,11 +369,11 @@ describe('registerIpcHandlers', () => {
     (archiver.packArchive as any).mockResolvedValue(undefined);
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
-    const result = await handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, true);
+    const result = await handlers.buildRelease(null, { profileId: 'uprough', code: 'MINDR', format: 'LHA' } as any, true);
 
     expect(result.archivePath).toBe('/root/dry-run/UP-MINDR.LHA');
-    expect(archiver.packArchive).toHaveBeenCalledWith('/tmp/outer', 'MINDR', 'LHA', '/root/dry-run');
-    expect(archiver.finalizeRelease).toHaveBeenCalledWith('/tmp/outer', 'MINDR', '/root/dry-run');
+    expect(archiver.packArchive).toHaveBeenCalledWith(UR, '/tmp/outer', 'MINDR', 'LHA', '/root/dry-run');
+    expect(archiver.finalizeRelease).toHaveBeenCalledWith(UR, '/tmp/outer', 'MINDR', '/root/dry-run');
     expect(fsHelpers.ensureDir).toHaveBeenCalledWith('/root/dry-run');
   });
 
@@ -336,10 +388,10 @@ describe('registerIpcHandlers', () => {
     (archiver.packArchive as any).mockResolvedValue(undefined);
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
-    const result = await handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, false);
+    const result = await handlers.buildRelease(null, { profileId: 'uprough', code: 'MINDR', format: 'LHA' } as any, false);
 
     expect(result.archivePath).toBe('/root/UP-MINDR.LHA');
-    expect(archiver.packArchive).toHaveBeenCalledWith('/tmp/outer', 'MINDR', 'LHA', '/root');
+    expect(archiver.packArchive).toHaveBeenCalledWith(UR, '/tmp/outer', 'MINDR', 'LHA', '/root');
   });
 
   it('a second dry run replaces the previous preview instead of refusing it', async () => {
@@ -352,7 +404,7 @@ describe('registerIpcHandlers', () => {
     (archiver.packArchive as any).mockResolvedValue(undefined);
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
-    await expect(handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, true)).resolves.toBeTruthy();
+    await expect(handlers.buildRelease(null, { profileId: 'uprough', code: 'MINDR', format: 'LHA' } as any, true)).resolves.toBeTruthy();
 
     expect(fsHelpers.removePath).toHaveBeenCalledWith('/root/dry-run/UP-MINDR');
     expect(fsHelpers.removePath).toHaveBeenCalledWith('/root/dry-run/UP-MINDR.LHA');
@@ -361,7 +413,7 @@ describe('registerIpcHandlers', () => {
   it('still refuses a real build when a real leftover is in the way', async () => {
     (fsHelpers.pathExists as any).mockImplementation(async (p: string) => p === '/root/UP-MINDR');
 
-    await expect(handlers.buildRelease(null, { code: 'MINDR', format: 'LHA' } as any, false)).rejects.toThrow(
+    await expect(handlers.buildRelease(null, { profileId: 'uprough', code: 'MINDR', format: 'LHA' } as any, false)).rejects.toThrow(
       /already exists locally/,
     );
     expect(releasesClient.publishRelease).not.toHaveBeenCalled();
@@ -393,7 +445,7 @@ describe('registerIpcHandlers', () => {
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
     const form = {
-      division: 'xinnovations',
+      profileId: 'xinnovations',
       code: 'XNEWW',
       format: 'LHA',
       entryTitle: 'the new one',
@@ -401,7 +453,7 @@ describe('registerIpcHandlers', () => {
     } as any;
     await handlers.buildRelease(null, form, false);
 
-    const releaseList = (nfoGenerator.generateOutputs as any).mock.calls[0][3];
+    const releaseList = (nfoGenerator.generateOutputs as any).mock.calls[0][4];
     expect(releaseList[0].displayNumber).toBe('oo8');
     expect(releaseList[1].displayNumber).toBe('oo7');
     // Name kept, tagline dropped - every entry in the list has the same shape.
@@ -416,7 +468,7 @@ describe('registerIpcHandlers', () => {
     (archiver.packArchive as any).mockResolvedValue(undefined);
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
-    await handlers.buildRelease(null, { division: 'uprough', code: 'UPNEW', format: 'LHA' } as any, false);
+    await handlers.buildRelease(null, { profileId: 'uprough', code: 'UPNEW', format: 'LHA' } as any, false);
 
     expect(releasesClient.fetchManifest).not.toHaveBeenCalled();
   });
@@ -431,7 +483,7 @@ describe('registerIpcHandlers', () => {
 
     const result = await handlers.buildRelease(
       null,
-      { division: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
+      { profileId: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
       false,
     );
 
@@ -451,7 +503,7 @@ describe('registerIpcHandlers', () => {
 
     const result = await handlers.buildRelease(
       null,
-      { division: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
+      { profileId: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
       true,
     );
 
@@ -466,7 +518,7 @@ describe('registerIpcHandlers', () => {
     (archiver.packArchive as any).mockResolvedValue(undefined);
     (archiver.finalizeRelease as any).mockResolvedValue(undefined);
 
-    await handlers.buildRelease(null, { division: 'uprough', code: 'UPNEW', format: 'LHA' } as any, false);
+    await handlers.buildRelease(null, { profileId: 'uprough', code: 'UPNEW', format: 'LHA' } as any, false);
 
     expect(doorRepo.submitDoor).not.toHaveBeenCalled();
   });
@@ -484,7 +536,7 @@ describe('registerIpcHandlers', () => {
 
     const result = await handlers.buildRelease(
       null,
-      { division: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
+      { profileId: 'xinnovations', code: 'XNEWW', format: 'LHA', dizBannerText: '' } as any,
       false,
     );
 
@@ -508,7 +560,7 @@ describe('registerIpcHandlers', () => {
 
   it('publishToWeb delegates to the releases-client function and returns an ok:true outcome', async () => {
     (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
+    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(result).toEqual({ ok: true, archiveUrl: 'a', wordpressPostUrl: 'b' });
     expect(releasesClient.publishToWeb).toHaveBeenCalledWith(cfg, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
   });
@@ -517,7 +569,7 @@ describe('registerIpcHandlers', () => {
     (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
     (aminet.uploadToAminet as any).mockResolvedValue({ ok: false, message: 'curl missing', readmePath: '/tmp/archive.readme' });
     const request = { readmeText: 'Short: x\n', uploaderEmail: 'me@example.com' };
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], request);
+    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], request);
     expect(result).toEqual({
       ok: true,
       archiveUrl: 'a',
@@ -529,12 +581,12 @@ describe('registerIpcHandlers', () => {
 
   it('publishToWeb skips Aminet when the box was unticked (null request) and when the website publish failed', async () => {
     (releasesClient.publishToWeb as any).mockResolvedValue({ archiveUrl: 'a', wordpressPostUrl: 'b' });
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], null);
+    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], null);
     expect(result).toEqual({ ok: true, archiveUrl: 'a', wordpressPostUrl: 'b' });
     expect(aminet.uploadToAminet).not.toHaveBeenCalled();
 
     (releasesClient.publishToWeb as any).mockRejectedValue(new ReleasesApiError('taken', { status: 409 }));
-    const failed = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], {
+    const failed = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', [], {
       readmeText: 'Short: x\n',
       uploaderEmail: 'me@example.com',
     });
@@ -544,7 +596,7 @@ describe('registerIpcHandlers', () => {
 
   it('publishToWeb returns an ok:false outcome for a plain (non-409) ReleasesApiError, not a thrown Error', async () => {
     (releasesClient.publishToWeb as any).mockRejectedValue(new ReleasesApiError('boom', { status: 500 }));
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
+    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(result).toEqual({ ok: false, message: 'boom', status: 500, wordpressPostUrl: undefined });
   });
 
@@ -555,7 +607,7 @@ describe('registerIpcHandlers', () => {
       new ReleasesApiError('already published', { status: 409, wordpressPostUrl: 'https://www.uprough.net/x/' }),
     );
 
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
+    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
 
     expect(result).toEqual({
       ok: false,
@@ -567,7 +619,7 @@ describe('registerIpcHandlers', () => {
 
   it('publishToWeb returns an ok:false outcome with just a message for a non-ReleasesApiError failure', async () => {
     (releasesClient.publishToWeb as any).mockRejectedValue(new Error('disk full'));
-    const result = await handlers.publishToWeb(null, 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
+    const result = await handlers.publishToWeb(null, 'uprough', 'AAAAA', '/tmp/archive.lha', '/tmp/cover.png', []);
     expect(result).toEqual({ ok: false, message: 'disk full' });
   });
 
@@ -580,7 +632,7 @@ describe('registerIpcHandlers', () => {
       wordpressPostUrl: null,
       archiveRemoved: false,
     });
-    const result = await handlers.deleteRelease(null, 'AAAAA');
+    const result = await handlers.deleteRelease(null, 'uprough', 'AAAAA');
     expect(result).toEqual({
       ok: true,
       code: 'AAAAA',
@@ -594,13 +646,80 @@ describe('registerIpcHandlers', () => {
 
   it('deleteRelease returns an ok:false outcome carrying status for a 409 (not the latest release), not a thrown Error', async () => {
     (releasesClient.deleteRelease as any).mockRejectedValue(new ReleasesApiError('not the latest', { status: 409 }));
-    const result = await handlers.deleteRelease(null, 'AAAAA');
+    const result = await handlers.deleteRelease(null, 'uprough', 'AAAAA');
     expect(result).toEqual({ ok: false, message: 'not the latest', status: 409 });
   });
 
   it('deleteRelease returns an ok:false outcome for a non-ReleasesApiError failure', async () => {
     (releasesClient.deleteRelease as any).mockRejectedValue(new Error('network down'));
-    const result = await handlers.deleteRelease(null, 'AAAAA');
+    const result = await handlers.deleteRelease(null, 'uprough', 'AAAAA');
     expect(result).toEqual({ ok: false, message: 'network down' });
+  });
+
+  it('builds a release for a server-less profile under its own prefix, without touching the server', async () => {
+    (nfoGenerator.generateOutputs as any).mockReturnValue({ nfoText: 'nfo', dizText: 'diz', releaseNumber: 0 });
+    (staging.stageRelease as any).mockResolvedValue('/tmp/outer');
+    (archiver.packArchive as any).mockResolvedValue(undefined);
+    (archiver.finalizeRelease as any).mockResolvedValue(undefined);
+    const EX = expect.objectContaining({ id: 'example', filePrefix: 'EX-', backend: 'none' });
+
+    const result = await handlers.buildRelease(
+      null,
+      { profileId: 'example', code: 'DEMO1', format: 'LHA', division: 'xinnovations' } as any,
+      false,
+    );
+
+    expect(releasesClient.publishRelease).not.toHaveBeenCalled();
+    expect(releasesClient.fetchSeed).not.toHaveBeenCalled();
+    expect(fsHelpers.pathExists).toHaveBeenCalledWith('/root/EX-DEMO1');
+    // A placeholder profile has no division, so whatever the window sent is dropped.
+    const sentForm = (nfoGenerator.generateOutputs as any).mock.calls[0][3];
+    expect(sentForm.division).toBeUndefined();
+    expect(nfoGenerator.generateOutputs).toHaveBeenCalledWith(EX, [], 0, sentForm, []);
+    expect(archiver.packArchive).toHaveBeenCalledWith(EX, '/tmp/outer', 'DEMO1', 'LHA', '/root');
+    expect(result.archivePath).toBe('/root/EX-DEMO1.LHA');
+  });
+
+  it('loadSeedState for a server-less profile seeds from the profile members and never calls the server', async () => {
+    const result = await handlers.loadSeedState(null, 'example');
+    expect(releasesClient.fetchSeed).not.toHaveBeenCalled();
+    expect(result.profile).toMatchObject({ id: 'example', filePrefix: 'EX-', backend: 'none' });
+    expect(result.members).toEqual([{ nickname: 'coder', role: 'code' }]);
+    expect(result.nextReleaseNumber).toBe(0);
+    expect(result.configWarning).toBeUndefined();
+  });
+
+  it('checkCodeAvailability for a server-less profile never asks the server', async () => {
+    expect(await handlers.checkCodeAvailability(null, 'example', 'DEMO1')).toEqual({ exists: false });
+    expect(releasesClient.checkCodeExists).not.toHaveBeenCalled();
+  });
+
+  it('listProfiles summarises loaded profiles and passes load errors through', async () => {
+    const { listProfiles } = await import('../../src/main/profiles');
+    const { parseProfile } = await import('../../src/shared/profile');
+    (listProfiles as any).mockResolvedValue([
+      parseProfile(PROFILE_JSON.example, 'example', 'example/profile.json'),
+      { id: 'broken', error: 'broken/profile.json: filePrefix is missing' },
+    ]);
+
+    const result = await handlers.listProfiles(null);
+
+    expect(listProfiles).toHaveBeenCalledWith('/profiles');
+    expect(result).toEqual([
+      { id: 'example', label: 'Example Group', filePrefix: 'EX-', codeLength: 5, renderer: 'placeholder', backend: 'none' },
+      { id: 'broken', error: 'broken/profile.json: filePrefix is missing' },
+    ]);
+  });
+
+  it('openProfilesFolder creates the folder and opens it', async () => {
+    (electron.shell.openPath as any).mockResolvedValue('');
+    await handlers.openProfilesFolder(null);
+    expect(fsHelpers.ensureDir).toHaveBeenCalledWith('/profiles');
+    expect(electron.shell.openPath).toHaveBeenCalledWith('/profiles');
+  });
+
+  it('openProfilesFolder reports a folder the system could not open', async () => {
+    (electron.shell.openPath as any).mockResolvedValue('no handler');
+    await expect(handlers.openProfilesFolder(null)).rejects.toThrow(/Could not open \/profiles: no handler/);
   });
 });

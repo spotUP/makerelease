@@ -67,7 +67,7 @@ const UP_ROUGH_BANNER = [
 // FILE_ID.DIZ is allowed to be: the format is capped at ten rows of 45
 // columns, and a taller one gets truncated or refused by BBS software. The
 // /X releases shipped 11 to 13 rows for years, which is why this one is
-// shorter than the art in UP-MD15 - the division's name takes the row Up
+// shorter than the art in the MD15 release - the division's name takes the row Up
 // Rough uses for "Up Rough Presents:", and the release names itself on the
 // next.
 const X_INNOVATIONS_BANNER = [

@@ -1,4 +1,5 @@
 import type { DivisionId } from './divisions';
+import type { ProfileListEntry, ProfileSummary } from './profile';
 
 export interface MemberEntry {
   nickname: string;
@@ -31,8 +32,16 @@ export type MediaEmbedFormEntry =
   | { type: 'image'; caption: string };
 
 export interface ReleaseFormData {
-  /** Which of the group's two names this release goes out under. */
-  division: DivisionId;
+  /** The group profile this release is built for (its folder name). */
+  profileId: string;
+  /**
+   * The code renderer's division. Set by main from the profile on every
+   * build; whatever the renderer sends is overwritten. Absent for the
+   * placeholder renderer.
+   */
+  division?: DivisionId;
+  /** Release number typed by hand, for groups without a numbering server. */
+  releaseNumberText?: string;
   code: string;
   format: ReleaseFormat;
   releaseName: string;
@@ -71,6 +80,10 @@ export interface BoardEntry {
 }
 
 export interface SeedState {
+  /** The profile this seed was loaded for. */
+  profile: ProfileSummary;
+  /** Where this profile's builds land; resolved per profile, not at startup. */
+  outputRoot: string;
   members: MemberEntry[];
   /** Boards the division lists in its NFO; empty for Up Rough. */
   boards: BoardEntry[];
@@ -79,10 +92,9 @@ export interface SeedState {
   currentDizText: string;
   revision: number;
   /**
-   * Set when this build is running with the placeholder RELEASES_WRITE_KEY
-   * (i.e. no key was baked in at build time and none was supplied via the
-   * dev-time env var override). Publishing a release will 401. The renderer
-   * surfaces this to the user; see main.ts's init().
+   * Set when the profile's server block has an empty writeKey and no
+   * RELEASES_WRITE_KEY override is set. Publishing a release will 401. The
+   * renderer surfaces this to the user; see main.ts's init().
    */
   configWarning?: string;
   /**
@@ -204,17 +216,20 @@ export type DeleteReleaseOutcome =
   | { ok: false; message: string; status?: number };
 
 export interface MakereleaseApi {
-  loadSeedState(division: DivisionId): Promise<SeedState>;
+  listProfiles(): Promise<ProfileListEntry[]>;
+  openProfilesFolder(): Promise<void>;
+  loadSeedState(profileId: string): Promise<SeedState>;
   pickFilesAndDirs(): Promise<string[]>;
-  checkCodeAvailability(code: string): Promise<{ exists: boolean }>;
+  checkCodeAvailability(profileId: string, code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
   pickImage(): Promise<string | null>;
   publishToWeb(
+    profileId: string,
     code: string,
     archivePath: string,
     imagePath: string,
     embedImagePaths: string[],
     aminet: AminetUploadRequest | null,
   ): Promise<PublishToWebOutcome>;
-  deleteRelease(code: string): Promise<DeleteReleaseOutcome>;
+  deleteRelease(profileId: string, code: string): Promise<DeleteReleaseOutcome>;
 }

@@ -17,6 +17,7 @@ bannerRows[8] = '|   HYPOCRISY - A500 HDD DEMO FROM CS 2025 |';
 export const GOLD_RELEASE_NUMBER = 218;
 
 export const GOLD_FORM: ReleaseFormData = {
+  profileId: 'uprough',
   division: 'uprough',
   code: 'gold1',
   format: 'LHA',
@@ -60,7 +61,7 @@ export const GOLD_NFO_PATH = path.join(__dirname, '../fixtures/UP-GOLD.NFO');
 export const GOLD_DIZ_PATH = path.join(__dirname, '../fixtures/UP-GOLD.DIZ');
 
 export function renderGold(): { nfoText: string; dizText: string } {
-  const out = generateOutputs(GOLD_HISTORY, GOLD_RELEASE_NUMBER, GOLD_FORM);
+  const out = generateOutputs({ filePrefix: 'UP-' }, GOLD_HISTORY, GOLD_RELEASE_NUMBER, GOLD_FORM);
   return { nfoText: out.nfoText, dizText: out.dizText };
 }
 

@@ -78,7 +78,10 @@ describe('renderHistoryBlock', () => {
   });
 });
 
+const UR = { filePrefix: 'UP-' };
+
 const sampleForm: ReleaseFormData = {
+  profileId: 'uprough',
   code: 'TEST0',
   format: 'LHA',
   releaseName: "'TEST RELEASE'",
@@ -98,7 +101,7 @@ describe('renderNfo', () => {
     const history: ReleaseHistoryEntry[] = [
       { releaseNumber: '217', filenames: 'up-test0.lha', title: 'test release', category: 'Demo', creators: 'spot' },
     ];
-    const nfo = renderNfo(history, sampleForm, 217);
+    const nfo = renderNfo(UR, history, sampleForm, 217);
     expect(nfo).toContain("Release named 'TEST RELEASE' (A1200) (UP-TEST0.LHA)");
     expect(nfo).toContain('Some notes.');
     expect(nfo).toContain('Some news.');
@@ -127,13 +130,13 @@ describe('generateOutputs', () => {
     const history: ReleaseHistoryEntry[] = [
       { releaseNumber: '42', filenames: 'up-test0.lha', title: 'test release', category: 'Demo', creators: 'spot' },
     ];
-    const result = generateOutputs(history, 42, sampleForm);
+    const result = generateOutputs(UR, history, 42, sampleForm);
     expect(result.releaseNumber).toBe(42);
     expect(result.nfoText).toContain('release 42');
   });
 
   it('does not synthesize a history entry — an empty history produces an empty history block', () => {
-    const result = generateOutputs([], 42, sampleForm);
+    const result = generateOutputs(UR, [], 42, sampleForm);
     expect(result.releaseNumber).toBe(42);
     expect(result.nfoText).not.toContain('release 42');
     // The history section should still have its heading, just no entry beneath it.

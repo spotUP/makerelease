@@ -7,7 +7,9 @@ import { GeneratedOutputs, ReleaseFormData } from '../../src/shared/types';
 
 const generated: GeneratedOutputs = { nfoText: 'nfo text', dizText: 'diz text', releaseNumber: 217 };
 
+const UR = { filePrefix: 'UP-' };
 const form = (selectedPaths: string[]): ReleaseFormData => ({
+  profileId: 'uprough',
   code: 'EVK26',
   format: 'LHA',
   releaseName: "'EVOKE'",
@@ -49,7 +51,7 @@ async function tempSource(name: string, files: string[]): Promise<string> {
 describe('stageRelease', () => {
   it('unwraps a selected folder that is already named UP-<CODE>, instead of nesting it again', async () => {
     const src = await tempSource('UP-EVK26', ['dip-ev26.ans', 'music/varin0x-onmymind.mod']);
-    const outerDir = await stageRelease(form([src]), generated);
+    const outerDir = await stageRelease(UR, form([src]), generated);
     expect((await tree(outerDir)).sort()).toEqual([
       'UP-EVK26/',
       'UP-EVK26/UP-EVK26.NFO',
@@ -62,14 +64,14 @@ describe('stageRelease', () => {
 
   it('unwraps regardless of how the folder is cased', async () => {
     const src = await tempSource('up-evk26', ['a.txt']);
-    const outerDir = await stageRelease(form([src]), generated);
+    const outerDir = await stageRelease(UR, form([src]), generated);
     expect(await tree(outerDir)).toContain('UP-EVK26/a.txt');
     expect(await tree(outerDir)).not.toContain('UP-EVK26/up-evk26/');
   });
 
   it('keeps any other folder as a folder inside the release', async () => {
     const src = await tempSource('gfx', ['dip-fast.png']);
-    const outerDir = await stageRelease(form([src]), generated);
+    const outerDir = await stageRelease(UR, form([src]), generated);
     expect((await tree(outerDir)).sort()).toEqual([
       'UP-EVK26/',
       'UP-EVK26/UP-EVK26.NFO',
@@ -81,13 +83,13 @@ describe('stageRelease', () => {
 
   it('puts file_id.diz beside the release dir, not inside it', async () => {
     const src = await tempSource('gfx', ['dip-fast.png']);
-    const outerDir = await stageRelease(form([src]), generated);
+    const outerDir = await stageRelease(UR, form([src]), generated);
     expect(await fs.readFile(path.join(outerDir, 'file_id.diz'), 'latin1')).toBe('diz text');
   });
 
   it('copies a selected file straight into the release dir', async () => {
     const dir = await tempSource('loose', ['dip-ev26.ans']);
-    const outerDir = await stageRelease(form([path.join(dir, 'dip-ev26.ans')]), generated);
+    const outerDir = await stageRelease(UR, form([path.join(dir, 'dip-ev26.ans')]), generated);
     expect(await tree(outerDir)).toContain('UP-EVK26/dip-ev26.ans');
   });
 });

@@ -1,4 +1,6 @@
 import { AminetUploadRequest, ReleaseFormat, ReleaseFormData } from '../shared/types';
+import type { ProfileSummary } from '../shared/profile';
+import { archiveFileName, releaseBaseName } from '../shared/naming.js';
 import {
   AMINET_ARCHITECTURES,
   AMINET_COMMON_TYPES,
@@ -19,6 +21,11 @@ import { describeRevoke } from './revoke-message.js';
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
 
 const codeInput = $<HTMLInputElement>('code');
+const codeLabel = $<HTMLLabelElement>('code-label');
+const profileSelect = $<HTMLSelectElement>('profile-select');
+const openProfilesBtn = $<HTMLButtonElement>('open-profiles-btn');
+const reloadProfilesBtn = $<HTMLButtonElement>('reload-profiles-btn');
+const profileStatus = $<HTMLDivElement>('profile-status');
 const codeStatus = $<HTMLDivElement>('code-status');
 const releaseNameInput = $<HTMLInputElement>('release-name');
 const platformTagInput = $<HTMLInputElement>('platform-tag');
@@ -103,6 +110,8 @@ creditsTbody.addEventListener('input', () => updateCreatorsPreview());
 // many of those lines a release may retype is the division's business - Up
 // Rough names itself on one, /X adds a tagline under it.
 let currentDivision: DivisionId = DEFAULT_DIVISION;
+// The group chosen in the dropdown; null until the first seed has loaded.
+let currentProfile: ProfileSummary | null = null;
 let dizBannerTemplate = divisionOf(currentDivision).defaultDizBanner;
 let dizLineInputs: HTMLInputElement[] = [];
 
@@ -188,9 +197,9 @@ function updateCreatorsPreview(): void {
 }
 
 function updateReleaseNumberPreview(): void {
-  const code = codeInput.value.trim().toUpperCase() || 'XXXXX';
-  const format = getSelectedFormat().toLowerCase();
-  releaseNumberPreview.textContent = `release ${nextReleaseNumber} up-${code.toLowerCase()}.${format}`;
+  const code = codeInput.value.trim().toUpperCase() || 'X'.repeat(currentProfile?.codeLength ?? 5);
+  const fileName = archiveFileName(currentProfile ?? { filePrefix: '' }, code, getSelectedFormat()).toLowerCase();
+  releaseNumberPreview.textContent = `release ${nextReleaseNumber} ${fileName}`;
 }
 
 function getSelectedFormat(): ReleaseFormat {
@@ -359,20 +368,89 @@ function renderSelectedFiles(): void {
   }
 }
 
-// Switching division is a different release entirely: its own numbering,
-// its own roster, its own banner art. Reloading the seed is what makes all
-// three follow, rather than each being patched in its own place.
-document.querySelectorAll<HTMLInputElement>('input[name="division"]').forEach((radio) => {
-  radio.addEventListener('change', () => {
-    if (!radio.checked || !isDivisionId(radio.value)) return;
-    currentDivision = radio.value;
-    void init();
-  });
+// Switching group is a different release entirely: its own numbering, its
+// own roster, its own banner art. Reloading the seed is what makes all three
+// follow, rather than each being patched in its own place.
+const PROFILE_STORAGE_KEY = 'profile-id';
+
+function rememberedProfileId(): string | null {
+  try {
+    return localStorage.getItem(PROFILE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+async function loadProfiles(): Promise<void> {
+  profileStatus.textContent = '';
+  profileStatus.className = 'status';
+  try {
+    const entries = await window.api.listProfiles();
+    const usable = entries.filter((entry): entry is ProfileSummary => !('error' in entry));
+    const broken = entries.filter((entry): entry is { id: string; error: string } => 'error' in entry);
+    profileSelect.replaceChildren(
+      ...usable.map((profile) => {
+        const option = document.createElement('option');
+        option.value = profile.id;
+        option.textContent = profile.label;
+        return option;
+      }),
+    );
+    // A broken profile is listed, never hidden: the maintainer needs to
+    // know why the group they just added is missing from the dropdown.
+    if (broken.length > 0) {
+      profileStatus.textContent = broken.map((entry) => `Profile "${entry.id}" not loaded: ${entry.error}`).join(' ');
+      profileStatus.className = 'status warn';
+    }
+    if (usable.length === 0) {
+      if (broken.length === 0) {
+        profileStatus.textContent = 'No group profiles yet. Open the profiles folder and add one.';
+        profileStatus.className = 'status warn';
+      }
+      return;
+    }
+    const remembered = rememberedProfileId();
+    profileSelect.value = usable.some((profile) => profile.id === remembered) ? (remembered as string) : usable[0].id;
+    await init();
+  } catch (err) {
+    profileStatus.textContent = `Could not list group profiles: ${err instanceof Error ? err.message : String(err)}`;
+    profileStatus.className = 'status warn';
+  }
+}
+
+profileSelect.addEventListener('change', () => {
+  try {
+    localStorage.setItem(PROFILE_STORAGE_KEY, profileSelect.value);
+  } catch {
+    // Storage disabled: the choice still holds for this session.
+  }
+  void init();
 });
+
+openProfilesBtn.addEventListener('click', async () => {
+  try {
+    await window.api.openProfilesFolder();
+  } catch (err) {
+    profileStatus.textContent = err instanceof Error ? err.message : String(err);
+    profileStatus.className = 'status warn';
+  }
+});
+
+reloadProfilesBtn.addEventListener('click', () => void loadProfiles());
+
+function applyProfile(profile: ProfileSummary): void {
+  currentProfile = profile;
+  currentDivision = isDivisionId(profile.renderer) ? profile.renderer : DEFAULT_DIVISION;
+  codeInput.maxLength = profile.codeLength;
+  revokeCodeInput.maxLength = profile.codeLength;
+  codeLabel.textContent =
+    `${profile.codeLength}-character code - becomes ${releaseBaseName(profile, '<CODE>')}`;
+}
 
 async function init(): Promise<void> {
   try {
-    const seed = await window.api.loadSeedState(currentDivision);
+    const seed = await window.api.loadSeedState(profileSelect.value);
+    applyProfile(seed.profile);
     // Only /X prints these; showing them for Up Rough would invite filling
     // in fields that go nowhere.
     xFieldsSection.hidden = currentDivision !== 'xinnovations';
@@ -425,11 +503,12 @@ codeInput.addEventListener('input', () => {
   const code = codeInput.value.trim();
   codeStatus.textContent = '';
   codeStatus.className = 'status';
-  if (code.length !== 5) return;
+  if (!currentProfile || code.length !== currentProfile.codeLength) return;
+  const profile = currentProfile;
   codeCheckTimer = window.setTimeout(async () => {
-    const { exists } = await window.api.checkCodeAvailability(code);
+    const { exists } = await window.api.checkCodeAvailability(profile.id, code);
     if (exists) {
-      codeStatus.textContent = `UP-${code.toUpperCase()} already exists on disk — building will fail unless you change the code.`;
+      codeStatus.textContent = `${releaseBaseName(profile, code)} already exists — building will fail unless you change the code.`;
       codeStatus.className = 'status warn';
     }
   }, 300);
@@ -485,7 +564,7 @@ form.addEventListener('submit', async (e) => {
 
   const boards = boardsTable.getBoards();
   const formData: ReleaseFormData = {
-    division: currentDivision,
+    profileId: profileSelect.value,
     releaseDate: releaseDateInput.value.trim(),
     ...(currentDivision === 'xinnovations'
       ? {
@@ -589,6 +668,7 @@ publishBtn.addEventListener('click', async () => {
   publishStatus.className = 'status';
   try {
     const result = await window.api.publishToWeb(
+      profileSelect.value,
       lastBuiltCode,
       lastBuiltArchivePath,
       selectedImagePath,
@@ -659,7 +739,7 @@ deleteReleaseBtn.addEventListener('click', async () => {
   deleteStatus.textContent = 'Revoking...';
   deleteStatus.className = 'status';
   try {
-    const result = await window.api.deleteRelease(deletedCode);
+    const result = await window.api.deleteRelease(profileSelect.value, deletedCode);
     if (result.ok) {
       deleteStatus.textContent = describeRevoke(result);
       // Anything the server could not finish itself (a post it failed to
@@ -702,4 +782,4 @@ deleteReleaseBtn.addEventListener('click', async () => {
   }
 });
 
-init();
+void loadProfiles();

@@ -5,12 +5,12 @@ export type OutputRootLocation = 'documents' | 'home' | 'userData';
 
 export type PathLookup = (name: OutputRootLocation) => string;
 
-const FOLDER_NAME = 'Up Rough Releases';
-
 const FALLBACK_ORDER: readonly OutputRootLocation[] = ['documents', 'home', 'userData'];
 
 /**
  * Where a PACKAGED build writes the archive and the unpacked release folder.
+ * `folderName` is per profile ("<label> Releases"), so each group's builds
+ * land in their own folder.
  *
  * Electron's app.getPath() throws when a location cannot be resolved rather
  * than returning empty — 'documents' in particular depends on XDG user dirs on
@@ -19,16 +19,16 @@ const FALLBACK_ORDER: readonly OutputRootLocation[] = ['documents', 'home', 'use
  * any window or error dialog could exist. Walk towards progressively more
  * certain locations instead of trusting the first one.
  */
-export function resolvePackagedOutputRoot(getPath: PathLookup): string {
+export function resolvePackagedOutputRoot(getPath: PathLookup, folderName: string): string {
   for (const location of FALLBACK_ORDER) {
     try {
       const base = getPath(location);
-      if (base) return path.join(base, FOLDER_NAME);
+      if (base) return path.join(base, folderName);
     } catch {
       // Unresolvable on this system — try the next, more reliable, location.
     }
   }
   throw new Error(
-    `Could not resolve any of ${FALLBACK_ORDER.join(', ')} to put the "${FOLDER_NAME}" folder in`,
+    `Could not resolve any of ${FALLBACK_ORDER.join(', ')} to put the "${folderName}" folder in`,
   );
 }

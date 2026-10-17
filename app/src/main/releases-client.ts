@@ -2,8 +2,33 @@ import { openAsBlob } from 'fs';
 import * as path from 'path';
 import { BoardEntry, MemberEntry, PublishToWebResult, ReleaseFormData, ReleaseHistoryEntry } from '../shared/types';
 import { DEFAULT_DIVISION, DivisionId } from '../shared/divisions';
-import { ReleasesClientConfig } from './config';
+import type { GroupProfile } from '../shared/profile';
 import { trimDizBanner } from './nfo-generator';
+
+export interface ReleasesClientConfig {
+  baseUrl: string;
+  /** Empty when the profile carries no key: reads work, every write is refused. */
+  writeKey: string;
+}
+
+/**
+ * The server a profile talks to. The key lives in the group's own
+ * profile.json, outside the repository and outside the build, so one public
+ * build serves every group. RELEASES_WRITE_KEY and RELEASES_API_BASE_URL
+ * still win, for development against a local server.
+ */
+export function clientConfigFor(
+  profile: Pick<GroupProfile, 'id' | 'server'>,
+  env: NodeJS.ProcessEnv = process.env,
+): ReleasesClientConfig {
+  if (!profile.server) {
+    throw new Error(`Profile "${profile.id}" has no server block; it does not publish to a releases server.`);
+  }
+  return {
+    baseUrl: env.RELEASES_API_BASE_URL || profile.server.baseUrl,
+    writeKey: env.RELEASES_WRITE_KEY || profile.server.writeKey,
+  };
+}
 
 export class ReleasesApiError extends Error {
   /** HTTP status code of the response that produced this error, when known. */

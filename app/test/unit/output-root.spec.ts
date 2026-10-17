@@ -17,29 +17,32 @@ function getPathStub(available: Partial<Record<OutputRootLocation, string>>) {
 }
 
 describe('resolvePackagedOutputRoot', () => {
+  const FOLDER = 'Example Group Releases';
+
   it('puts the output folder under Documents when Documents resolves', () => {
-    const root = resolvePackagedOutputRoot(getPathStub({ documents: '/home/varin/Documents' }));
-    expect(root).toBe(path.join('/home/varin/Documents', 'Up Rough Releases'));
+    const root = resolvePackagedOutputRoot(getPathStub({ documents: '/home/varin/Documents' }), FOLDER);
+    expect(root).toBe(path.join('/home/varin/Documents', FOLDER));
   });
 
   it('falls back to the home directory when Documents cannot be resolved', () => {
     const root = resolvePackagedOutputRoot(
       getPathStub({ home: '/home/varin', userData: '/home/varin/.config/makerelease' }),
+      FOLDER,
     );
-    expect(root).toBe(path.join('/home/varin', 'Up Rough Releases'));
+    expect(root).toBe(path.join('/home/varin', FOLDER));
   });
 
   it('falls back to userData when neither Documents nor home can be resolved', () => {
-    const root = resolvePackagedOutputRoot(getPathStub({ userData: '/home/varin/.config/makerelease' }));
-    expect(root).toBe(path.join('/home/varin/.config/makerelease', 'Up Rough Releases'));
+    const root = resolvePackagedOutputRoot(getPathStub({ userData: '/home/varin/.config/makerelease' }), FOLDER);
+    expect(root).toBe(path.join('/home/varin/.config/makerelease', FOLDER));
   });
 
   it('throws a describable error only when every location fails', () => {
-    expect(() => resolvePackagedOutputRoot(getPathStub({}))).toThrow(/documents, home, userData/);
+    expect(() => resolvePackagedOutputRoot(getPathStub({}), FOLDER)).toThrow(/documents, home, userData/);
   });
 
   it('skips a location that resolves to an empty string', () => {
-    const root = resolvePackagedOutputRoot(getPathStub({ documents: '', home: '/home/varin' }));
-    expect(root).toBe(path.join('/home/varin', 'Up Rough Releases'));
+    const root = resolvePackagedOutputRoot(getPathStub({ documents: '', home: '/home/varin' }), FOLDER);
+    expect(root).toBe(path.join('/home/varin', FOLDER));
   });
 });

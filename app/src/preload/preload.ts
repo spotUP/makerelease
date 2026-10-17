@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import type { DivisionId } from '../shared/divisions';
+import type { ProfileListEntry } from '../shared/profile';
 import {
   AminetUploadRequest,
   BuildResult,
@@ -11,22 +11,26 @@ import {
 } from '../shared/types';
 
 const api: MakereleaseApi = {
-  loadSeedState: (division: DivisionId): Promise<SeedState> => ipcRenderer.invoke('loadSeedState', division),
+  listProfiles: (): Promise<ProfileListEntry[]> => ipcRenderer.invoke('listProfiles'),
+  openProfilesFolder: (): Promise<void> => ipcRenderer.invoke('openProfilesFolder'),
+  loadSeedState: (profileId: string): Promise<SeedState> => ipcRenderer.invoke('loadSeedState', profileId),
   pickFilesAndDirs: (): Promise<string[]> => ipcRenderer.invoke('pickFilesAndDirs'),
-  checkCodeAvailability: (code: string): Promise<{ exists: boolean }> =>
-    ipcRenderer.invoke('checkCodeAvailability', code),
+  checkCodeAvailability: (profileId: string, code: string): Promise<{ exists: boolean }> =>
+    ipcRenderer.invoke('checkCodeAvailability', profileId, code),
   buildRelease: (form: ReleaseFormData, dryRun: boolean): Promise<BuildResult> =>
     ipcRenderer.invoke('buildRelease', form, dryRun),
   pickImage: (): Promise<string | null> => ipcRenderer.invoke('pickImage'),
   publishToWeb: (
+    profileId: string,
     code: string,
     archivePath: string,
     imagePath: string,
     embedImagePaths: string[],
     aminet: AminetUploadRequest | null,
   ): Promise<PublishToWebOutcome> =>
-    ipcRenderer.invoke('publishToWeb', code, archivePath, imagePath, embedImagePaths, aminet),
-  deleteRelease: (code: string): Promise<DeleteReleaseOutcome> => ipcRenderer.invoke('deleteRelease', code),
+    ipcRenderer.invoke('publishToWeb', profileId, code, archivePath, imagePath, embedImagePaths, aminet),
+  deleteRelease: (profileId: string, code: string): Promise<DeleteReleaseOutcome> =>
+    ipcRenderer.invoke('deleteRelease', profileId, code),
 };
 
 contextBridge.exposeInMainWorld('api', api);
