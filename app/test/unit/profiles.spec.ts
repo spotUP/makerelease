@@ -115,3 +115,14 @@ describe('profiles on disk', () => {
     await expect(readTemplates(dir, 'demo')).rejects.toThrow('file_id.diz: could not be read');
   });
 });
+
+describe('loadProfile hardening', () => {
+  it('rejects a bad id before touching the filesystem', async () => {
+    await expect(loadProfile(dir, '../evil')).rejects.toThrow(/folder name "..\/evil" must use only/);
+  });
+
+  it('parses a profile.json that starts with a UTF-8 BOM', async () => {
+    await writeProfile('bom', '﻿' + VALID);
+    expect((await loadProfile(dir, 'bom')).label).toBe('Demo');
+  });
+});

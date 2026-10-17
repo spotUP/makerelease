@@ -1,6 +1,6 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { GroupProfile, PROFILE_FILE, TEMPLATE_FILES, parseProfile } from '../shared/profile';
+import { GroupProfile, PROFILE_FILE, isProfileId, TEMPLATE_FILES, parseProfile } from '../shared/profile';
 import { normaliseLineEndings } from '../shared/placeholder-template';
 import type { ProfileTemplates } from './nfo-placeholder';
 import { writeLatin1 } from './encoding';
@@ -24,6 +24,10 @@ export function isProfileLoadError(entry: GroupProfile | ProfileLoadError): entr
 
 export async function loadProfile(profilesDir: string, id: string): Promise<GroupProfile> {
   const file = path.join(profilesDir, id, PROFILE_FILE);
+  // Before any read: an id such as "../x" must never reach the filesystem.
+  if (!isProfileId(id)) {
+    throw new Error(`${file}: the folder name "${id}" must use only a-z, 0-9 and "-"`);
+  }
   let text: string;
   try {
     text = await fs.readFile(file, 'utf8');
@@ -32,7 +36,8 @@ export async function loadProfile(profilesDir: string, id: string): Promise<Grou
   }
   let raw: unknown;
   try {
-    raw = JSON.parse(text);
+    // Editors on Windows save a UTF-8 BOM, which JSON.parse rejects.
+    raw = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch (err) {
     throw new Error(`${file}: is not valid JSON (${(err as Error).message})`);
   }

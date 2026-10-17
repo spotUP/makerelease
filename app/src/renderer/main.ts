@@ -11,13 +11,14 @@ import {
 import { MemberlistTable } from './memberlist-table.js';
 import { BoardsTable } from './boards-table.js';
 import { CreditsTable } from './credits-table.js';
-import { CODER_ROLES, DESIGN_ROLES, creatorsFromCredits, creditNamesForRole } from './credits-creators.js';
+import { CODER_ROLES, DESIGN_ROLES, creatorsFromCredits, creditNamesForRole, creditsError } from './credits-creators.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
 import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../shared/diz-release-line.js';
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
 import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
 import { builtReleaseFor, type BuiltRelease } from './built-release.js';
+import { LatestOnly } from './latest-only.js';
 import { visibleSections, type SectionVisibility } from '../shared/section-visibility.js';
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T;
@@ -530,12 +531,17 @@ function numberHeadings(): void {
   }
 }
 
+const initSwitches = new LatestOnly();
+
 async function init(): Promise<void> {
   // A build belongs to the profile that made it; once the profile is switched
   // or reloaded, its Publish and Aminet state must not stay on screen.
   resetPublishState();
+  const isLatest = initSwitches.begin();
   try {
     const seed = await window.api.loadSeedState(profileSelect.value);
+    // A newer switch started while this seed loaded; its result wins.
+    if (!isLatest()) return;
     applyProfile(seed.profile);
     // Today, unless somebody has already typed a date - reloading the seed
     // (which switching division does) must not overwrite what they entered.
@@ -720,8 +726,9 @@ form.addEventListener('submit', async (e) => {
   // The credits are the only place the release's people are entered, so an
   // empty table means the NFO history entry would have a blank creator line
   // and the server would reject the build.
-  if (!creatorsFromCredits(creditsTable.getCredits())) {
-    buildStatus.textContent = 'Add at least one credit - the release history creator line is built from them.';
+  const creditsProblem = creditsError(creditsTable.getCredits(), visibility.historyEntry);
+  if (creditsProblem) {
+    buildStatus.textContent = creditsProblem;
     buildStatus.className = 'status warn';
     return;
   }

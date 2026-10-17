@@ -2,7 +2,7 @@
 date: 2026-10-17
 plan: thoughts/shared/plans/2026-10-17-generalise-release-maker.md
 branch: feature/group-profiles
-status: passed with open items
+status: passed
 ---
 
 # Validation: generalise makerelease for any scene group
@@ -20,16 +20,9 @@ All implement checklist items P0.1-P5.5 are done with commits (ledger `thoughts/
 1. Stale publish state on profile switch (blocking). Build under profile A, switch to profile B, press Publish: A's archive and code went to B's server. Fixed in 279e6c3: `app/src/renderer/built-release.ts` binds the build to its profile; Publish, Aminet upload and revoke use `builtReleaseFor`; `init()` calls `resetPublishState()`. Regression test `app/test/unit/built-release.spec.ts` fails with the profile check removed.
 2. Stale compiled files in `dist/` (part of the key leak below). `npm run build` now removes `dist/` first (279e6c3).
 
-## Issues open
-1. Real write key can ship in the DMG (blocking for `npm run dist`). `app/src/main/config.generated.ts` (git-ignored, holds the real key) still exists on disk; `tsconfig.main.json` compiles all of `src/main/**/*.ts`, and `build.files` packages `dist/**/*`. The plan's fix is: move the key into `<userData>/profiles/uprough/profile.json`, then delete the file. The uprough profile folder does not exist yet in `~/Library/Application Support/makerelease/profiles/`.
-
-## Minor deviations (not blocking, not fixed)
-- Credit is required for generic groups too (the creator line check runs for every renderer).
-- `init()` has no race token: two fast profile switches can apply seeds out of order.
-- Placeholder names outside `[a-z_]+` (for example `{{Group}}`) are left as text, not reported as unknown.
-- `loadProfile` reads the file before validating the id.
-- A UTF-8 BOM in `profile.json` breaks parsing.
-- Blank block lines keep trailing whitespace.
+## Issues resolved after validation
+1. Write key in the DMG: the key now lives in `<userData>/profiles/uprough/profile.json` and `profiles/xinnovations/profile.json` (mode 600); `app/src/main/config.generated.ts` is deleted and `dist/` holds no copy of the key.
+2. The six minor deviations are fixed, each with a regression test: credit line required only for uprough/xinnovations (`creditsError`), profile-switch race token (`LatestOnly`), any `{{Name}}` reported as unknown, `loadProfile` validates the id before reading, a UTF-8 BOM is stripped, blank block lines carry no trailing whitespace.
 
 ## Manual checks (only a person can tick these)
 - Launch with an empty userData folder: example profile appears, form fits, Open profiles folder works.

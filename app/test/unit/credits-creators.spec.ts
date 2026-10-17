@@ -4,6 +4,7 @@ import {
   DESIGN_ROLES,
   creatorsFromCredits,
   creditNamesForRole,
+  creditsError,
 } from '../../src/renderer/credits-creators';
 
 describe('creatorsFromCredits', () => {
@@ -91,5 +92,16 @@ describe('creditNamesForRole', () => {
 
   it('is empty when nobody is credited for it, rather than guessing', () => {
     expect(creditNamesForRole([{ role: 'Music', name: 'gOTO80' }], CODER_ROLES)).toBe('');
+  });
+});
+
+describe('creditsError', () => {
+  const empty: Parameters<typeof creditsError>[0] = [];
+  it('requires a credit where the output carries the creator line', () => {
+    expect(creditsError(empty, true)).toMatch(/Add at least one credit/);
+    expect(creditsError([{ role: 'Code', name: 'A' }], true)).toBeNull();
+  });
+  it('lets a placeholder group build without credits', () => {
+    expect(creditsError(empty, false)).toBeNull();
   });
 });
