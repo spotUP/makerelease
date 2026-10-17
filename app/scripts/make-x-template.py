@@ -65,7 +65,7 @@ header = '''// GENERATED from test/fixtures/UP-MD15.NFO - do not edit by hand.
 // tail a run of dashes and a stray gutter from a paste accident. It is cut
 // back to the frame's own width.
 //
-// Regenerate with scripts/make-x-template.ts after changing the fixture.
+// Regenerate with scripts/make-x-template.py after changing the fixture.
 
 export const X_INNOVATIONS_NFO_TEMPLATE = %s;
 ''' % json.dumps(template)

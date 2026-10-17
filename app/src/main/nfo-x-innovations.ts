@@ -302,15 +302,15 @@ const FIELD_WIDTHS = {
  */
 function fillBlock(template: string, marker: string, lines: string[]): string {
   if (lines.length === 0) return template.replace(new RegExp(`^${marker}\\n?`, 'm'), '');
-  return template.replace(marker, lines.join('\n'));
+  return template.replace(marker, () => lines.join('\n'));
 }
 
 export function renderXInnovationsNfo(input: XInnovationsNfoInput): string {
-  const filled = X_INNOVATIONS_NFO_TEMPLATE.replace('{{RELEASE_NAME_LINE}}', releaseNameLine(input.releaseName))
-    .replace('{{DATE}}', fitField(input.releaseDate, FIELD_WIDTHS.DATE))
-    .replace('{{CODER}}', fitField(input.coder, FIELD_WIDTHS.CODER))
-    .replace('{{SYSTEM}}', fitField(input.system, FIELD_WIDTHS.SYSTEM))
-    .replace('{{DESIGN}}', fitField(input.design, FIELD_WIDTHS.DESIGN));
+  const filled = X_INNOVATIONS_NFO_TEMPLATE.replace('{{RELEASE_NAME_LINE}}', () => releaseNameLine(input.releaseName))
+    .replace('{{DATE}}', () => fitField(input.releaseDate, FIELD_WIDTHS.DATE))
+    .replace('{{CODER}}', () => fitField(input.coder, FIELD_WIDTHS.CODER))
+    .replace('{{SYSTEM}}', () => fitField(input.system, FIELD_WIDTHS.SYSTEM))
+    .replace('{{DESIGN}}', () => fitField(input.design, FIELD_WIDTHS.DESIGN));
 
   return [
     ['{{NOTES}}', notesBlock(input.releaseNotes)],

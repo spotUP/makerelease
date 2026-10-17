@@ -219,3 +219,28 @@ describe('releaseNameInBanner', () => {
     expect(releaseNameInBanner(thirteenRow)).toBe('Spin The Wheel 1.0 by zALO');
   });
 });
+
+describe('replacement patterns in user text', () => {
+  // String.prototype.replace reads $&, $1 and $$ in a string replacement as
+  // patterns: "$&" would print the marker itself. Every value must land as
+  // typed.
+  it('prints $& $1 $$ literally in notes, news and fields', () => {
+    const nfo = renderXInnovationsNfo({
+      releaseName: 'Name $& here',
+      releaseDate: '$$',
+      coder: '$&',
+      system: '$1',
+      design: "$'",
+      releaseNotes: 'costs $& $1 $$ nothing',
+      news: 'news $& too',
+      members: [],
+      boards: [],
+      releaseList: [],
+    });
+    expect(nfo).toContain('costs $& $1 $$ nothing');
+    expect(nfo).toContain('news $& too');
+    expect(nfo).not.toContain('{{');
+    expect(nfo).toContain('[$&        ]');
+    expect(nfo).toContain('[$$        ]');
+  });
+});
