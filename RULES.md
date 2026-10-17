@@ -22,6 +22,7 @@ All commands run from `app/`.
 | Test (CI) | `npm test` (`vitest run`, suites under `test/unit/**/*.spec.ts`) |
 | One test file | `npx vitest run test/unit/<name>.spec.ts` |
 | Distributable build | `npm run dist` (DMG, x64 and arm64; the build carries no key) |
+| Windows build | `npm run dist:win` (from macOS: portable `.exe` only, x64, unsigned; electron-builder fetches its own Wine) |
 | Stop / cleanup | quit Electron; stale DMG: `hdiutil info`, then `hdiutil detach <device>` |
 
 Validation before push: `npm run typecheck && npm test`.
