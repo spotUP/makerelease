@@ -155,6 +155,26 @@ describe('registerIpcHandlers', () => {
     });
   });
 
+  it('loadSeedState lists a member with several skills once, the skills comma separated', async () => {
+    // The /X roster came from its NFO, which prints a name under every skill
+    // it has; the server refuses a nickname listed twice on publish.
+    (releasesClient.fetchSeed as any).mockResolvedValue({
+      members: [
+        { nickname: 'sPOT', role: 'sysops' },
+        { nickname: 'zALO', role: 'sysops' },
+        { nickname: 'sPOT', role: 'coders' },
+        { nickname: 'gOTO80', role: 'artists' },
+      ],
+      nextReleaseNumber: 1, history: [], currentDizText: '', revision: 0,
+    });
+    const result = await handlers.loadSeedState(null, 'uprough');
+    expect(result.members).toEqual([
+      { nickname: 'sPOT', role: 'sysops, coders' },
+      { nickname: 'zALO', role: 'sysops' },
+      { nickname: 'gOTO80', role: 'artists' },
+    ]);
+  });
+
   it('loadSeedState falls back to empty string when currentDizText is null', async () => {
     (releasesClient.fetchSeed as any).mockResolvedValue({
       members: [], nextReleaseNumber: 1, history: [], currentDizText: null, revision: 0,

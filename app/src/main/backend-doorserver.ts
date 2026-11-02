@@ -2,6 +2,7 @@ import type { ReleaseHistoryEntry } from '../shared/types';
 import { divisionIdOf, type GroupProfile } from '../shared/profile';
 import { divisionOf, formatReleaseNumber } from '../shared/divisions';
 import { archiveFileName } from '../shared/naming';
+import { mergeMemberSkills } from '../shared/members';
 import {
   checkCodeExists,
   clientConfigFor,
@@ -46,7 +47,8 @@ export function doorserverBackend(profile: GroupProfile, env: NodeJS.ProcessEnv)
           : undefined;
       const staleDraftWarning = describeStaleDrafts(seed.drafts ?? [], Math.floor(Date.now() / 1000));
       return {
-        members: seed.members,
+        // The server may hold one row per member and skill; the form shows one per member.
+        members: mergeMemberSkills(seed.members),
         boards: seed.boards ?? [],
         nextReleaseNumber: seed.nextReleaseNumber,
         history: seed.history,

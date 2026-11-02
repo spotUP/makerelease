@@ -77,6 +77,20 @@ describe('rosterBlock', () => {
     expect(block.every((line) => line.length === 74)).toBe(true);
   });
 
+  it('lists a member with comma-separated skills under each skill', () => {
+    const block = rosterBlock([
+      { nickname: 'sANDMAN', role: 'sysops' },
+      { nickname: 'zALO', role: 'sysops, coders' },
+      { nickname: 'hAMLET', role: 'sysops' },
+      { nickname: 'sPOT', role: 'sysops,coders' },
+      { nickname: 'zANER', role: 'sysops' },
+      { nickname: 'gOTO80', role: 'artists' },
+    ]);
+    expect(block[0]).toBe(fixture[106]);
+    const coders = block.find((line) => line.includes('c O D E R S'));
+    expect(coders).toContain('zALO . sPOT');
+  });
+
   it('writes a role the way the NFO spaces its headings', () => {
     expect(spacedCaps('sysops')).toBe('s Y S O P S');
     // Their lettering keeps every i lower case, as the real file prints it.

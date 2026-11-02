@@ -1,5 +1,6 @@
 import { BoardEntry, MemberEntry } from '../shared/types';
 import { DIVISIONS } from '../shared/divisions';
+import { memberSkills } from '../shared/members';
 import { applyReleaseLines } from '../shared/diz-release-line';
 import { X_INNOVATIONS_NFO_TEMPLATE } from './x-innovations-template';
 
@@ -91,14 +92,16 @@ function notesBlock(notes: string): string[] {
 /**
  * The roster, grouped the way the NFO prints it: a heading of spaced capitals,
  * then names separated by " . ", continuing on aligned lines when a group does
- * not fit. Group order is the order the roles were entered.
+ * not fit. Group order is the order the skills were entered. A member with
+ * several comma-separated skills is listed under each of them.
  */
 export function rosterBlock(members: MemberEntry[]): string[] {
   const groups = new Map<string, string[]>();
   for (const member of members) {
-    const key = member.role.trim();
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key)?.push(member.nickname);
+    for (const key of memberSkills(member.role)) {
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)?.push(member.nickname);
+    }
   }
 
   const labelWidth = Math.max(...[...groups.keys()].map((role) => spacedCaps(role).length), 0);

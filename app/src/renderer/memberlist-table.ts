@@ -1,4 +1,5 @@
 import { MemberEntry } from '../shared/types';
+import { mergeMemberSkills } from '../shared/members.js';
 
 export class MemberlistTable {
   private tbody: HTMLTableSectionElement;
@@ -9,7 +10,7 @@ export class MemberlistTable {
 
   seed(members: MemberEntry[]): void {
     this.tbody.innerHTML = '';
-    for (const member of members) this.addRow(member);
+    for (const member of mergeMemberSkills(members)) this.addRow(member);
   }
 
   addRow(member: MemberEntry = { nickname: '', role: '' }): void {
@@ -47,6 +48,7 @@ export class MemberlistTable {
       const role = (inputs[1] as HTMLInputElement).value.trim();
       if (nickname) members.push({ nickname, role });
     }
-    return members.sort((a, b) => a.nickname.localeCompare(b.nickname));
+    // A nickname typed on two rows becomes one member with both skills.
+    return mergeMemberSkills(members).sort((a, b) => a.nickname.localeCompare(b.nickname));
   }
 }
