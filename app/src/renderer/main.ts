@@ -19,6 +19,7 @@ import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
 import { builtReleaseFor, type BuiltRelease } from './built-release.js';
 import { LatestOnly } from './latest-only.js';
+import { Prefill, releaseNameText } from './prefill.js';
 import { createProfileEditor, type ProfileEditorMode } from './profile-editor.js';
 import { visibleSections, type SectionVisibility } from '../shared/section-visibility.js';
 
@@ -117,6 +118,21 @@ let selectedImagePath: string | null = null;
 // row that will ever exist, which per-input listeners would not.
 creditsTbody.addEventListener('input', () => updateCreatorsPreview());
 
+// The release name is the usual start for the WordPress description and the
+// diz release line, so both copy it until the user types their own text.
+const descriptionPrefill = new Prefill();
+releaseNameInput.addEventListener('input', () => {
+  const name = releaseNameText(releaseNameInput.value);
+  const description = descriptionPrefill.next(descriptionInput.value, name);
+  if (description !== undefined) descriptionInput.value = description;
+  dizLineInputs.forEach((input, i) => {
+    const line = dizLinePrefills[i]?.next(input.value, name.slice(0, input.maxLength));
+    if (line !== undefined) input.value = line;
+  });
+  renderDizPreview();
+  refreshAminetPreview();
+});
+
 // Banner art is read-only: whatever the last release used (or the built-in
 // fallback when there is no previous release). Only the release line changes,
 // and diz-release-line.ts keeps it inside the art's frame characters. How
@@ -127,6 +143,7 @@ let currentDivision: DivisionId = DEFAULT_DIVISION;
 let currentProfile: ProfileSummary | null = null;
 let dizBannerTemplate = divisionOf(currentDivision).defaultDizBanner;
 let dizLineInputs: HTMLInputElement[] = [];
+let dizLinePrefills: Prefill[] = [];
 
 function currentDizBannerText(): string {
   return applyReleaseLines(
@@ -172,7 +189,10 @@ function buildDizLineInputs(): void {
     // Hard cap in the field itself, so nothing longer than the gap between
     // the frame characters can ever be typed or pasted in.
     input.maxLength = slot.width;
-    input.value = readReleaseLineText(dizBannerTemplate, spec.row).slice(0, slot.width);
+    // The art's own line names the previous release, so the release name
+    // replaces it as soon as there is one.
+    const name = releaseNameText(releaseNameInput.value);
+    input.value = (name || readReleaseLineText(dizBannerTemplate, spec.row)).slice(0, slot.width);
     const count = document.createElement('div');
     count.className = 'hint';
     lineCounts.set(input, count);
@@ -180,6 +200,7 @@ function buildDizLineInputs(): void {
     dizReleaseLinesContainer.append(label, input, count);
     return input;
   });
+  dizLinePrefills = dizLineInputs.map((input) => new Prefill(input.value));
 }
 
 function seedDizBanner(bannerText: string): void {
