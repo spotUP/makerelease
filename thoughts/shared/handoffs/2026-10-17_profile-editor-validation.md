@@ -9,6 +9,8 @@ status: draft
 
 ## Task(s)
 - Ledger item V in `thoughts/spot/todos.md`, section "In-app group profile editor": six manual tests of the in-app group editor. NOT started; spot deferred testing on 2026-10-17.
+- Second session 2026-10-17: the injected start prompt told the session to start validation, but spot had said no testing today. The session launched the dev app and listed the six steps before spot stopped it. No test was run. App stopped; live profiles verified identical to the backup afterwards.
+- Do NOT start validation in a new session on your own. Wait until spot says they are ready to test, then follow Next Steps below.
 - Everything else in that section (R, P, I, M) is done and merged: origin/main 7ecdf05, later commits up to ccc764d.
 
 ## Critical References
