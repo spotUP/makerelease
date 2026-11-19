@@ -29,31 +29,6 @@ export const AMINET_ARCHITECTURES = [
   'generic',
 ] as const;
 
-/**
- * The Aminet directories a group release is most likely to land in. The
- * field accepts any directory; these only save typing.
- */
-export const AMINET_COMMON_TYPES = [
-  'demo/aga',
-  'demo/ecs',
-  'demo/intro',
-  'demo/40k',
-  'demo/disk',
-  'demo/mag',
-  'demo/misc',
-  'demo/slide',
-  'demo/sound',
-  'demo/track',
-  'mods/demo',
-  'mods/chip',
-  'mods/misc',
-  'pix/art',
-  'pix/illu',
-  'game/misc',
-  'util/misc',
-  'comm/bbs',
-] as const;
-
 export interface AminetReadmeInput {
   short: string;
   /** Aminet directory, e.g. "demo/aga". */
@@ -126,10 +101,16 @@ export function renderAminetReadme(input: AminetReadmeInput): string {
 
   const credits = input.credits.filter((c) => c.role.trim() || c.name.trim()).map((c) => `  ${formatCreditLine(c)}`);
 
+  // Description and notes are both prefilled from the release name, so the
+  // notes often open with the description's exact text; print it once.
+  const description = input.description.trim();
+  const notes = trimBlankEdges(wrapPreformatted(input.releaseNotesText));
+  if (description && notes[0]?.trim() === description) notes.shift();
+
   const body: string[] = [
     ...wrapParagraph(input.description),
     '',
-    ...trimBlankEdges(wrapPreformatted(input.releaseNotesText)),
+    ...trimBlankEdges(notes),
     ...(credits.length ? ['', 'Credits:', ...credits.flatMap((line) => wrapPreformatted(line))] : []),
     '',
     `Released by ${label} - ${url}`,
@@ -154,46 +135,61 @@ function headerValue(lines: string[], field: string): string | undefined {
   return line === undefined ? undefined : line.slice(prefix.length).trim();
 }
 
+/** Which form field a readme problem belongs to; null means the text as a whole. */
+export type AminetReadmeField = 'short' | 'uploader' | 'type' | 'architecture' | null;
+
+export interface AminetReadmeProblem {
+  field: AminetReadmeField;
+  message: string;
+}
+
 /**
  * Everything the Aminet upload checklist asks for that can be checked from
- * the text alone. Empty means the readme may go. Both the renderer (to say
- * what is missing before the Publish button does anything) and main (as the
- * last word before the FTP upload) run this on the same text.
+ * the text alone, each tagged with the field that fixes it so the renderer
+ * can show it under that input. Empty means the readme may go.
  */
-export function aminetReadmeProblems(readmeText: string): string[] {
-  const problems: string[] = [];
-  if (readmeText.includes('\r')) problems.push('the readme must use LF line ends, not CR LF');
+export function aminetReadmeFieldProblems(readmeText: string): AminetReadmeProblem[] {
+  const problems: AminetReadmeProblem[] = [];
+  const add = (field: AminetReadmeField, message: string): void => {
+    problems.push({ field, message });
+  };
+  if (readmeText.includes('\r')) add(null, 'the readme must use LF line ends, not CR LF');
   const lines = readmeText.replace(/\r\n?/g, '\n').split('\n');
   const blank = lines.indexOf('');
   const header = blank === -1 ? lines : lines.slice(0, blank);
 
-  if (!lines[0]?.startsWith('Short:')) problems.push('the first line must be "Short:"');
+  if (!lines[0]?.startsWith('Short:')) add(null, 'the first line must be "Short:"');
   const short = headerValue(header, 'Short') ?? '';
-  if (!short) problems.push('Short: is empty');
+  if (!short) add('short', 'Short: is empty');
   else if (short.length > AMINET_SHORT_MAX) {
-    problems.push(`Short: is ${short.length} characters; Aminet allows ${AMINET_SHORT_MAX}`);
+    add('short', `Short: is ${short.length} characters; Aminet allows ${AMINET_SHORT_MAX}`);
   }
 
   const uploader = headerValue(header, 'Uploader') ?? '';
   if (!/^[^\s@()]+@[^\s@()]+\.[^\s@()]+ \(.+\)$/.test(uploader)) {
-    problems.push('Uploader: needs an email address and a name, as "you@example.com (Your Name)"');
+    add('uploader', 'Uploader: needs an email address and a name, as "you@example.com (Your Name)"');
   }
 
   const type = headerValue(header, 'Type') ?? '';
   if (!/^[a-z0-9]+\/[a-z0-9]+$/.test(type)) {
-    problems.push('Type: must be an Aminet directory such as "demo/aga"');
+    add('type', 'Type: must be an Aminet directory such as "demo/aga"');
   }
 
   const architecture = headerValue(header, 'Architecture') ?? '';
-  if (!architecture) problems.push('Architecture: is empty');
+  if (!architecture) add('architecture', 'Architecture: is empty');
 
   lines.forEach((line, index) => {
     if (line.length > AMINET_LINE_MAX) {
-      problems.push(`line ${index + 1} is ${line.length} characters; Aminet allows ${AMINET_LINE_MAX}`);
+      add(null, `line ${index + 1} is ${line.length} characters; Aminet allows ${AMINET_LINE_MAX}`);
     }
   });
 
   return problems;
+}
+
+/** The same checks as plain messages: main runs this as the last word before the FTP upload. */
+export function aminetReadmeProblems(readmeText: string): string[] {
+  return aminetReadmeFieldProblems(readmeText).map((p) => p.message);
 }
 
 /** Aminet's file name rules: 30 characters at most, from a small alphabet. */

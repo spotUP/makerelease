@@ -11,6 +11,7 @@
   --accent: #d98c3f;
   --border: #3a3a3a;
   --danger: #c0392b;
+  --ok: #4caf50;
   --backdrop: rgba(0, 0, 0, 0.6);
 }
 
@@ -20,15 +21,15 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: -apple-system, system-ui, sans-serif;
-  max-width: 720px;
+  max-width: 820px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: 0.75rem 1rem;
 }
 
 h1 { font-size: 1.3rem; }
-h2 { font-size: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+h2 { font-size: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; margin: 0.4rem 0 0.3rem; }
 
-section { margin-bottom: 1.5rem; }
+section { margin-bottom: 1rem; }
 
 label { display: block; margin-top: 0.5rem; font-size: 0.85rem; }
 
@@ -76,10 +77,6 @@ pre.diz-banner-preview {
   letter-spacing: 0;
 }
 
-input.diz-release-line {
-  font-family: ui-monospace, Menlo, monospace;
-}
-
 .hint { font-size: 0.8rem; color: #9a9a9a; margin-top: 0.4rem; }
 
 table { width: 100%; border-collapse: collapse; margin-top: 0.5rem; }
@@ -95,11 +92,44 @@ button {
   margin-top: 0.5rem;
 }
 button.danger { background: var(--danger); color: var(--fg); }
+/* Without this a disabled button looks live and a click on it seems dead. */
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+[aria-invalid='true'] { outline: 2px solid var(--danger); outline-offset: 1px; }
+.field-error { color: var(--danger); font-size: 0.8rem; margin-top: 0.2rem; }
+
+#toasts {
+  position: fixed;
+  right: 1rem;
+  bottom: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-width: min(420px, calc(100vw - 2rem));
+  z-index: 1000;
+}
+.toast {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  padding: 0.6rem 0.75rem;
+  font-size: 0.85rem;
+  box-shadow: 0 4px 12px var(--backdrop);
+  overflow-wrap: anywhere;
+}
+.toast.ok { border-left-color: var(--ok); }
+.toast.error { border-left-color: var(--danger); }
+.toast span { flex: 1; }
+.toast-close { margin: 0; padding: 0.1rem 0.4rem; background: transparent; color: var(--fg); border: 1px solid var(--border); }
 
 .status { font-size: 0.85rem; margin-top: 0.4rem; }
 #template-status { white-space: pre-line; }
 .status.warn { color: var(--danger); }
-.status.ok { color: #4caf50; }
+.status.ok { color: var(--ok); }
 
 .autocomplete-wrap { position: relative; }
 .autocomplete-list {
@@ -168,3 +198,68 @@ dialog#profile-dialog input[type="password"], dialog#profile-dialog input[type="
 }
 dialog#profile-dialog [hidden] { display: none; }
 .dialog-actions { margin-top: 1rem; display: flex; gap: 0.5rem; }
+
+/* Wizard: one page at a time; hidden with a class so validation still sees every field. */
+.wizard-page { display: none; }
+.wizard-page.wizard-page-active { display: flex; flex-direction: column; flex: 1; }
+/* Body is a full-height column (the form's children join it) so the active
+   page stretches and its Back/Next row sits at the window bottom. */
+body { min-height: 100vh; display: flex; flex-direction: column; }
+#release-form { display: contents; }
+.wizard-steps { display: flex; flex-wrap: wrap; gap: 0.25rem 1.25rem; border-bottom: 1px solid var(--border); margin: 0.5rem 0 0.75rem; }
+.wizard-steps button {
+  background: transparent;
+  color: var(--fg);
+  margin: 0;
+  padding: 0.4rem 0;
+  border-bottom: 2px solid transparent;
+}
+.wizard-steps button.wizard-step-current { color: var(--accent); border-bottom-color: var(--accent); }
+.wizard-steps button[hidden] { display: none; }
+.wizard-nav { display: flex; justify-content: space-between; margin-top: auto; padding-top: 0.5rem; position: sticky; bottom: 0; background: var(--bg); }
+.wizard-nav button[hidden] { display: none; }
+.wizard-nav button:last-child { margin-left: auto; }
+
+details > summary { cursor: pointer; font-size: 1rem; color: var(--accent); border-bottom: 1px solid var(--border); padding-bottom: 0.25rem; }
+.aminet-uploader-fold { grid-column: 1 / -1; }
+.aminet-uploader-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem 1rem; margin-top: 0.6rem; }
+.aminet-uploader-grid label:last-child { grid-column: 1 / -1; }
+
+dialog#revoke-dialog {
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  width: min(640px, 92vw);
+  max-height: 90vh;
+}
+dialog#revoke-dialog::backdrop { background: var(--backdrop); }
+#open-revoke-btn[hidden] { display: none; }
+
+.app-header { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.app-header h1 { margin: 0 0.6rem 0 0; }
+.app-header .app-header-label { margin: 0; }
+.app-header select { width: auto; flex: 1 1 10rem; }
+.app-header button { margin-top: 0; }
+.menu { position: relative; }
+.menu summary { cursor: pointer; padding: 0.4rem 0.6rem; border: 1px solid var(--border); list-style: none; }
+.menu summary::-webkit-details-marker { display: none; }
+.menu-panel {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.4rem;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  box-shadow: 0 4px 12px var(--backdrop);
+  white-space: nowrap;
+}
+.menu-panel button { margin-top: 0; text-align: left; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 1rem; align-items: start; }
+#profile-status:empty { display: none; }
+/* The NFO page has only this field: let it take the rest of the window. */
+textarea#release-notes-text { height: calc(100vh - 15rem); min-height: 12rem; resize: vertical; }
+.diz-release-lines { white-space: pre-line; }

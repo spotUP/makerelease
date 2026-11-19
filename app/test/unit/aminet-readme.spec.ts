@@ -47,6 +47,13 @@ describe('renderAminetReadme', () => {
     expect(text.endsWith('\n')).toBe(true);
   });
 
+  it('prints the description once when the release notes open with the same line', () => {
+    const line = 'OpenMUI 2026.11.19 for AmigaOS 3.x / m68k';
+    const text = renderAminetReadme({ ...input, description: line, releaseNotesText: `\n${line}\n\nMore notes.` });
+    expect(text.split(line).length - 1).toBe(1);
+    expect(text).toContain(`${line}\n\nMore notes.`);
+  });
+
   it('wraps a long description and a long notes line at 78 columns, and uses LF only', () => {
     const text = renderAminetReadme({
       ...input,

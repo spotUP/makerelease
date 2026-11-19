@@ -44,6 +44,12 @@ function createWindow(): void {
 }
 
 app.whenReady().then(async () => {
+  // Packaged builds get the icon from electron-builder; an unpackaged run
+  // would show Electron's default, so set the same floppy disk by hand.
+  // dist/main/main -> app/build/icon.png
+  if (!app.isPackaged && process.platform === 'darwin') {
+    app.dock?.setIcon(path.join(__dirname, '..', '..', '..', 'build', 'icon.png'));
+  }
   const profilesDir = path.join(app.getPath('userData'), 'profiles');
   try {
     // First run: a working example group, so the window has something to

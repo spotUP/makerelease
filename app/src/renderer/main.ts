@@ -3,9 +3,9 @@ import type { ProfileSummary } from '../shared/profile';
 import { archiveFileName, releaseBaseName } from '../shared/naming.js';
 import {
   AMINET_ARCHITECTURES,
-  AMINET_COMMON_TYPES,
   AMINET_SHORT_MAX,
-  aminetReadmeProblems,
+  aminetReadmeFieldProblems,
+  type AminetReadmeField,
   renderAminetReadme,
 } from '../shared/aminet-readme.js';
 import { MemberlistTable } from './memberlist-table.js';
@@ -15,11 +15,18 @@ import { CODER_ROLES, DESIGN_ROLES, creatorsFromCredits, creditNamesForRole, cre
 import { MediaEmbedsTable } from './media-embeds-table.js';
 import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../shared/diz-release-line.js';
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
+import { suggestReleaseCode } from '../shared/code-suggest.js';
 import { todayIso } from '../shared/release-date.js';
 import { describeRevoke } from './revoke-message.js';
 import { builtReleaseFor, type BuiltRelease } from './built-release.js';
 import { LatestOnly } from './latest-only.js';
 import { Prefill, releaseNameText } from './prefill.js';
+import { wrapWords } from '../shared/text-wrap.js';
+import { clearFieldError, clearFieldErrors, nativeFieldErrors, showFieldErrors, type FieldError } from './field-errors.js';
+import { toast } from './toast.js';
+import { AMINET_TYPES } from '../shared/aminet-types.js';
+import { guessAminetType } from '../shared/aminet-guess.js';
+import { applyFoldDefaults, initWizard } from './wizard.js';
 import { createProfileEditor, type ProfileEditorMode } from './profile-editor.js';
 import { visibleSections, type SectionVisibility } from '../shared/section-visibility.js';
 
@@ -37,7 +44,27 @@ const newProfileBtn = $<HTMLButtonElement>('new-profile-btn');
 const deleteProfileBtn = $<HTMLButtonElement>('delete-profile-btn');
 const codeStatus = $<HTMLDivElement>('code-status');
 const releaseNameInput = $<HTMLInputElement>('release-name');
-const platformTagInput = $<HTMLInputElement>('platform-tag');
+const platformTagInput = $<HTMLSelectElement>('platform-tag');
+const platformTagOtherInput = $<HTMLInputElement>('platform-tag-other');
+// Console and Other ask which one in free text; an empty Console stays "Console".
+const PLATFORM_FREE_TEXT: Record<string, { label: string; placeholder: string }> = {
+  Console: { label: 'Which console', placeholder: 'Mega Drive' },
+  other: { label: 'Other platform tag', placeholder: 'CD32' },
+};
+platformTagInput.addEventListener('change', () => {
+  const free = PLATFORM_FREE_TEXT[platformTagInput.value];
+  platformTagOtherInput.hidden = !free;
+  if (!free) return;
+  platformTagOtherInput.placeholder = free.placeholder;
+  platformTagOtherInput.setAttribute('aria-label', free.label);
+  platformTagOtherInput.focus();
+});
+function platformTagText(): string {
+  const text = platformTagOtherInput.value.trim();
+  if (platformTagInput.value === 'other') return text;
+  if (platformTagInput.value === 'Console') return text || 'Console';
+  return platformTagInput.value;
+}
 const descriptionInput = $<HTMLInputElement>('description-text');
 const releaseNotesTextArea = $<HTMLTextAreaElement>('release-notes-text');
 const newsTextArea = $<HTMLTextAreaElement>('news-text');
@@ -47,16 +74,15 @@ const creditsTbody = $<HTMLTableSectionElement>('credits-tbody');
 const boardsTbody = $<HTMLTableSectionElement>('boards-tbody');
 const addBoardBtn = $<HTMLButtonElement>('add-board-btn');
 const xFieldsSection = $<HTMLElement>('x-fields-section');
-const xReleaseDateInput = $<HTMLInputElement>('x-release-date');
 const xSystemInput = $<HTMLInputElement>('x-system');
 const xCreditsPreview = $<HTMLDivElement>('x-credits-preview');
 const addCreditBtn = $<HTMLButtonElement>('add-credit-btn');
 const mediaEmbedsContainer = $<HTMLElement>('media-embeds-container');
 const addMediaEmbedBtn = $<HTMLButtonElement>('add-media-embed-btn');
 const releaseNumberPreview = $<HTMLDivElement>('release-number-preview');
-const entryTitleInput = $<HTMLInputElement>('entry-title');
 const entryCategoryInput = $<HTMLSelectElement>('entry-category');
 const releaseDateInput = $<HTMLInputElement>('release-date');
+const releasedAtInput = $<HTMLInputElement>('released-at');
 const releaseNumberTextInput = $<HTMLInputElement>('release-number-text');
 const releaseNumberSection = $<HTMLElement>('section-release-number');
 const historyEntrySection = $<HTMLElement>('section-history-entry');
@@ -71,7 +97,7 @@ const templateStatus = $<HTMLDivElement>('template-status');
 
 const pickFilesBtn = $<HTMLButtonElement>('pick-files-btn');
 const selectedFilesList = $<HTMLUListElement>('selected-files-list');
-const dryRunCheckbox = $<HTMLInputElement>('dry-run-checkbox');
+const previewBtn = $<HTMLButtonElement>('preview-btn');
 const buildBtn = $<HTMLButtonElement>('build-btn');
 const buildStatus = $<HTMLDivElement>('build-status');
 const form = $<HTMLFormElement>('release-form');
@@ -118,17 +144,28 @@ let selectedImagePath: string | null = null;
 // row that will ever exist, which per-input listeners would not.
 creditsTbody.addEventListener('input', () => updateCreatorsPreview());
 
-// The release name is the usual start for the WordPress description and the
-// diz release line, so both copy it until the user types their own text.
-const descriptionPrefill = new Prefill();
+// The release name is also the history entry title and the diz release line
+// ("<name> at <place>" when Released at is filled).
+// The description is not prefilled: the post title and the NFO already print
+// the name, so the description holds only what comes after it.
+
+function dizLineSourceText(): string {
+  const name = releaseNameText(releaseNameInput.value);
+  const place = releasedAtInput.value.trim();
+  return name && place ? `${name} at ${place}` : name;
+}
+releasedAtInput.addEventListener('input', () => renderDizPreview());
+
+
+const codePrefill = new Prefill();
+
 releaseNameInput.addEventListener('input', () => {
   const name = releaseNameText(releaseNameInput.value);
-  const description = descriptionPrefill.next(descriptionInput.value, name);
-  if (description !== undefined) descriptionInput.value = description;
-  dizLineInputs.forEach((input, i) => {
-    const line = dizLinePrefills[i]?.next(input.value, name.slice(0, input.maxLength));
-    if (line !== undefined) input.value = line;
-  });
+  const code = codePrefill.next(codeInput.value, suggestReleaseCode(name, currentProfile?.codeLength ?? 5));
+  if (code !== undefined && code !== codeInput.value) {
+    codeInput.value = code;
+    codeInput.dispatchEvent(new Event('input'));
+  }
   renderDizPreview();
   refreshAminetPreview();
 });
@@ -142,65 +179,34 @@ let currentDivision: DivisionId = DEFAULT_DIVISION;
 // The group chosen in the dropdown; null until the first seed has loaded.
 let currentProfile: ProfileSummary | null = null;
 let dizBannerTemplate = divisionOf(currentDivision).defaultDizBanner;
-let dizLineInputs: HTMLInputElement[] = [];
-let dizLinePrefills: Prefill[] = [];
+
+/** Each editable row's text: the release name cut to the slot, or the art's own line until there is a name. */
+function dizLineTexts(): string[] {
+  const source = dizLineSourceText();
+  return divisionOf(currentDivision).editableDizRows.map((spec) =>
+    (source || readReleaseLineText(dizBannerTemplate, spec.row)).slice(0, findReleaseLineSlot(dizBannerTemplate, spec.row).width),
+  );
+}
 
 function currentDizBannerText(): string {
+  const texts = dizLineTexts();
   return applyReleaseLines(
     dizBannerTemplate,
-    divisionOf(currentDivision).editableDizRows.map((spec, i) => ({
-      row: spec.row,
-      text: dizLineInputs[i]?.value ?? '',
-    })),
+    divisionOf(currentDivision).editableDizRows.map((spec, i) => ({ row: spec.row, text: texts[i] })),
   );
 }
 
 function renderDizPreview(): void {
   dizBannerPreview.textContent = currentDizBannerText();
-  divisionOf(currentDivision).editableDizRows.forEach((spec, i) => {
-    const input = dizLineInputs[i];
-    const count = countFor(input);
-    if (!input || !count) return;
-    const slot = findReleaseLineSlot(dizBannerTemplate, spec.row);
-    count.textContent = `${input.value.length}/${slot.width} characters (longer text is cut off)`;
-  });
-}
-
-const lineCounts = new WeakMap<HTMLInputElement, HTMLDivElement>();
-function countFor(input: HTMLInputElement | undefined): HTMLDivElement | undefined {
-  return input ? lineCounts.get(input) : undefined;
-}
-
-// Rebuilt whenever the division changes, because the number of editable rows
-// and their labels come from the division.
-function buildDizLineInputs(): void {
-  dizReleaseLinesContainer.innerHTML = '';
-  dizLineInputs = divisionOf(currentDivision).editableDizRows.map((spec) => {
-    const slot = findReleaseLineSlot(dizBannerTemplate, spec.row);
-    const label = document.createElement('label');
-    label.textContent = `${spec.label} (line ${spec.row + 1} of the diz)`;
-    const input = document.createElement('input');
-    input.type = 'text';
-    input.className = 'monospace diz-release-line';
-    input.spellcheck = false;
-    input.autocomplete = 'off';
-    input.required = true;
-    input.placeholder = spec.placeholder;
-    // Hard cap in the field itself, so nothing longer than the gap between
-    // the frame characters can ever be typed or pasted in.
-    input.maxLength = slot.width;
-    // The art's own line names the previous release, so the release name
-    // replaces it as soon as there is one.
-    const name = releaseNameText(releaseNameInput.value);
-    input.value = (name || readReleaseLineText(dizBannerTemplate, spec.row)).slice(0, slot.width);
-    const count = document.createElement('div');
-    count.className = 'hint';
-    lineCounts.set(input, count);
-    input.addEventListener('input', renderDizPreview);
-    dizReleaseLinesContainer.append(label, input, count);
-    return input;
-  });
-  dizLinePrefills = dizLineInputs.map((input) => new Prefill(input.value));
+  const line = dizLineSourceText();
+  dizReleaseLinesContainer.textContent = divisionOf(currentDivision)
+    .editableDizRows.map((spec) => {
+      const width = findReleaseLineSlot(dizBannerTemplate, spec.row).width;
+      return line.length > width
+        ? `${spec.label}: ${line.length} characters, the diz fits ${width}; the rest is cut off.`
+        : `${spec.label}: ${line.length}/${width} characters.`;
+    })
+    .join('\n');
 }
 
 function seedDizBanner(bannerText: string): void {
@@ -209,7 +215,6 @@ function seedDizBanner(bannerText: string): void {
   // that inherits takes the previous release's drawing.
   dizBannerTemplate =
     !division.inheritsBannerArt || bannerText.trim() === '' ? division.defaultDizBanner : bannerText;
-  buildDizLineInputs();
   renderDizPreview();
 }
 
@@ -283,11 +288,15 @@ function saveAminetRemembered(): void {
   }
 }
 
-function fillDatalist(list: HTMLDataListElement, values: readonly string[]): void {
+function fillDatalist(list: HTMLDataListElement, values: readonly (string | { type: string; description: string })[]): void {
   list.replaceChildren(
     ...values.map((value) => {
       const option = document.createElement('option');
-      option.value = value;
+      if (typeof value === 'string') option.value = value;
+      else {
+        option.value = value.type;
+        option.label = value.description;
+      }
       return option;
     }),
   );
@@ -312,10 +321,33 @@ function aminetReadmeText(): string {
 function refreshAminetPreview(): string[] {
   const text = aminetReadmeText();
   aminetReadmePreview.textContent = text;
-  const problems = aminetReadmeProblems(text);
+  const problems = aminetReadmeFieldProblems(text).map((p) => p.message);
   aminetReadmeProblemsDiv.textContent = problems.length ? `Aminet readme: ${problems.join('; ')}` : 'Aminet readme is complete.';
   aminetReadmeProblemsDiv.className = problems.length ? 'status warn' : 'status ok';
   return problems;
+}
+
+/** The input that fixes each readme problem; whole-text problems point at the preview. */
+function aminetFieldFor(field: AminetReadmeField): HTMLElement {
+  switch (field) {
+    case 'short':
+      return aminetShortInput;
+    case 'uploader':
+      return aminetUploaderEmailInput;
+    case 'type':
+      return aminetTypeInput;
+    case 'architecture':
+      return aminetArchitectureInput;
+    default:
+      return aminetReadmePreview;
+  }
+}
+
+/** Shows the readme problems under their Aminet inputs; true when there are none. */
+function validateAminetFields(): boolean {
+  refreshAminetPreview();
+  const errors = aminetReadmeFieldProblems(aminetReadmeText()).map((p) => ({ field: aminetFieldFor(p.field), message: `${p.message}.` }));
+  return showFieldErrors(aminetSection, errors);
 }
 
 /** What the Upload to Aminet step sends: exactly the previewed readme. */
@@ -325,13 +357,17 @@ function aminetRequest(): AminetUploadRequest {
 
 /**
  * Called after a successful build: the description is usually the best
- * Short: there is, but only when it fits Aminet's 40 columns; a longer one
- * is left for the user to shorten rather than cut mid-word.
+ * Short: there is, but only when it fits Aminet's 40 columns; otherwise the
+ * release name, cut at a word boundary, so the field never starts empty.
  */
 function prefillAminetShort(): void {
   if (aminetShortInput.value.trim()) return;
   const description = descriptionInput.value.trim();
   if (description && description.length <= AMINET_SHORT_MAX) aminetShortInput.value = description;
+  else {
+    const name = releaseNameText(releaseNameInput.value);
+    aminetShortInput.value = (wrapWords(name, AMINET_SHORT_MAX, AMINET_SHORT_MAX)[0] ?? '').slice(0, AMINET_SHORT_MAX);
+  }
 }
 
 /**
@@ -342,9 +378,8 @@ function prefillAminetShort(): void {
 async function uploadLastBuildToAminet(): Promise<void> {
   const release = builtReleaseFor(built, profileSelect.value);
   if (!release) return;
-  const problems = refreshAminetPreview();
-  if (problems.length) {
-    aminetStatus.textContent = `Not uploaded - fix the Aminet readme first: ${problems.join('; ')}`;
+  if (!validateAminetFields()) {
+    aminetStatus.textContent = 'Not uploaded - fix the Aminet fields marked above.';
     aminetStatus.className = 'status warn';
     return;
   }
@@ -355,23 +390,37 @@ async function uploadLastBuildToAminet(): Promise<void> {
     const result = await window.api.uploadToAminet(aminetRequest(), release.archivePath);
     aminetStatus.textContent = `Aminet: ${result.message}.`;
     aminetStatus.className = result.ok ? 'status ok' : 'status warn';
+    toast(result.ok ? 'ok' : 'error', result.ok ? 'Uploaded to Aminet.' : `Aminet upload failed: ${result.message}`);
     // Only a failure is worth a second click; a second upload of the same
     // file would just sit in Aminet's queue twice.
     aminetUploadBtn.disabled = result.ok;
   } catch (err) {
     aminetStatus.textContent = `Aminet upload failed: ${err instanceof Error ? err.message : String(err)}`;
     aminetStatus.className = 'status warn';
+    toast('error', aminetStatus.textContent);
     aminetUploadBtn.disabled = false;
   }
 }
 
 {
-  fillDatalist(aminetTypeList, AMINET_COMMON_TYPES);
+  fillDatalist(aminetTypeList, AMINET_TYPES);
   fillDatalist(aminetArchitectureList, AMINET_ARCHITECTURES);
   const remembered = loadAminetRemembered();
   aminetUploaderNameInput.value = remembered.uploaderName ?? '';
   aminetUploaderEmailInput.value = remembered.uploaderEmail ?? '';
   aminetTypeInput.value = remembered.type ?? '';
+  // The remembered directory was last release's guess, so it follows Category and Platform until edited.
+  const aminetTypePrefill = new Prefill(aminetTypeInput.value);
+  const followAminetType = (): void => {
+    const guess = guessAminetType(entryCategoryInput.value, platformTagInput.value);
+    if (!guess) return;
+    const type = aminetTypePrefill.next(aminetTypeInput.value, guess);
+    if (type === undefined || type === aminetTypeInput.value) return;
+    aminetTypeInput.value = type;
+    aminetTypeInput.dispatchEvent(new Event('input'));
+  };
+  entryCategoryInput.addEventListener('change', followAminetType);
+  platformTagInput.addEventListener('change', followAminetType);
   aminetArchitectureInput.value = remembered.architecture ?? AMINET_ARCHITECTURES[0];
   for (const input of [aminetUploaderNameInput, aminetUploaderEmailInput, aminetTypeInput, aminetArchitectureInput]) {
     input.addEventListener('input', () => {
@@ -407,12 +456,16 @@ function resetPublishState(): void {
   aminetStatus.textContent = '';
   aminetStatus.className = 'status';
   aminetUploadBtn.disabled = true;
+  clearFieldErrors(publishSection);
+  clearFieldErrors(aminetSection);
   deleteReleaseBtn.disabled = false;
   deleteStatus.textContent = '';
   deleteStatus.className = 'status';
 }
 
 function renderSelectedFiles(): void {
+  // A button fires no input event, so its "choose a file" message is cleared here.
+  if (selectedPaths.length) clearFieldError(pickFilesBtn);
   selectedFilesList.innerHTML = '';
   for (const p of selectedPaths) {
     const li = document.createElement('li');
@@ -546,9 +599,12 @@ function applyProfile(profile: ProfileSummary): void {
   currentProfile = profile;
   currentDivision = isDivisionId(profile.renderer) ? profile.renderer : DEFAULT_DIVISION;
   codeInput.maxLength = profile.codeLength;
+  restoreFormat(profile.id);
   revokeCodeInput.maxLength = profile.codeLength;
   codeLabel.textContent =
     `${profile.codeLength}-character code - becomes ${releaseBaseName(profile, '<CODE>')}`;
+  // The restored archive format changes a fold summary, and a new group may leave required fields empty.
+  applyFoldDefaults();
 }
 
 /**
@@ -560,7 +616,6 @@ function applyVisibility(v: SectionVisibility): void {
   visibility = v;
   xFieldsSection.hidden = !v.xFields;
   historyEntrySection.hidden = !v.historyEntry;
-  entryTitleInput.required = v.historyEntry;
   entryCategoryInput.required = v.historyEntry;
   releaseNumberPreview.hidden = !v.releaseNumberPreview;
   releaseNumberSection.hidden = !v.releaseNumberText;
@@ -569,33 +624,8 @@ function applyVisibility(v: SectionVisibility): void {
   dizReleaseLinesContainer.hidden = !v.dizReleaseLine;
   dizReleaseLineHint.hidden = !v.dizReleaseLine;
   templateStatus.hidden = !v.dizPreviewOnly;
-  for (const input of dizLineInputs) input.required = v.dizReleaseLine;
   cleanupSection.hidden = !v.revoke;
   aminetCheckbox.parentElement!.hidden = !v.publishWebsite;
-  // The publish and Aminet sections appear after a build; until then only
-  // their place in the numbering is decided here.
-  publishSection.dataset.profileHidden = String(!v.publishWebsite);
-  aminetSection.dataset.profileHidden = String(!v.aminet);
-  numberHeadings();
-}
-
-/**
- * Renumbers the "N. Title" headings so a section the group does not see
- * leaves no gap. Sections shown only after a build (publish, Aminet) keep
- * their number while hidden, so the numbers do not shift under the user.
- */
-function numberHeadings(): void {
-  let n = 0;
-  for (const heading of Array.from(document.querySelectorAll<HTMLHeadingElement>('section > h2'))) {
-    const match = /^\d+\.\s+(.*)$/s.exec(heading.textContent ?? '');
-    if (!match) continue;
-    const section = heading.parentElement as HTMLElement;
-    const shownAfterBuild = section === publishSection || section === aminetSection;
-    const off = shownAfterBuild ? section.dataset.profileHidden === 'true' : section.hidden;
-    if (off) continue;
-    n += 1;
-    heading.textContent = `${n}. ${match[1]}`;
-  }
 }
 
 const initSwitches = new LatestOnly();
@@ -612,7 +642,6 @@ async function init(): Promise<void> {
     applyProfile(seed.profile);
     // Today, unless somebody has already typed a date - reloading the seed
     // (which switching division does) must not overwrite what they entered.
-    if (xReleaseDateInput.value.trim() === '') xReleaseDateInput.value = todayIso();
     if (releaseDateInput.value.trim() === '') releaseDateInput.value = todayIso();
     boardsTable.seed(seed.boards);
     memberlist.seed(seed.members);
@@ -654,7 +683,48 @@ codeInput.addEventListener('input', () => {
 });
 
 document.querySelectorAll<HTMLInputElement>('input[name="format"]').forEach((el) => {
-  el.addEventListener('change', updateReleaseNumberPreview);
+  el.addEventListener('change', () => {
+    saveFormat();
+    updateReleaseNumberPreview();
+  });
+});
+
+// The archive format is a per-group habit, remembered like the Aminet fields.
+const FORMAT_STORAGE_KEY = 'archive-format';
+
+function loadFormats(): Record<string, string> {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(FORMAT_STORAGE_KEY) ?? '{}');
+    return parsed && typeof parsed === 'object' ? (parsed as Record<string, string>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveFormat(): void {
+  if (!currentProfile) return;
+  try {
+    localStorage.setItem(
+      FORMAT_STORAGE_KEY,
+      JSON.stringify({ ...loadFormats(), [currentProfile.id]: getSelectedFormat() }),
+    );
+  } catch {
+    // Storage full or disabled: the choice still works for this session.
+  }
+}
+
+function restoreFormat(profileId: string): void {
+  const saved = loadFormats()[profileId];
+  const radio = document.querySelector<HTMLInputElement>(`input[name="format"][value="${saved}"]`);
+  if (radio) radio.checked = true;
+}
+
+let dryRunRequested = false;
+previewBtn.addEventListener('click', () => {
+  dryRunRequested = true;
+  form.requestSubmit();
+  // A failed validation never reaches the submit handler, which clears this.
+  dryRunRequested = false;
 });
 
 let codeCheckTimer: number | undefined;
@@ -735,7 +805,6 @@ function readForm(code: string): ReleaseFormData {
     releaseDate: releaseDateInput.value.trim(),
     ...(currentDivision === 'xinnovations'
       ? {
-          releaseDate: xReleaseDateInput.value.trim(),
           coder: creditNamesForRole(credits, CODER_ROLES),
           system: xSystemInput.value.trim(),
           design: creditNamesForRole(credits, DESIGN_ROLES),
@@ -748,12 +817,12 @@ function readForm(code: string): ReleaseFormData {
     code,
     format: getSelectedFormat(),
     releaseName: releaseNameInput.value.trim(),
-    platformTag: platformTagInput.value.trim(),
+    platformTag: platformTagText(),
     releaseNotesText: releaseNotesTextArea.value,
     newsText: newsTextArea.value,
     dizBannerText: currentDizBannerText(),
     members: memberlist.getMembers(),
-    entryTitle: visibility.historyEntry ? entryTitleInput.value.trim() : '',
+    entryTitle: visibility.historyEntry ? releaseNameText(releaseNameInput.value) : '',
     entryCategory: visibility.historyEntry ? entryCategoryInput.value.trim() : '',
     entryCreators: creatorsFromCredits(credits),
     selectedPaths,
@@ -765,6 +834,7 @@ function readForm(code: string): ReleaseFormData {
 
 form.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const dryRun = dryRunRequested;
 
   // A new build attempt starts here, whether it's for a brand-new code or a
   // retry — any Publish state left over from a previous build must not
@@ -773,29 +843,25 @@ form.addEventListener('submit', async (e) => {
 
   const code = codeInput.value.trim().toUpperCase();
   const codeLength = currentProfile?.codeLength ?? 5;
-  if (!new RegExp(`^[A-Z0-9]{${codeLength}}$`).test(code)) {
-    buildStatus.textContent = `Code must be exactly ${codeLength} letters/digits.`;
-    buildStatus.className = 'status warn';
-    return;
+  // Every problem at once, each under its own field, the way a form should.
+  const errors: FieldError[] = nativeFieldErrors(form);
+  if (code && !new RegExp(`^[A-Z0-9]{${codeLength}}$`).test(code)) {
+    errors.push({ field: codeInput, message: `Code must be exactly ${codeLength} letters or digits.` });
   }
   if (selectedPaths.length === 0) {
-    buildStatus.textContent = 'Select at least one file or folder to include.';
-    buildStatus.className = 'status warn';
-    return;
+    errors.push({ field: pickFilesBtn, message: 'Choose at least one file or folder to include.' });
   }
   const mediaEmbedsError = visibility.mediaEmbeds ? mediaEmbedsTable.getValidationError() : null;
-  if (mediaEmbedsError) {
-    buildStatus.textContent = mediaEmbedsError;
-    buildStatus.className = 'status warn';
-    return;
-  }
-
+  if (mediaEmbedsError) errors.push({ field: mediaEmbedsContainer, message: mediaEmbedsError });
   // The credits are the only place the release's people are entered, so an
   // empty table means the NFO history entry would have a blank creator line
   // and the server would reject the build.
   const creditsProblem = creditsError(creditsTable.getCredits(), visibility.historyEntry);
-  if (creditsProblem) {
-    buildStatus.textContent = creditsProblem;
+  if (creditsProblem) errors.push({ field: creditsTbody, message: creditsProblem });
+  // Errors are listed in page order so the first one scrolled to is the topmost.
+  errors.sort((a, b) => (a.field.compareDocumentPosition(b.field) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+  if (!showFieldErrors(form, errors)) {
+    buildStatus.textContent = `Not built - ${errors.length === 1 ? '1 field needs' : `${errors.length} fields need`} fixing (marked in red above).`;
     buildStatus.className = 'status warn';
     return;
   }
@@ -803,9 +869,8 @@ form.addEventListener('submit', async (e) => {
   const formData = readForm(code);
   const embedImagePaths = visibility.mediaEmbeds ? mediaEmbedsTable.getEmbedImagePaths() : [];
 
-  const dryRun = dryRunCheckbox.checked;
-
   buildBtn.disabled = true;
+  previewBtn.disabled = true;
   buildStatus.textContent = dryRun ? 'Building (dry run)...' : 'Building...';
   buildStatus.className = 'status';
   try {
@@ -816,6 +881,7 @@ form.addEventListener('submit', async (e) => {
           'nothing was sent to the server, no release number was consumed).'
         : `Dry run built: ${result.archivePath}`;
       buildStatus.className = 'status ok';
+      toast('ok', 'Dry run built.');
       // No real release row exists server-side for a dry run — Publish and
       // the cleanup/delete section both stay hidden (resetPublishState()
       // above already did this; nothing further to show here).
@@ -824,6 +890,7 @@ form.addEventListener('submit', async (e) => {
       // Aminet is the only place left to send it.
       buildStatus.textContent = `Built: ${result.archivePath}`;
       buildStatus.className = 'status ok';
+      toast('ok', 'Release built.');
       built = { profileId: formData.profileId, code, archivePath: result.archivePath, embedImagePaths: [] };
       aminetSection.hidden = false;
       aminetUploadBtn.disabled = false;
@@ -843,12 +910,15 @@ form.addEventListener('submit', async (e) => {
             }`
           : '');
       buildStatus.className = 'status ok';
+      toast('ok', `Release ${result.releaseNumber} built as a draft. Publish it below.`);
       built = { profileId: formData.profileId, code, archivePath: result.archivePath, embedImagePaths };
       publishSection.hidden = false;
-      publishBtn.disabled = !selectedImagePath;
+      // Enabled even without a cover image: a click says what is missing.
+      publishBtn.disabled = false;
       // Shown now so the readme can be filled in while the cover image is
       // picked; its Upload button waits for the website publish.
       aminetSection.hidden = false;
+      aminetStatus.textContent = 'Upload to Aminet unlocks once the website publish has succeeded.';
       prefillAminetShort();
       refreshAminetPreview();
       // Pre-fill the revoke box with what was just built: that is the release
@@ -859,8 +929,10 @@ form.addEventListener('submit', async (e) => {
   } catch (err) {
     buildStatus.textContent = `Build failed: ${err instanceof Error ? err.message : String(err)}`;
     buildStatus.className = 'status warn';
+    toast('error', buildStatus.textContent);
   } finally {
     buildBtn.disabled = false;
+    previewBtn.disabled = false;
   }
 });
 
@@ -869,19 +941,29 @@ pickImageBtn.addEventListener('click', async () => {
   if (picked) {
     selectedImagePath = picked;
     selectedImageDiv.textContent = picked;
-    publishBtn.disabled = !builtReleaseFor(built, profileSelect.value);
+    clearFieldErrors(publishSection);
   }
 });
 
 publishBtn.addEventListener('click', async () => {
   const release = builtReleaseFor(built, profileSelect.value);
-  if (!release || !selectedImagePath) return;
+  if (!release) {
+    publishStatus.textContent = 'Not published - build the release for this group first.';
+    publishStatus.className = 'status warn';
+    return;
+  }
+  const imageOk = showFieldErrors(
+    publishSection,
+    selectedImagePath ? [] : [{ field: pickImageBtn, message: 'Choose a cover image for the WordPress post.' }],
+  );
   // With the Aminet box ticked, an incomplete readme stops the whole Publish
   // before anything is sent: the two are one action to the user, and the
   // website half cannot be redone to pick up the other half.
-  const aminetProblems = aminetCheckbox.checked ? refreshAminetPreview() : [];
-  if (aminetProblems.length) {
-    publishStatus.textContent = `Not published — fix the Aminet readme first, or untick "Also upload to Aminet": ${aminetProblems.join('; ')}`;
+  const aminetOk = aminetCheckbox.checked ? validateAminetFields() : (clearFieldErrors(aminetSection), true);
+  if (!imageOk || !aminetOk || !selectedImagePath) {
+    publishStatus.textContent = imageOk
+      ? 'Not published - fix the Aminet fields marked below, or untick "Also upload to Aminet".'
+      : 'Not published - fix the fields marked in red.';
     publishStatus.className = 'status warn';
     return;
   }
@@ -899,6 +981,7 @@ publishBtn.addEventListener('click', async () => {
     if (result.ok) {
       publishStatus.textContent = `Published: ${result.wordpressPostUrl} (archive: ${result.archiveUrl}).`;
       publishStatus.className = 'status ok';
+      toast('ok', 'Published to the group website.');
       // Aminet only after the website has the release, as before; its own
       // status line keeps a failed upload from reading as a failed publish.
       aminetUploadBtn.disabled = false;
@@ -913,6 +996,7 @@ publishBtn.addEventListener('click', async () => {
       // worth retrying afterwards, so the button stays live.
       publishStatus.textContent = `Not published — ${result.message}`;
       publishStatus.className = 'status warn';
+      toast('error', publishStatus.textContent);
       publishBtn.disabled = false;
     } else if (result.status === 409) {
       publishStatus.textContent = result.wordpressPostUrl
@@ -925,6 +1009,7 @@ publishBtn.addEventListener('click', async () => {
     } else {
       publishStatus.textContent = `Publish failed: ${result.message}`;
       publishStatus.className = 'status warn';
+      toast('error', publishStatus.textContent);
       // Any other failure (network error, 500, etc) is the genuine retry
       // case — re-enable so the user can try again.
       publishBtn.disabled = false;
@@ -935,6 +1020,7 @@ publishBtn.addEventListener('click', async () => {
     // every known failure mode instead of throwing.
     publishStatus.textContent = `Publish failed: ${err instanceof Error ? err.message : String(err)}`;
     publishStatus.className = 'status warn';
+    toast('error', publishStatus.textContent);
     publishBtn.disabled = false;
   }
 });
@@ -948,9 +1034,8 @@ deleteReleaseBtn.addEventListener('click', async () => {
   // unreachable, which is exactly how two abandoned builds sat in the public
   // catalogue.
   const deletedCode = revokeCodeInput.value.trim().toUpperCase();
-  if (!deletedCode) {
-    deleteStatus.textContent = 'Enter the code of the release to revoke.';
-    deleteStatus.className = 'status warn';
+  if (!showFieldErrors(revokeCodeInput.parentElement ?? document, deletedCode ? [] : [{ field: revokeCodeInput, message: 'Enter the code of the release to revoke.' }])) {
+    deleteStatus.textContent = '';
     return;
   }
   const confirmed = window.confirm(
@@ -975,6 +1060,7 @@ deleteReleaseBtn.addEventListener('click', async () => {
           ? 'status warn'
           : 'status ok';
       revokeCodeInput.value = '';
+      toast(deleteStatus.className === 'status ok' ? 'ok' : 'info', `Release ${deletedCode} revoked.`);
       // Revoking the release this session just built leaves nothing to
       // publish, so the publish state goes with it — a stray click on Publish
       // must not fire against a code that is gone. Revoking some older
@@ -994,17 +1080,22 @@ deleteReleaseBtn.addEventListener('click', async () => {
     } else if (result.status === 409) {
       deleteStatus.textContent = `Could not revoke: ${result.message} (a newer release exists — this is no longer the latest).`;
       deleteStatus.className = 'status warn';
+      toast('error', deleteStatus.textContent);
       deleteReleaseBtn.disabled = false;
     } else {
       deleteStatus.textContent = `Revoke failed: ${result.message}`;
       deleteStatus.className = 'status warn';
+      toast('error', deleteStatus.textContent);
       deleteReleaseBtn.disabled = false;
     }
   } catch (err) {
     deleteStatus.textContent = `Revoke failed: ${err instanceof Error ? err.message : String(err)}`;
     deleteStatus.className = 'status warn';
+    toast('error', deleteStatus.textContent);
     deleteReleaseBtn.disabled = false;
   }
 });
 
+initWizard();
+applyFoldDefaults();
 void loadProfiles();
