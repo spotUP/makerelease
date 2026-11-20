@@ -728,7 +728,9 @@ previewBtn.addEventListener('click', () => {
 });
 
 let codeCheckTimer: number | undefined;
-codeInput.addEventListener('input', () => {
+codeInput.addEventListener('input', () => checkCode());
+/** Shows whether the server already holds the typed code. Re-run after a revoke frees one. */
+function checkCode(): void {
   window.clearTimeout(codeCheckTimer);
   const code = codeInput.value.trim();
   codeStatus.textContent = '';
@@ -742,7 +744,7 @@ codeInput.addEventListener('input', () => {
       codeStatus.className = 'status warn';
     }
   }, 300);
-});
+}
 
 pickFilesBtn.addEventListener('click', async () => {
   const paths = await window.api.pickFilesAndDirs();
@@ -1060,6 +1062,7 @@ deleteReleaseBtn.addEventListener('click', async () => {
           ? 'status warn'
           : 'status ok';
       revokeCodeInput.value = '';
+      checkCode();
       toast(deleteStatus.className === 'status ok' ? 'ok' : 'info', `Release ${deletedCode} revoked.`);
       // Revoking the release this session just built leaves nothing to
       // publish, so the publish state goes with it — a stray click on Publish
