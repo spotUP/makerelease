@@ -168,7 +168,10 @@ export function registerIpcHandlers(
     },
   );
 
-  ipcMain.handle('buildRelease', async (_event, sentForm: ReleaseFormData, dryRun: boolean): Promise<BuildResult> => {
+  ipcMain.handle('buildRelease', async (event, sentForm: ReleaseFormData, dryRun: boolean): Promise<BuildResult> => {
+    // The unit tests invoke the handler without an event.
+    const progress = (stage: string): void => event?.sender.send('buildProgress', { stage });
+    progress('Preparing the build');
     const profile = await loadProfile(profilesDir, sentForm.profileId);
     const division = divisionIdOf(profile.renderer) ?? undefined;
     // The division follows from the profile, never from what the window sent.
@@ -186,16 +189,21 @@ export function registerIpcHandlers(
       await assertLocalCodeAvailable(profile, profileRoot, form.code);
     }
     const backend = backendFor(profile, env);
+    progress(dryRun ? 'Previewing the release number' : 'Contacting the release server');
     const { releaseNumber, history } = dryRun ? await backend.preview(form) : await backend.create(form);
     const releaseList = await backend.releaseList(form, releaseNumber);
 
+    progress('Writing NFO and diz');
     const templates = profile.renderer === 'placeholder' ? await readTemplates(profilesDir, profile.id) : undefined;
     const generated = generateOutputs(profile, history, releaseNumber, form, releaseList, templates);
+    progress('Staging files');
     const outerDir = await stageRelease(profile, form, generated);
+    progress('Packing archive (can take a while for large releases)');
     await packArchive(profile, outerDir, form.code, form.format, outputRoot);
     await finalizeRelease(profile, outerDir, form.code, outputRoot);
     const archivePath = path.join(outputRoot, archiveFileName(profile, form.code, form.format));
 
+    if (!dryRun) progress('Submitting to the door repository');
     const doorSubmission = dryRun ? undefined : await backend.afterBuild(archivePath);
 
     return {

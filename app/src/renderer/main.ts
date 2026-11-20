@@ -13,6 +13,7 @@ import { BoardsTable } from './boards-table.js';
 import { CreditsTable } from './credits-table.js';
 import { CODER_ROLES, DESIGN_ROLES, creatorsFromCredits, creditNamesForRole, creditsError } from './credits-creators.js';
 import { MediaEmbedsTable } from './media-embeds-table.js';
+import { createThumb } from './image-thumb.js';
 import { applyReleaseLines, findReleaseLineSlot, readReleaseLineText } from '../shared/diz-release-line.js';
 import { DEFAULT_DIVISION, divisionOf, isDivisionId, type DivisionId } from '../shared/divisions.js';
 import { suggestReleaseCode } from '../shared/code-suggest.js';
@@ -100,6 +101,8 @@ const selectedFilesList = $<HTMLUListElement>('selected-files-list');
 const previewBtn = $<HTMLButtonElement>('preview-btn');
 const buildBtn = $<HTMLButtonElement>('build-btn');
 const buildStatus = $<HTMLDivElement>('build-status');
+const buildProgress = $<HTMLDivElement>('build-progress');
+const buildProgressStage = $<HTMLSpanElement>('build-progress-stage');
 const form = $<HTMLFormElement>('release-form');
 
 const publishSection = $<HTMLElement>('publish-section');
@@ -479,7 +482,8 @@ function renderSelectedFiles(): void {
       selectedPaths = selectedPaths.filter((sp) => sp !== p);
       renderSelectedFiles();
     });
-    li.append(span, removeBtn);
+    const thumb = createThumb(p);
+    li.append(...(thumb ? [thumb] : []), span, removeBtn);
     selectedFilesList.appendChild(li);
   }
 }
@@ -875,6 +879,11 @@ form.addEventListener('submit', async (e) => {
   previewBtn.disabled = true;
   buildStatus.textContent = dryRun ? 'Building (dry run)...' : 'Building...';
   buildStatus.className = 'status';
+  buildProgressStage.textContent = '';
+  buildProgress.hidden = false;
+  const stopProgress = window.api.onBuildProgress((p) => {
+    buildProgressStage.textContent = `${p.stage}...`;
+  });
   try {
     const result = await window.api.buildRelease(formData, dryRun);
     if (result.isDryRun) {
@@ -933,6 +942,8 @@ form.addEventListener('submit', async (e) => {
     buildStatus.className = 'status warn';
     toast('error', buildStatus.textContent);
   } finally {
+    stopProgress();
+    buildProgress.hidden = true;
     buildBtn.disabled = false;
     previewBtn.disabled = false;
   }
@@ -943,6 +954,8 @@ pickImageBtn.addEventListener('click', async () => {
   if (picked) {
     selectedImagePath = picked;
     selectedImageDiv.textContent = picked;
+    const thumb = createThumb(picked);
+    if (thumb) selectedImageDiv.prepend(thumb);
     clearFieldErrors(publishSection);
   }
 });

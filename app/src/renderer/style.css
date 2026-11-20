@@ -131,6 +131,10 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 #template-status { white-space: pre-line; }
 .status.warn { color: var(--danger); }
 .status.ok { color: var(--ok); }
+#build-progress { display: flex; align-items: center; gap: 0.6rem; margin-top: 0.4rem; }
+#build-progress[hidden] { display: none; }
+#build-progress-bar { accent-color: var(--accent); }
+#build-progress-stage { margin-top: 0; }
 
 .autocomplete-wrap { position: relative; }
 .autocomplete-list {
@@ -264,3 +268,7 @@ dialog#revoke-dialog::backdrop { background: var(--backdrop); }
 /* The NFO page has only this field: let it take the rest of the window. */
 textarea#release-notes-text { height: calc(100vh - 15rem); min-height: 12rem; resize: vertical; }
 .diz-release-lines { white-space: pre-line; }
+
+.thumb { max-height: 96px; max-width: 160px; object-fit: contain; vertical-align: middle; margin-right: 0.5rem; border: 1px solid var(--border); }
+#selected-files-list li .thumb { max-height: 48px; }
+.media-embed-row .thumb { max-height: 48px; }

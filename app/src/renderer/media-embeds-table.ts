@@ -1,4 +1,5 @@
 import { MediaEmbedFormEntry } from '../shared/types';
+import { createThumb } from './image-thumb.js';
 
 // Each row is either a YouTube embed (caption + URL) or an image embed
 // (caption + a locally-picked file, uploaded only at Publish time - see
@@ -47,6 +48,7 @@ export class MediaEmbedsTable {
     imagePathSpan.className = 'status';
     imagePathSpan.hidden = true;
     let imagePath: string | null = null;
+    const thumbHolder = document.createElement('span');
 
     const removeBtn = document.createElement('button');
     removeBtn.type = 'button';
@@ -69,6 +71,8 @@ export class MediaEmbedsTable {
         imagePath = picked;
         imagePathSpan.textContent = picked;
         imagePathSpan.hidden = false;
+        const thumb = createThumb(picked);
+        thumbHolder.replaceChildren(...(thumb ? [thumb] : []));
       }
     });
 
@@ -78,7 +82,7 @@ export class MediaEmbedsTable {
     // Remove button, which would desync any index-based side table.
     (row as HTMLDivElement & { getImagePath: () => string | null }).getImagePath = () => imagePath;
 
-    row.append(typeSelect, captionInput, urlInput, pickImageBtn, imagePathSpan, removeBtn);
+    row.append(typeSelect, captionInput, urlInput, pickImageBtn, thumbHolder, imagePathSpan, removeBtn);
     this.container.appendChild(row);
   }
 

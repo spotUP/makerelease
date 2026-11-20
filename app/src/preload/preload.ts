@@ -3,6 +3,7 @@ import type { ProfileListEntry } from '../shared/profile';
 import {
   AminetUploadOutcome,
   AminetUploadRequest,
+  BuildProgress,
   BuildResult,
   DeleteReleaseOutcome,
   MakereleaseApi,
@@ -29,6 +30,11 @@ const api: MakereleaseApi = {
     ipcRenderer.invoke('checkCodeAvailability', profileId, code),
   buildRelease: (form: ReleaseFormData, dryRun: boolean): Promise<BuildResult> =>
     ipcRenderer.invoke('buildRelease', form, dryRun),
+  onBuildProgress: (callback: (progress: BuildProgress) => void): (() => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, progress: BuildProgress): void => callback(progress);
+    ipcRenderer.on('buildProgress', listener);
+    return () => ipcRenderer.removeListener('buildProgress', listener);
+  },
   previewOutputs: (form: ReleaseFormData): Promise<OutputsPreview | null> =>
     ipcRenderer.invoke('previewOutputs', form),
   pickImage: (): Promise<string | null> => ipcRenderer.invoke('pickImage'),

@@ -134,6 +134,11 @@ export interface OutputsPreview {
   problems: string[];
 }
 
+/** Named stage of a running build, sent from the main process to the window. */
+export interface BuildProgress {
+  stage: string;
+}
+
 export interface BuildResult {
   archivePath: string;
   releaseNumber: number;
@@ -259,6 +264,8 @@ export interface MakereleaseApi {
   pickFilesAndDirs(): Promise<string[]>;
   checkCodeAvailability(profileId: string, code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
+  /** Subscribes to stage updates of a running build; returns the unsubscribe function. */
+  onBuildProgress(callback: (progress: BuildProgress) => void): () => void;
   /** A placeholder profile's NFO and DIZ as they would build now; null for the code renderers. */
   previewOutputs(form: ReleaseFormData): Promise<OutputsPreview | null>;
   pickImage(): Promise<string | null>;
