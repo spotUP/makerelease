@@ -62,6 +62,8 @@ export function initWizard(): void {
       const ok = available(i);
       b.hidden = !ok && i !== PUBLISH;
       b.disabled = !ok;
+      // Only Publish stays visible while locked, so it must say why.
+      b.title = i === PUBLISH && !ok ? 'Unlocks after Build (not Preview build) on the Files and build page.' : '';
       b.classList.toggle('wizard-step-current', i === current);
       if (i === current) b.setAttribute('aria-current', 'step');
       else b.removeAttribute('aria-current');
