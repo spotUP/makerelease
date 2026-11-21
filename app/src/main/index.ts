@@ -2,7 +2,8 @@ import { app, BrowserWindow, dialog } from 'electron';
 import * as path from 'path';
 import { registerIpcHandlers } from './ipc-handlers';
 import { resolvePackagedOutputRoot } from './output-root';
-import { ensureExampleProfile } from './profiles';
+import { ensureExampleProfile, seedPrivateProfiles } from './profiles';
+import { pathExists } from './fs-helpers';
 import type { GroupProfile } from '../shared/profile';
 
 // In dev, __dirname is dist/main/main and resolving 4 levels up reaches the
@@ -51,10 +52,21 @@ app.whenReady().then(async () => {
     app.dock?.setIcon(path.join(__dirname, '..', '..', '..', 'build', 'icon.png'));
   }
   const profilesDir = path.join(app.getPath('userData'), 'profiles');
+  // The private distribution bundles the groups in private-profiles/ next to
+  // the app; the public one has no such folder and seeds the example instead.
+  // PRIVATE_PROFILES_DIR previews private seeding in a dev run.
+  const bundledGroups =
+    process.env.PRIVATE_PROFILES_DIR ?? path.join(process.resourcesPath, 'private-profiles');
   try {
-    // First run: a working example group, so the window has something to
-    // show and the maintainer has a template to copy.
-    await ensureExampleProfile(profilesDir);
+    if (await pathExists(bundledGroups)) {
+      // First run with the private build: our groups, key included, ready to
+      // publish. Missing ids only, so an upgrade never clobbers edits.
+      await seedPrivateProfiles(bundledGroups, profilesDir);
+    } else {
+      // First run: a working example group, so the window has something to
+      // show and the maintainer has a template to copy.
+      await ensureExampleProfile(profilesDir);
+    }
   } catch (err) {
     // Startup failure with no window yet - a plain throw here would exit
     // silently, so say what went wrong before quitting.

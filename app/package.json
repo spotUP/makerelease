@@ -19,7 +19,8 @@
     "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.preload.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "test": "vitest run",
     "dist": "npm run build && electron-builder",
-    "dist:win": "npm run build && electron-builder --win"
+    "dist:win": "npm run build && electron-builder --win",
+    "dist:private": "npm run build && node scripts/dist-private.mjs"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

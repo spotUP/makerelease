@@ -160,6 +160,7 @@ npm install
 npm start          # build and launch
 npm test           # unit tests
 npm run dist       # installable build for this system
+npm run dist:private  # private build for our groups (mac, Windows, Linux)
 ```
 
 Developer notes are in [`app/README.md`](app/README.md).

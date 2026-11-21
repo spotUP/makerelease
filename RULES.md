@@ -22,6 +22,7 @@ All commands run from `app/`.
 | Test (CI) | `npm test` (`vitest run`, suites under `test/unit/**/*.spec.ts`) |
 | One test file | `npx vitest run test/unit/<name>.spec.ts` |
 | Distributable build | `npm run dist` (DMG, x64 and arm64; the build carries no key) |
+| Private build | `npm run dist:private` (same targets, `-private` in the file name; bundles `app/private-profiles/`, key included, no example) |
 | Windows build | `npm run dist:win` (from macOS: portable `.exe` only, x64, unsigned; electron-builder fetches its own Wine) |
 | Stop / cleanup | quit Electron; stale DMG: `hdiutil info`, then `hdiutil detach <device>` |
 
@@ -46,6 +47,6 @@ Validation before push: `npm run typecheck && npm test`.
 
 ## Project-specific rules
 
-- Secrets: the write key lives in `profiles/<id>/profile.json` in the user data folder, never in the repo. Never commit a real `RELEASES_WRITE_KEY`.
+- Secrets: the write key lives in `profiles/<id>/profile.json` in the user data folder, never in the repo. Never commit a real `RELEASES_WRITE_KEY`. The private build's source folder `app/private-profiles/` holds the same key and is git-ignored for the same reason; its artifacts land in the ignored `app/release/` like every other build.
 - Generated NFO and DIZ files are byte-exact against fixtures. A change to the generator needs the golden test updated from a measured source, not retyped.
 - Icons: none; the UI is text and ASCII tokens.

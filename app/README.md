@@ -14,7 +14,21 @@ npm run typecheck    # main, preload and renderer projects
 npm test             # vitest run, suites under test/unit/
 npx vitest run test/unit/<name>.spec.ts
 npm run dist         # electron-builder for this system
+npm run dist:private # two-distribution private build: mac, Windows, Linux
 ```
+
+## Two distributions
+
+`npm run dist` builds the public app: first launch seeds the example group,
+and anyone adds their own groups through the Manage groups menu.
+
+`npm run dist:private` builds the private app for our own groups: it bundles
+`app/private-profiles/` (git-ignored; copy the group folders there, key
+included, never the example) and first launch seeds those instead. The script
+refuses to build when the folder is missing, empty, holds `example`, or holds
+a doorserver group without a real write key. Seeding copies missing ids only,
+so reinstalling never overwrites a group the user edited.
+`PRIVATE_PROFILES_DIR=<dir> npm start` previews private seeding in a dev run.
 
 ## Layout
 

@@ -10,7 +10,9 @@ import {
   loadProfile,
   readTemplates,
   saveProfile,
+  seedPrivateProfiles,
 } from '../../src/main/profiles';
+import { pathExists } from '../../src/main/fs-helpers';
 import { EXAMPLE_DIZ_TEMPLATE, EXAMPLE_NFO_TEMPLATE, EXAMPLE_PROFILE_JSON } from '../../src/main/example-profile';
 
 let dir: string;
@@ -115,6 +117,69 @@ describe('profiles on disk', () => {
     await fs.writeFile(path.join(dir, 'demo', 'release.nfo'), 'x\n', 'latin1');
 
     await expect(readTemplates(dir, 'demo')).rejects.toThrow('file_id.diz: could not be read');
+  });
+});
+
+describe('seedPrivateProfiles', () => {
+  let bundled: string;
+
+  beforeEach(async () => {
+    bundled = path.join(await fs.mkdtemp(path.join(os.tmpdir(), 'makerelease-bundled-')), 'private-profiles');
+  });
+
+  afterEach(async () => {
+    await fs.rm(path.dirname(bundled), { recursive: true, force: true });
+  });
+
+  async function writeBundled(id: string, body: string, diz = 'DIZ\n'): Promise<void> {
+    await fs.mkdir(path.join(bundled, id), { recursive: true });
+    await fs.writeFile(path.join(bundled, id, 'profile.json'), body, 'utf8');
+    await fs.writeFile(path.join(bundled, id, 'file_id.diz'), Buffer.from(diz, 'latin1'));
+  }
+
+  it('copies missing groups byte for byte and reports their ids', async () => {
+    await writeBundled('uprough', JSON.stringify({ label: 'Up Rough', url: 'https://uprough.net', renderer: 'uprough', backend: 'none' }), '°±²');
+    await writeBundled('demo', VALID);
+
+    expect(await seedPrivateProfiles(bundled, dir)).toEqual(['demo', 'uprough']);
+    expect(await fs.readFile(path.join(dir, 'uprough', 'profile.json'), 'utf8')).toBe(
+      await fs.readFile(path.join(bundled, 'uprough', 'profile.json'), 'utf8'),
+    );
+    expect(await fs.readFile(path.join(dir, 'uprough', 'file_id.diz'))).toEqual(Buffer.from('°±²', 'latin1'));
+    expect((await loadProfile(dir, 'uprough')).label).toBe('Up Rough');
+  });
+
+  it('never overwrites a group the user already has, so upgrades keep edits', async () => {
+    await writeBundled('demo', VALID);
+    await writeProfile('demo', JSON.stringify({ label: 'Mine', url: 'https://mine.net', renderer: 'placeholder' }));
+
+    expect(await seedPrivateProfiles(bundled, dir)).toEqual([]);
+    expect((await loadProfile(dir, 'demo')).label).toBe('Mine');
+  });
+
+  it('keeps a deleted group deleted on the next launch', async () => {
+    await writeBundled('demo', VALID);
+    expect(await seedPrivateProfiles(bundled, dir)).toEqual(['demo']);
+    await fs.rm(path.join(dir, 'demo'), { recursive: true });
+
+    expect(await seedPrivateProfiles(bundled, dir)).toEqual([]);
+    expect(await pathExists(path.join(dir, 'demo'))).toBe(false);
+  });
+
+  it('throws naming the bundled file for a broken profile and copies nothing', async () => {
+    await writeBundled('bad', '{ nope');
+
+    await expect(seedPrivateProfiles(bundled, dir)).rejects.toThrow(
+      path.join(bundled, 'bad', 'profile.json'),
+    );
+    expect(await pathExists(path.join(dir, 'bad'))).toBe(false);
+  });
+
+  it('seeds nothing when the bundled folder is missing or empty', async () => {
+    expect(await seedPrivateProfiles(path.join(bundled, 'missing'), dir)).toEqual([]);
+    await fs.mkdir(bundled, { recursive: true });
+    expect(await seedPrivateProfiles(bundled, dir)).toEqual([]);
+    expect((await fs.readdir(dir).catch(() => [])).filter((name) => !name.startsWith('.'))).toEqual([]);
   });
 });
 

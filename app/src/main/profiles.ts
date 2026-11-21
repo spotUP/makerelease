@@ -157,6 +157,49 @@ export async function deleteProfile(
 }
 
 /**
+ * Copies the distribution's bundled groups into the user's profiles folder.
+ * Only ids missing from profilesDir are copied: a reinstall or upgrade never
+ * overwrites a group the user has edited, and a deleted group stays deleted.
+ * Seeded ids are recorded in profilesDir/.seeded, because seeding runs on
+ * every launch and would otherwise bring a deleted group back.
+ * Every bundled profile is loaded before it is copied; a broken bundle
+ * throws naming the file instead of landing a half-valid group.
+ * Returns the ids that were seeded (empty when the bundled folder is absent).
+ */
+export async function seedPrivateProfiles(bundledDir: string, profilesDir: string): Promise<string[]> {
+  let entries: import('fs').Dirent[];
+  try {
+    entries = await fs.readdir(bundledDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const markerFile = path.join(profilesDir, '.seeded');
+  const done = new Set(
+    (await fs.readFile(markerFile, 'utf8').catch(() => '')).split('\n').filter((line) => line !== ''),
+  );
+  const seeded: string[] = [];
+  for (const entry of entries
+    .filter((candidate) => candidate.isDirectory() && !candidate.name.startsWith('.'))
+    .map((candidate) => candidate.name)
+    .sort()) {
+    if (!isProfileId(entry)) {
+      throw new Error(`${path.join(bundledDir, entry)}: the folder name "${entry}" must use only a-z, 0-9 and "-"`);
+    }
+    if (done.has(entry) || (await pathExists(path.join(profilesDir, entry)))) {
+      done.add(entry);
+      continue;
+    }
+    await loadProfile(bundledDir, entry);
+    await fs.cp(path.join(bundledDir, entry), path.join(profilesDir, entry), { recursive: true });
+    done.add(entry);
+    seeded.push(entry);
+  }
+  await fs.mkdir(profilesDir, { recursive: true });
+  await fs.writeFile(markerFile, [...done].sort().join('\n') + '\n', 'utf8');
+  return seeded;
+}
+
+/**
  * Writes the example profile on first launch only. Once the profiles folder
  * exists it belongs to the user: a deleted example stays deleted.
  */

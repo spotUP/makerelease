@@ -2,6 +2,10 @@ app/node_modules/
 app/dist/
 app/dist-electron/
 app/release/
+# Source of the private distribution's bundled groups (holds the real server
+# write key). Baked into the private build only; never committed, never in the
+# public build. Populated from the maintainer's userData profiles folder.
+app/private-profiles/
 # Legacy: written by the removed inject-release-key script and may still hold
 # a real write key on a maintainer's machine. Nothing imports it any more; the
 # key belongs in profiles/uprough/profile.json under userData. Kept ignored
