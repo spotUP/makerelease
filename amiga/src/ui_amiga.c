@@ -33,6 +33,7 @@
 #include "groups.h"
 #include "naming.h"
 #include "nfo_uprough.h"
+#include "nfo_x.h"
 #include "stage.h"
 #include "template.h"
 
@@ -288,9 +289,25 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
             return;
         }
     } else {
-        SetAttrs(status, UPA_Text_Contents, (ULONG) "xinnovations releases need the catalog (phase 2).", TAG_DONE);
-        free(diz);
-        return;
+        /* /X: the framed drawing. The boards and release list come from the
+         * catalog (phase 2), so they are empty here; the rest is the form. */
+        rp_nfo_x_form xf;
+        memset(&xf, 0, sizeof xf);
+        xf.release_name = name_txt;
+        xf.release_date = date;
+        xf.coder = "";
+        xf.system = plat_txt;
+        xf.design = "";
+        xf.notes = "";
+        xf.news = "";
+        xf.members = g->members;
+        xf.nmembers = g->nmembers;
+        nfo = rp_render_nfo_x(&xf);
+        if (nfo == NULL) {
+            SetAttrs(status, UPA_Text_Contents, (ULONG) "out of memory", TAG_DONE);
+            free(diz);
+            return;
+        }
     }
     rendered = rp_render_template(diz, &v, &errline, errmsg, sizeof(errmsg));
     free(diz);

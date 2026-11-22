@@ -67,10 +67,32 @@ static void test_files(void) {
     CHECK(rp_write_file(p, "x", 1, err, sizeof(err)) != 0);
 }
 
+/* dst parent is missing so rename() fails and the copy fallback runs; an
+ * unreadable file makes the copy fail partway. */
+static void test_move_fail(void) {
+    char err[256], p[512], q[512];
+    snprintf(p, sizeof(p), "%s/mf/ok.txt", g_dir);
+    snprintf(q, sizeof(q), "%s/mf", g_dir);
+    CHECK(rp_make_dirs(q, err, sizeof(err)) == 0);
+    CHECK(rp_write_file(p, "ok", 2, err, sizeof(err)) == 0);
+    snprintf(p, sizeof(p), "%s/mf/bad.txt", g_dir);
+    CHECK(rp_write_file(p, "bad", 3, err, sizeof(err)) == 0);
+    CHECK(chmod(p, 0) == 0);
+    snprintf(p, sizeof(p), "%s/gone/dst", g_dir);
+    CHECK(rp_move_dir(q, p, err, sizeof(err)) != 0);
+    CHECK(access(p, F_OK) != 0);
+    snprintf(p, sizeof(p), "%s/mf/ok.txt", g_dir);
+    CHECK(access(p, F_OK) == 0);
+    snprintf(p, sizeof(p), "%s/mf/bad.txt", g_dir);
+    CHECK(access(p, F_OK) == 0);
+    chmod(p, 0600);
+}
+
 int main(void) {
     setup();
     test_cmd();
     test_files();
+    test_move_fail();
     if (failures == 0) puts("stage: all passed");
     return failures != 0;
 }

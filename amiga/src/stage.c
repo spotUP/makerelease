@@ -146,7 +146,15 @@ int rp_remove_tree(const char *path, char *err, size_t errcap) {
 int rp_move_dir(const char *src, const char *dst, char *err, size_t errcap) {
     if (rename(src, dst) == 0) return 0;
     /* Across volumes: copy, then remove the source. */
-    if (rp_copy_tree(src, dst, err, errcap) != 0) return -1;
+    int existed = is_dir(dst);
+    if (rp_copy_tree(src, dst, err, errcap) != 0) {
+        /* Drop the half-copied target, but never a directory that was already there. */
+        if (!existed) {
+            char ignore[64];
+            rp_remove_tree(dst, ignore, sizeof(ignore));
+        }
+        return -1;
+    }
     if (rp_remove_tree(src, err, errcap) != 0) return -1;
     return 0;
 }
