@@ -135,6 +135,21 @@ The 68k binary also runs under `vamos` for roundtrip tests on the build
 machine, and is verified on the FS-UAE rig and the real A1200 before a
 release, same flow as MusicPlayer.
 
+### UP-MCC class set for the rig
+
+The classes come from the `vendor/up-mcc` submodule, not from MusicPlayer.
+Cross build them with the same toolchain file:
+
+```sh
+cmake -S vendor/up-mcc -B build/up-mcc -G Ninja -DSEL_AMIGA=ON \
+      -DCMAKE_TOOLCHAIN_FILE=$PWD/cmake/amiga-68020.cmake
+~/.claude/bin/buildq --purpose "<session>: <task>" -- nice -n 19 cmake --build build/up-mcc --target up_mcc_dist -- -j3
+```
+
+Install `build/up-mcc/dist/UP-MCC/Libs/mui/*.mcc` (and `up-mcc.library`) on
+the rig in place of the MusicPlayer set. Verified to build; the rig install
+itself is not scripted.
+
 ## Scope
 
 This version packs on disk only: NFO, `FILE_ID.DIZ`, archive, Aminet
