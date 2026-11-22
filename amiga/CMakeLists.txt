@@ -14,7 +14,7 @@ target_include_directories(packer PUBLIC src)
 # classes by name, like UP-Demo), a version stub on host.
 if(CMAKE_CROSSCOMPILING)
     add_executable(packer-cli src/main.c src/ui_amiga.c src/archive_run.c)
-    target_include_directories(packer-cli PRIVATE vendor/up-mcc)
+    target_include_directories(packer-cli PRIVATE vendor/up-mcc/include)
     target_link_libraries(packer-cli PRIVATE mui)
 else()
     add_executable(packer-cli src/main.c src/ui_host.c)

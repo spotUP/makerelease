@@ -1,0 +1,3 @@
+[submodule "amiga/vendor/up-mcc"]
+	path = amiga/vendor/up-mcc
+	url = https://github.com/spotUP/up-mcc

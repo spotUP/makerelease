@@ -94,8 +94,13 @@ an upload is public once a moderator approves it.
 
 ## Interface
 
-MUI 3.8, built on our own classes and our own dark look, copied over from
-the MusicPlayer project:
+MUI 3.8, built on our own classes and our own dark look. The classes come
+from https://github.com/spotUP/up-mcc ("MUI custom class package for the
+Amiga: eleven `UP-<Name>.mcc` classes ..., the `UP-MCC.mcp` preferences
+class, the `up-mcc.library` support library, themes and a demo"; its CMake
+target `up_mcc_dist` stages the built `UP-MCC/` directory). `vendor/up-mcc`
+is that repo as a git submodule; the build uses its `include/` (clone with
+`--recurse-submodules`, or run `git submodule update --init`):
 
 - UP-MCC: UP-Button, UP-Text, UP-Panel, UP-Tabs, UP-Balance, UP-Slider,
   UP-Progress, UP-Cycle, UP-Field, UP-Scroller, UP-List, plus the UP-MCC
@@ -106,6 +111,11 @@ the MusicPlayer project:
 - Its own public screen with an exact-pen palette, so the dark greys are
   real greys instead of MUI's nearest-pen black. Falls back to the
   Workbench screen when the screen cannot open.
+
+Known upstream bug: `UP-Cycle.mcc` hard-freezes when created without
+`UPA_Cycle_Entries`. Always pass a NULL-terminated entry array that outlives
+the object. The up-mcc repo does not document or fix this (checked its
+README, `docs/up.autodoc` and `dist/`).
 
 Give the program at least 48 KB of stack (MUI 3.8 requirement for custom
 classes; the icon carries it).
