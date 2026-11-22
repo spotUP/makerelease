@@ -18,6 +18,7 @@ window.api = {
     return () => { void pending.then((unlisten) => unlisten()); };
   },
   previewOutputs: (form) => call('preview_outputs', { form }),
+  previewArchive: (form) => call('preview_archive', { form }),
   pickImage: () => call('pick_image'),
   publishToWeb: (profileId, code, archivePath, imagePath, embedImagePaths) =>
     call('publish_to_web', { profileId, code, archivePath, imagePath, embedImagePaths }),

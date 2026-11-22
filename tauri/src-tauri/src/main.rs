@@ -24,6 +24,7 @@ fn main() {
             profiles::pick_image,
             build::build_release,
             build::preview_outputs,
+            build::preview_archive,
             net::check_code_availability,
             net::publish_to_web,
             net::upload_to_aminet,

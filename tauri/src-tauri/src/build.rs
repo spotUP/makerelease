@@ -1239,6 +1239,88 @@ pub async fn build_release(app: tauri::AppHandle, form: Value, dry_run: bool) ->
     .map_err(|e| e.to_string())?
 }
 
+// ---------------------------------------------------------------- archive preview
+
+fn list_tree(dir: &Path, prefix: &str, out: &mut Vec<String>) -> Result<(), String> {
+    let mut entries: Vec<_> = fs::read_dir(dir)
+        .map_err(|e| format!("{}: {e}", dir.display()))?
+        .collect::<Result<_, _>>()
+        .map_err(|e| format!("{}: {e}", dir.display()))?;
+    // shortcut: byte order, not Node localeCompare; list order can differ for mixed case.
+    entries.sort_by_key(|e| e.file_name());
+    for e in entries {
+        let rel = format!("{prefix}{}", e.file_name().to_string_lossy());
+        if e.path().is_dir() {
+            out.push(format!("{rel}/"));
+            list_tree(&e.path(), &format!("{rel}/"), out)?;
+        } else {
+            out.push(rel);
+        }
+    }
+    Ok(())
+}
+
+/// Follows a folder that holds only one folder down to the first folder with real content.
+fn innermost_single_child(src: &Path) -> Result<PathBuf, String> {
+    let mut cur = src.to_path_buf();
+    loop {
+        let entries: Vec<_> = fs::read_dir(&cur)
+            .map_err(|e| format!("{}: {e}", cur.display()))?
+            .collect::<Result<_, _>>()
+            .map_err(|e| format!("{}: {e}", cur.display()))?;
+        if entries.len() != 1 || !entries[0].path().is_dir() {
+            return Ok(cur);
+        }
+        cur = entries[0].path();
+    }
+}
+
+pub fn preview_archive_core(release_dir: &str, selected: &[String]) -> Result<Value, String> {
+    let inner = format!("{release_dir}/{release_dir}/");
+    let mut entries = vec![
+        format!("{release_dir}/"),
+        inner.clone(),
+        format!("{release_dir}/file_id.diz"),
+        format!("{inner}{release_dir}.NFO"),
+    ];
+    let mut nested: Vec<Value> = vec![];
+    for src in selected {
+        let p = Path::new(src);
+        let base = p.file_name().ok_or_else(|| format!("{src}: not a file or folder path"))?.to_string_lossy().into_owned();
+        if !p.is_dir() {
+            entries.push(format!("{inner}{base}"));
+            continue;
+        }
+        if base.to_uppercase() == release_dir.to_uppercase() {
+            list_tree(p, &inner, &mut entries)?;
+        } else {
+            entries.push(format!("{inner}{base}/"));
+            list_tree(p, &format!("{inner}{base}/"), &mut entries)?;
+        }
+        let deepest = innermost_single_child(p)?;
+        if deepest != p {
+            nested.push(json!({ "path": src, "flattenTo": deepest.display().to_string() }));
+        }
+    }
+    Ok(json!({ "entries": entries, "nested": nested }))
+}
+
+#[tauri::command]
+pub async fn preview_archive(app: tauri::AppHandle, form: Value) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let profile = load_profile(&profiles_dir(&app)?, sent_profile_id(&form))?;
+        let code = form.get("code").and_then(Value::as_str).filter(|c| !c.is_empty()).unwrap_or("CODE");
+        let selected: Vec<String> = form
+            .get("selectedPaths")
+            .and_then(Value::as_array)
+            .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_default();
+        preview_archive_core(&release_base_name(&profile.file_prefix, code), &selected)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
 #[tauri::command]
 pub async fn preview_outputs(app: tauri::AppHandle, form: Value) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
@@ -1763,6 +1845,29 @@ mod tests {
         assert!(p["problems"][0].as_str().unwrap().starts_with("Release history unavailable: could not reach releases.uprough.net: "));
         assert!(p["nfoText"].is_string());
         assert!(build_release_core(&env, &s, true).unwrap_err().starts_with("could not reach releases.uprough.net: "));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn archive_preview_collapse_and_nested() {
+        let root = scratch("apv");
+        let rel = root.join("evk26");
+        fs::create_dir_all(rel.join("sub")).unwrap();
+        fs::write(rel.join("a.txt"), "a").unwrap();
+        let wrap = root.join("wrap").join("only").join("real");
+        fs::create_dir_all(&wrap).unwrap();
+        fs::write(wrap.join("x.bin"), "x").unwrap();
+        let file = root.join("f.txt");
+        fs::write(&file, "f").unwrap();
+        let sel: Vec<String> = [&file, &rel, &root.join("wrap")].iter().map(|p| p.display().to_string()).collect();
+        let v = preview_archive_core("EVK26", &sel).unwrap();
+        let e: Vec<&str> = v["entries"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
+        assert_eq!(&e[..4], ["EVK26/", "EVK26/EVK26/", "EVK26/file_id.diz", "EVK26/EVK26/EVK26.NFO"]);
+        assert!(e.contains(&"EVK26/EVK26/f.txt") && e.contains(&"EVK26/EVK26/a.txt") && e.contains(&"EVK26/EVK26/sub/"));
+        assert!(e.contains(&"EVK26/EVK26/wrap/only/real/x.bin"));
+        let n = v["nested"].as_array().unwrap();
+        assert_eq!(n.len(), 1);
+        assert_eq!(n[0]["flattenTo"], wrap.display().to_string());
         fs::remove_dir_all(root).unwrap();
     }
 }

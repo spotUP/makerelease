@@ -457,9 +457,18 @@ pub async fn load_seed_state(app: AppHandle, profile_id: String) -> Result<Value
 
 #[tauri::command]
 pub async fn pick_files_and_dirs(app: AppHandle) -> Result<Value, String> {
-    // Gap: tauri-plugin-dialog cannot offer files and folders in one dialog; this picks files only.
-    let files = app.dialog().file().blocking_pick_files().unwrap_or_default();
-    let paths: Result<Vec<String>, String> = files.into_iter()
+    // tauri-plugin-dialog cannot offer files and folders in one dialog (Electron can): ask which first.
+    let files = app
+        .dialog()
+        .message("Add files or folders to the release?")
+        .buttons(tauri_plugin_dialog::MessageDialogButtons::OkCancelCustom("Files".into(), "Folders".into()))
+        .blocking_show();
+    let picked = if files {
+        app.dialog().file().blocking_pick_files().unwrap_or_default()
+    } else {
+        app.dialog().file().blocking_pick_folders().unwrap_or_default()
+    };
+    let paths: Result<Vec<String>, String> = picked.into_iter()
         .map(|f| f.into_path().map(|p| p.display().to_string()).map_err(|e| e.to_string())).collect();
     Ok(json!(paths?))
 }
