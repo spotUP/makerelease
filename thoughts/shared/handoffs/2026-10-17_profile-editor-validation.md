@@ -2,7 +2,7 @@
 date: 2026-10-17
 topic: In-app group profile editor, manual validation pending
 tags: [profile-editor, validation, handoff]
-status: draft
+status: done
 ---
 
 # Handoff: profile editor manual validation
