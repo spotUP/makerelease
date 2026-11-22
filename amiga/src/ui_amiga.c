@@ -598,7 +598,7 @@ static int shell_main(void) {
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
     if (!is_open) {
-        shell_requester("The window did not open.\nUse a screen of at least 640x256 pixels, then start again.");
+        shell_requester("The window did not open.\nThe screen or window could not be opened. Close other programs to free memory, then start again.");
         MUI_DisposeObject(app);
         CloseLibrary(MUIMasterBase);
         return 20;
