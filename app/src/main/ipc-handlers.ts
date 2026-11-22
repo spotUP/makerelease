@@ -25,7 +25,7 @@ import {
   saveProfile,
 } from './profiles';
 import { EXAMPLE_DIZ_TEMPLATE, EXAMPLE_NFO_TEMPLATE } from './example-profile';
-import { backendFor, deleteFailure, publishFailure } from './backend';
+import { backendFor, deleteFailure, publishFailure, type NumberedHistory, type ReleaseListEntry } from './backend';
 import { generateOutputs } from './nfo-generator';
 import { placeholderProblems, renderPlaceholderOutputs } from './nfo-placeholder';
 import { uploadToAminet } from './aminet';
@@ -215,18 +215,42 @@ export function registerIpcHandlers(
   });
 
   // Template files are re-read on every call, so an edit to release.nfo or
-  // file_id.diz shows up in the window without reloading anything.
-  ipcMain.handle('previewOutputs', async (_event, form: ReleaseFormData): Promise<OutputsPreview | null> => {
-    const profile = await loadProfile(profilesDir, form.profileId);
-    if (profile.renderer !== 'placeholder') return null;
-    const templates = await readTemplates(profilesDir, profile.id);
-    const problems = placeholderProblems(profile, templates, form);
-    const hasNfoTemplate = templates.nfo !== null;
-    if (problems.length) {
-      return { dizText: '', nfoText: null, hasNfoTemplate, problems };
+  // file_id.diz shows up in the window without reloading anything. The code
+  // renderers preview through the same backend a dry run uses (nothing is
+  // reserved); a server that cannot be reached leaves the history empty and
+  // says so in `problems` instead of blanking the preview.
+  ipcMain.handle('previewOutputs', async (_event, sentForm: ReleaseFormData): Promise<OutputsPreview | null> => {
+    const profile = await loadProfile(profilesDir, sentForm.profileId);
+    const division = divisionIdOf(profile.renderer) ?? undefined;
+    const { division: _sentDivision, ...rest } = sentForm;
+    const form: ReleaseFormData = { ...rest, ...(division ? { division } : {}) };
+    if (profile.renderer === 'placeholder') {
+      const templates = await readTemplates(profilesDir, profile.id);
+      const problems = placeholderProblems(profile, templates, form);
+      const hasNfoTemplate = templates.nfo !== null;
+      if (problems.length) {
+        return { dizText: '', nfoText: null, hasNfoTemplate, problems };
+      }
+      const { dizText, nfoText } = renderPlaceholderOutputs(profile, templates, form);
+      return { dizText, nfoText, hasNfoTemplate, problems };
     }
-    const { dizText, nfoText } = renderPlaceholderOutputs(profile, templates, form);
-    return { dizText, nfoText, hasNfoTemplate, problems };
+    const problems: string[] = [];
+    let numbered: NumberedHistory = { releaseNumber: 0, history: [] };
+    let releaseList: ReadonlyArray<ReleaseListEntry> = [];
+    try {
+      const backend = backendFor(profile, env);
+      numbered = await backend.preview(form);
+      releaseList = await backend.releaseList(form, numbered.releaseNumber);
+    } catch (err) {
+      problems.push(`Release history unavailable: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    try {
+      const { dizText, nfoText } = generateOutputs(profile, numbered.history, numbered.releaseNumber, form, releaseList);
+      return { dizText, nfoText, hasNfoTemplate: true, problems };
+    } catch (err) {
+      problems.push(err instanceof Error ? err.message : String(err));
+      return { dizText: '', nfoText: null, hasNfoTemplate: true, problems };
+    }
   });
 
   ipcMain.handle('pickImage', async (): Promise<string | null> => {

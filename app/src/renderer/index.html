@@ -68,11 +68,18 @@
     </div>
 
     <div class="wizard-page" id="wizard-page-nfo" data-wizard-page>
+    <div class="nfo-panes">
     <section>
       <h2>NFO</h2>
       <label for="release-notes-text">NFO (printed in the NFO, and the WordPress post's main body)</label>
       <textarea id="release-notes-text" rows="16" required></textarea>
     </section>
+    <section>
+      <h2>NFO preview</h2>
+      <pre id="nfo-preview" class="nfo-preview" aria-label="release NFO preview"></pre>
+      <div id="nfo-preview-status" class="status" hidden></div>
+    </section>
+    </div>
     </div>
 
     <div class="wizard-page" id="wizard-page-2" data-wizard-page>

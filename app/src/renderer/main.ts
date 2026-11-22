@@ -93,6 +93,8 @@ const dizReleaseLineHint = $<HTMLElement>('diz-release-line-hint');
 const cleanupSection = $<HTMLElement>('cleanup-section');
 const creatorsPreview = $<HTMLDivElement>('creators-preview');
 const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
+const nfoPreview = $<HTMLPreElement>('nfo-preview');
+const nfoPreviewStatus = $<HTMLDivElement>('nfo-preview-status');
 const dizReleaseLinesContainer = $<HTMLDivElement>('diz-release-lines');
 const templateStatus = $<HTMLDivElement>('template-status');
 
@@ -759,41 +761,52 @@ pickFilesBtn.addEventListener('click', async () => {
 });
 
 /**
- * A placeholder profile's DIZ is the group's own file_id.diz with the form
- * filled in, so the preview asks main to render it from the current form
- * and the template files as they are on disk now.
+ * The NFO pane (and a placeholder profile's DIZ) shows what a build would
+ * write from the form as it is now: main renders it, so the preview and the
+ * archive cannot drift apart. Template files are read from disk on each call.
  */
 let templatePreviewTimer: ReturnType<typeof setTimeout> | undefined;
 let templatePreviewRequest = 0;
 
 function scheduleTemplatePreview(): void {
   clearTimeout(templatePreviewTimer);
-  if (!visibility.dizPreviewOnly) return;
-  templatePreviewTimer = setTimeout(() => void refreshTemplatePreview(), 250);
+  templatePreviewTimer = setTimeout(() => void refreshTemplatePreview(), 400);
+}
+
+function showPreviewNotes(notes: string[], warn: boolean): void {
+  const text = notes.join('\n');
+  nfoPreviewStatus.textContent = text;
+  nfoPreviewStatus.hidden = !text;
+  nfoPreviewStatus.className = warn ? 'status warn' : 'status';
+  if (visibility.dizPreviewOnly) {
+    templateStatus.textContent = text;
+    templateStatus.className = warn ? 'status warn' : 'status';
+  }
 }
 
 async function refreshTemplatePreview(): Promise<void> {
-  if (!visibility.dizPreviewOnly) return;
+  if (!currentProfile) return;
   const request = ++templatePreviewRequest;
-  const code = codeInput.value.trim().toUpperCase() || 'X'.repeat(currentProfile?.codeLength ?? 5);
+  const code = codeInput.value.trim().toUpperCase() || 'X'.repeat(currentProfile.codeLength ?? 5);
   try {
     const preview = await window.api.previewOutputs(readForm(code));
     // A slower answer to an older request must not overwrite a newer one.
     if (request !== templatePreviewRequest || !preview) return;
-    dizBannerPreview.textContent = preview.dizText;
+    nfoPreview.textContent = preview.nfoText ?? '';
+    if (visibility.dizPreviewOnly) dizBannerPreview.textContent = preview.dizText;
     const notes = [...preview.problems];
     if (!preview.hasNfoTemplate) notes.push('No release.nfo template in this profile, so the archive gets no NFO.');
-    templateStatus.textContent = notes.join('\n');
-    templateStatus.className = preview.problems.length ? 'status warn' : 'status';
+    showPreviewNotes(notes, preview.problems.length > 0);
   } catch (err) {
     if (request !== templatePreviewRequest) return;
-    templateStatus.textContent = err instanceof Error ? err.message : String(err);
-    templateStatus.className = 'status warn';
+    showPreviewNotes([err instanceof Error ? err.message : String(err)], true);
   }
 }
 
 form.addEventListener('input', scheduleTemplatePreview);
 form.addEventListener('change', scheduleTemplatePreview);
+// Table edits and page switches do not always raise input events.
+form.addEventListener('click', scheduleTemplatePreview);
 
 /**
  * The form as it would be sent to main. The build and the template preview
