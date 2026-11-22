@@ -559,6 +559,11 @@ static int shell_main(void) {
                         MUIA_Window_RootObject,
                         (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Panel,
                                              MUIA_Group_Child,
+                                             (ULONG)MUI_NewObject((char *)MUIC_Scrollgroup, MUIA_Scrollgroup_FreeHoriz, (ULONG)FALSE,
+                                             /* the cards stack taller than a 640x256 screen: the window clamps to the screen and this scrolls */
+                                             MUIA_Scrollgroup_Contents,
+                                             (ULONG)MUI_NewObject((char *)MUIC_Virtgroup, MUIA_FillArea, (ULONG)FALSE,
+                                             MUIA_Group_Child,
                                              (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea,
                                                                   (ULONG)FALSE, /* side by side: stacked, the cards outgrow an 800x600 screen */
                                              MUIA_Group_Child,
@@ -574,7 +579,7 @@ static int shell_main(void) {
                                                               shell_row(pick_btn, preview_btn), shell_row(build_btn, NULL), NULL),
                                              TAG_DONE),
                                              MUIA_Group_Child, (ULONG)shell_card("Archive preview", warn_row, preview_list, NULL, NULL, NULL, NULL),
-                                             MUIA_Group_Child, (ULONG)status, TAG_DONE),
+                                             MUIA_Group_Child, (ULONG)status, TAG_DONE), TAG_DONE), TAG_DONE),
                         TAG_DONE);
     if (win == NULL) {
         shell_requester("The window could not be created.\nFree some memory and check the UP-MCC install, then start again.");
