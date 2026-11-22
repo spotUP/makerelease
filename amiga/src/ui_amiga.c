@@ -29,6 +29,7 @@
 #include <proto/asl.h>
 
 #include "archive.h"
+#include "archive_preview.h"
 #include "date.h"
 #include "groups.h"
 #include "naming.h"
@@ -104,6 +105,8 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 
 #define ID_BUILD 1
 #define ID_PICK 2
+#define ID_PREVIEW 3
+#define ID_FLATTEN 4
 
 #define RP_MAX_FILES_PATH 511
 
@@ -147,6 +150,54 @@ static int same_name_fold(const char *a, const char *b) {
         if (ca != cb) return 0;
     }
     return *a == *b;
+}
+
+/* The archive preview: the list shows g_prev.entries; the warning row appears while a picked drawer only wraps one more drawer. */
+static rp_preview g_prev;
+static char g_warn[1100];
+
+/* The hook gets the cell in a1: the trampoline pushes it for the C function (no register-argument syntax needed). */
+ULONG rp_preview_row_c(UP_ListCell *cell);
+ULONG rp_preview_row_c(UP_ListCell *cell) {
+    if (cell->row < 0 || (size_t)cell->row >= g_prev.nentries) return (ULONG) "";
+    return (ULONG)g_prev.entries[cell->row];
+}
+extern void rp_preview_row_tramp(void);
+__asm__(".text\n.even\n.globl _rp_preview_row_tramp\n_rp_preview_row_tramp:\n"
+        "\tmove.l %a1,-(%sp)\n\tjsr _rp_preview_row_c\n\taddq.l #4,%sp\n\trts\n");
+
+static struct Hook g_preview_hook;
+
+static const char *shell_field_text(Object *field) {
+    ULONG ptr = 0;
+    STRPTR txt = NULL;
+    GetAttr(UPA_Field_String, field, &ptr);
+    if (ptr != 0) GetAttr(MUIA_String_Contents, (Object *)ptr, (ULONG *)&txt);
+    return txt ? (const char *)txt : "";
+}
+
+static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_text, const rp_group *groups,
+                                  Object *group_cycle, Object *code_field, Object *status) {
+    ULONG gactive = 0;
+    char code[40], base[64], errmsg[256];
+    const char *paths[1];
+    rp_preview_free(&g_prev);
+    SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
+    if (g_files[0] != '\0') {
+        GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
+        rp_upper(shell_field_text(code_field), code, sizeof(code));
+        rp_base_name(groups[gactive].file_prefix, code, base, sizeof(base));
+        paths[0] = g_files;
+        if (rp_preview_archive(base, paths, 1, &g_prev, errmsg, sizeof(errmsg)) != 0) {
+            SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        } else if (g_prev.nnested > 0) {
+            snprintf(g_warn, sizeof(g_warn), "Extra nested folder: %s only wraps %s", g_prev.nested[0].path,
+                     base_name_of(g_prev.nested[0].flatten_to));
+            SetAttrs(warn_text, UPA_Text_Contents, (ULONG)g_warn, TAG_DONE);
+            SetAttrs(warn_row, MUIA_ShowMe, TRUE, TAG_DONE);
+        }
+    }
+    SetAttrs(list, UPA_List_Count, (ULONG)g_prev.nentries, UPA_List_Active, (ULONG)-1, TAG_DONE);
 }
 
 static void shell_build(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
@@ -434,6 +485,7 @@ static int shell_main(void) {
     Object *app = NULL, *win = NULL;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     Object *files_text, *pick_btn, *build_btn, *status;
+    Object *preview_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
     static const char *const formats[] = { "LHA", "ZIP", NULL };
     char ids[RP_MAX_SHELL_GROUPS][RP_ID_MAX + 1];
@@ -487,10 +539,17 @@ static int shell_main(void) {
     pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick...", TAG_DONE);
     build_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Build", UPA_Button_Role,
                               (ULONG)UPV_Button_Role_Accent, TAG_DONE);
+    preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview", TAG_DONE);
+    flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", TAG_DONE);
+    warn_text = shell_label("", UPV_Text_Tone_Normal);
+    *(void **)&g_preview_hook.h_Entry = (void *)rp_preview_row_tramp;
+    preview_list = MUI_NewObject((char *)"UP-List.mcc", UPA_List_RowHook, (ULONG)&g_preview_hook, UPA_List_NoSelect,
+                                 (ULONG)TRUE, UPA_List_MaxRows, 8UL, TAG_DONE);
+    warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
     status = shell_label(broken[0] ? broken : "Fill in the release, then press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
-        build_btn == NULL || status == NULL) {
+        build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -508,7 +567,8 @@ static int shell_main(void) {
                                              (ULONG)shell_card("Pack", shell_row(shell_label("Format", UPV_Text_Tone_Normal), format_cycle),
                                                               shell_row(shell_label("Description", UPV_Text_Tone_Normal), desc_field),
                                                               shell_row(shell_label("Files", UPV_Text_Tone_Normal), files_text),
-                                                              shell_row(pick_btn, build_btn), NULL, NULL),
+                                                              shell_row(pick_btn, preview_btn), shell_row(build_btn, NULL), NULL),
+                                             MUIA_Group_Child, (ULONG)shell_card("Archive preview", warn_row, preview_list, NULL, NULL, NULL, NULL),
                                              MUIA_Group_Child, (ULONG)status, TAG_DONE),
                         TAG_DONE);
     if (win == NULL) {
@@ -528,6 +588,9 @@ static int shell_main(void) {
              (ULONG)MUIV_Application_ReturnID_Quit);
     DoMethod(build_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BUILD);
     DoMethod(pick_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PICK);
+    DoMethod(preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PREVIEW);
+    DoMethod(flatten_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FLATTEN);
+    SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
     if (!is_open) {
@@ -544,10 +607,21 @@ static int shell_main(void) {
         }
         if (id == ID_PICK && shell_pick_drawer()) {
             SetAttrs(files_text, UPA_Text_Contents, (ULONG)g_files, TAG_DONE);
+            id = ID_PREVIEW;
+        }
+        if (id == ID_FLATTEN && g_prev.nnested > 0) {
+            strncpy(g_files, g_prev.nested[0].flatten_to, sizeof(g_files) - 1);
+            g_files[sizeof(g_files) - 1] = '\0';
+            SetAttrs(files_text, UPA_Text_Contents, (ULONG)g_files, TAG_DONE);
+            id = ID_PREVIEW;
+        }
+        if (id == ID_PREVIEW) {
+            shell_refresh_preview(preview_list, warn_row, warn_text, g_groups, group_cycle, code_field, status);
         }
         if (sigs != 0) Wait(sigs | SIGBREAKF_CTRL_C);
     }
     MUI_DisposeObject(app);
+    rp_preview_free(&g_prev);
     CloseLibrary(MUIMasterBase);
     return 0;
 }
