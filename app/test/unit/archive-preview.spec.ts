@@ -18,7 +18,7 @@ describe('previewArchive', () => {
     const root = await tree({ 'wrap/inner/a.txt': 'a', 'wrap/inner/b.txt': 'b' });
     const result = await previewArchive('REL', [path.join(root, 'wrap')]);
     expect(result.nested).toEqual([{ path: path.join(root, 'wrap'), flattenTo: path.join(root, 'wrap', 'inner') }]);
-    expect(result.entries).toContain('REL/REL/wrap/inner/a.txt');
+    expect(result.entries).toContain('REL/wrap/inner/a.txt');
   });
 
   it('does not flag a folder with real content beside its subfolder', async () => {
@@ -29,6 +29,6 @@ describe('previewArchive', () => {
   it('merges a folder named like the release instead of nesting it', async () => {
     const root = await tree({ 'rel/a.txt': 'a' });
     const result = await previewArchive('REL', [path.join(root, 'rel')]);
-    expect(result.entries).toContain('REL/REL/a.txt');
+    expect(result.entries).toContain('REL/a.txt');
   });
 });

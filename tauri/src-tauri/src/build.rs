@@ -1276,13 +1276,8 @@ fn innermost_single_child(src: &Path) -> Result<PathBuf, String> {
 }
 
 pub fn preview_archive_core(release_dir: &str, selected: &[String]) -> Result<Value, String> {
-    let inner = format!("{release_dir}/{release_dir}/");
-    let mut entries = vec![
-        format!("{release_dir}/"),
-        inner.clone(),
-        format!("{release_dir}/file_id.diz"),
-        format!("{inner}{release_dir}.NFO"),
-    ];
+    let inner = format!("{release_dir}/");
+    let mut entries = vec!["file_id.diz".to_string(), inner.clone(), format!("{inner}{release_dir}.NFO")];
     let mut nested: Vec<Value> = vec![];
     for src in selected {
         let p = Path::new(src);
@@ -1862,9 +1857,9 @@ mod tests {
         let sel: Vec<String> = [&file, &rel, &root.join("wrap")].iter().map(|p| p.display().to_string()).collect();
         let v = preview_archive_core("EVK26", &sel).unwrap();
         let e: Vec<&str> = v["entries"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
-        assert_eq!(&e[..4], ["EVK26/", "EVK26/EVK26/", "EVK26/file_id.diz", "EVK26/EVK26/EVK26.NFO"]);
-        assert!(e.contains(&"EVK26/EVK26/f.txt") && e.contains(&"EVK26/EVK26/a.txt") && e.contains(&"EVK26/EVK26/sub/"));
-        assert!(e.contains(&"EVK26/EVK26/wrap/only/real/x.bin"));
+        assert_eq!(&e[..3], ["file_id.diz", "EVK26/", "EVK26/EVK26.NFO"]);
+        assert!(e.contains(&"EVK26/f.txt") && e.contains(&"EVK26/a.txt") && e.contains(&"EVK26/sub/"));
+        assert!(e.contains(&"EVK26/wrap/only/real/x.bin"));
         let n = v["nested"].as_array().unwrap();
         assert_eq!(n.len(), 1);
         assert_eq!(n[0]["flattenTo"], wrap.display().to_string());
