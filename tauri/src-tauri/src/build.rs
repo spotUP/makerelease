@@ -3,7 +3,7 @@
 //
 // Lengths and padding follow JavaScript (UTF-16 code units), see jslen/pad_end.
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -11,21 +11,21 @@ use tauri::{Emitter, Manager};
 
 // ---------------------------------------------------------------- types
 
-#[derive(Deserialize, Clone, Default, Debug)]
+#[derive(Deserialize, Serialize, Clone, Default, Debug)]
 #[serde(default)]
 pub struct Member {
     pub nickname: String,
     pub role: String,
 }
 
-#[derive(Deserialize, Clone, Default, Debug)]
+#[derive(Deserialize, Serialize, Clone, Default, Debug)]
 #[serde(default)]
 pub struct Credit {
     pub role: String,
     pub name: String,
 }
 
-#[derive(Deserialize, Clone, Default, Debug)]
+#[derive(Deserialize, Serialize, Clone, Default, Debug)]
 #[serde(default)]
 pub struct Board {
     pub name: String,
@@ -68,6 +68,7 @@ pub struct Form {
     pub coder: Option<String>,
     pub system: Option<String>,
     pub design: Option<String>,
+    pub media_embeds: Option<Value>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -176,7 +177,7 @@ fn wrap_words(text: &str, first_width: usize, cont_width: usize) -> Vec<String> 
 
 // ---------------------------------------------------------------- encoding.ts
 
-fn to_ascii_safe(input: &str) -> String {
+pub(crate) fn to_ascii_safe(input: &str) -> String {
     let mut out = String::new();
     for c in input.chars() {
         if (c as u32) <= 0x7f {
@@ -222,7 +223,7 @@ fn assert_latin1_safe(text: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn write_latin1(path: &Path, text: &str) -> Result<(), String> {
+pub(crate) fn write_latin1(path: &Path, text: &str) -> Result<(), String> {
     assert_latin1_safe(text)?;
     let bytes: Vec<u8> = text.chars().map(|c| c as u8).collect();
     fs::write(path, bytes).map_err(|e| format!("{}: {e}", path.display()))
@@ -234,7 +235,7 @@ fn release_base_name(prefix: &str, code: &str) -> String {
     format!("{prefix}{}", code.to_uppercase())
 }
 
-fn archive_file_name(prefix: &str, code: &str, format: &str) -> String {
+pub(crate) fn archive_file_name(prefix: &str, code: &str, format: &str) -> String {
     format!("{}.{}", release_base_name(prefix, code), if format == "LHA" { "LHA" } else { "ZIP" })
 }
 
@@ -336,7 +337,7 @@ fn render_nfo(prefix: &str, history: &[HistoryEntry], form: &Form) -> String {
     parts.join("\n")
 }
 
-fn trim_diz_banner(text: &str) -> String {
+pub(crate) fn trim_diz_banner(text: &str) -> String {
     let mut lines: Vec<String> = text.split('\n').map(|l| l.trim_end_matches([' ', '\t']).to_string()).collect();
     trim_edge_blanks(&mut lines);
     lines.join("\n")
@@ -842,31 +843,12 @@ impl NumberedBackend for NoneBackend {
     }
 }
 
-/// TODO(Batch C): replace with the releases-doorserver client.
-struct ServerBackend;
-
-const NOT_PORTED_SERVER: &str = "not ported: server backend";
-
-impl NumberedBackend for ServerBackend {
-    fn create(&self, _: &Form) -> Result<Numbered, String> {
-        Err(NOT_PORTED_SERVER.into())
-    }
-    fn preview(&self, _: &Form) -> Result<Numbered, String> {
-        Err(NOT_PORTED_SERVER.into())
-    }
-    fn release_list(&self, _: &Form, _: i64) -> Result<Vec<ReleaseListEntry>, String> {
-        Err(NOT_PORTED_SERVER.into())
-    }
-    fn after_build(&self, _: &Path) -> Result<Option<Value>, String> {
-        Err(NOT_PORTED_SERVER.into())
-    }
-}
-
-fn backend_for(profile: &Profile) -> Box<dyn NumberedBackend> {
+fn backend_for(profile: &Profile, profiles_dir: &Path) -> Result<Box<dyn NumberedBackend>, String> {
     if profile.doorserver {
-        Box::new(ServerBackend)
+        let full = crate::profiles::load_profile(profiles_dir, &profile.id)?;
+        Ok(Box::new(crate::net::ServerBackend::from_profile(&full)?))
     } else {
-        Box::new(NoneBackend)
+        Ok(Box::new(NoneBackend))
     }
 }
 
@@ -891,8 +873,6 @@ fn describe_age(seconds: i64) -> String {
     }
 }
 
-// Used by the server backend once Batch C lands.
-#[allow(dead_code)]
 pub fn describe_stale_drafts(drafts: &[DraftEntry], now_seconds: i64) -> Option<String> {
     let mut stale: Vec<&DraftEntry> = drafts.iter().filter(|d| now_seconds - d.created_at >= STALE_DRAFT_AGE_SECONDS).collect();
     if stale.is_empty() {
@@ -944,18 +924,23 @@ fn path_with_extras() -> std::ffi::OsString {
 }
 
 fn run_external(bin: &str, args: &[String], cwd: &Path) -> Result<(), String> {
-    let output = std::process::Command::new(bin)
-        .args(args)
-        .current_dir(cwd)
-        .env("PATH", path_with_extras())
-        .output()
-        .map_err(|e| {
-            if e.kind() == std::io::ErrorKind::NotFound {
-                format!("\"{bin}\" was not found on your PATH — {}.", install_hint())
-            } else {
-                e.to_string()
-            }
-        })?;
+    run_tool(bin, args, Some(cwd), install_hint())
+}
+
+/// external-tool.ts runExternal: a missing binary becomes a readable message with `hint`.
+pub(crate) fn run_tool(bin: &str, args: &[String], cwd: Option<&Path>, hint: &str) -> Result<(), String> {
+    let mut command = std::process::Command::new(bin);
+    command.args(args).env("PATH", path_with_extras());
+    if let Some(cwd) = cwd {
+        command.current_dir(cwd);
+    }
+    let output = command.output().map_err(|e| {
+        if e.kind() == std::io::ErrorKind::NotFound {
+            format!("\"{bin}\" was not found on your PATH — {hint}.")
+        } else {
+            e.to_string()
+        }
+    })?;
     if output.status.success() {
         return Ok(());
     }
@@ -1159,7 +1144,7 @@ pub fn build_release_core(env: &Env, sent: &Value, dry_run: bool) -> Result<Valu
     } else {
         assert_local_code_available(&profile, &profile_root, &form.code)?;
     }
-    let backend = backend_for(&profile);
+    let backend = backend_for(&profile, env.profiles_dir)?;
     (env.progress)(if dry_run { "Previewing the release number" } else { "Contacting the release server" });
     let numbered = if dry_run { backend.preview(&form)? } else { backend.create(&form)? };
     let release_list = backend.release_list(&form, numbered.release_number)?;
@@ -1207,8 +1192,8 @@ pub fn preview_outputs_core(env: &Env, sent: &Value) -> Result<Value, String> {
     let mut problems: Vec<String> = Vec::new();
     let mut numbered = Numbered { release_number: 0, history: vec![] };
     let mut release_list: Vec<ReleaseListEntry> = vec![];
-    let backend = backend_for(&profile);
-    let fetched = backend.preview(&form).and_then(|n| backend.release_list(&form, n.release_number).map(|l| (n, l)));
+    let fetched = backend_for(&profile, env.profiles_dir)
+        .and_then(|backend| backend.preview(&form).and_then(|n| backend.release_list(&form, n.release_number).map(|l| (n, l))));
     match fetched {
         Ok((n, l)) => {
             numbered = n;
@@ -1227,7 +1212,7 @@ pub fn preview_outputs_core(env: &Env, sent: &Value) -> Result<Value, String> {
 
 // ---------------------------------------------------------------- Tauri commands
 
-fn profiles_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
+pub(crate) fn profiles_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     if let Some(dir) = std::env::var_os("MAKERELEASE_PROFILES_DIR") {
         return Ok(PathBuf::from(dir));
     }
@@ -1762,22 +1747,22 @@ mod tests {
     }
 
     #[test]
-    fn division_override_and_server_stub() {
+    fn division_override_and_unreachable_server() {
         let p = ur_profile();
         let f = form_for(&p, &json!({"division": "xinnovations", "code": "a"})).unwrap();
         assert_eq!(f.code, "a");
         let root = scratch("srv");
         let ur = root.join("profiles/uprough");
         fs::create_dir_all(&ur).unwrap();
-        fs::write(ur.join("profile.json"), "{\"id\":\"uprough\",\"label\":\"Up Rough\",\"url\":\"u\",\"filePrefix\":\"UP-\",\"renderer\":\"uprough\",\"backend\":\"releases-doorserver\",\"server\":{\"baseUrl\":\"http://x\"}}").unwrap();
+        fs::write(ur.join("profile.json"), "{\"id\":\"uprough\",\"label\":\"Up Rough\",\"url\":\"u\",\"filePrefix\":\"UP-\",\"renderer\":\"uprough\",\"backend\":\"releases-doorserver\",\"server\":{\"baseUrl\":\"http://127.0.0.1:1\"}}").unwrap();
         let profiles = root.join("profiles");
         let outf = |_: &Profile| root.join("out");
         let env = Env { profiles_dir: &profiles, output_root: &outf, run: &|_, _, _| Ok(()), progress: &|_| {} };
         let s = json!({"profileId": "uprough", "code": "t", "format": "LHA"});
         let p = preview_outputs_core(&env, &s).unwrap();
-        assert_eq!(p["problems"][0], "Release history unavailable: not ported: server backend");
+        assert!(p["problems"][0].as_str().unwrap().starts_with("Release history unavailable: could not reach releases.uprough.net: "));
         assert!(p["nfoText"].is_string());
-        assert_eq!(build_release_core(&env, &s, true).unwrap_err(), "not ported: server backend");
+        assert!(build_release_core(&env, &s, true).unwrap_err().starts_with("could not reach releases.uprough.net: "));
         fs::remove_dir_all(root).unwrap();
     }
 }

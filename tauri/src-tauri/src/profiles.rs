@@ -357,19 +357,14 @@ pub fn prepare_profiles(app: &AppHandle) -> Res<()> {
 
 /// What noneBackend().seed() returns plus the profile summary and output root.
 pub fn seed_state(profile: &Value, output_root: &Path) -> Res<Value> {
-    if profile["backend"] != "none" {
-        return Err("not ported: server seed".into()); // TODO Batch C: backendFor(profile).seed() for releases-doorserver
-    }
-    Ok(json!({
-        "profile": summarize(profile),
-        "outputRoot": output_root.display().to_string(),
-        "members": profile["members"],
-        "boards": [],
-        "nextReleaseNumber": 0,
-        "history": [],
-        "currentDizText": "",
-        "revision": 0,
-    }))
+    let mut state = json!({ "profile": summarize(profile), "outputRoot": output_root.display().to_string() });
+    let rest = if profile["backend"] != "none" {
+        crate::net::server_seed(profile)?
+    } else {
+        json!({ "members": profile["members"], "boards": [], "nextReleaseNumber": 0, "history": [], "currentDizText": "", "revision": 0 })
+    };
+    state.as_object_mut().unwrap().extend(rest.as_object().unwrap().clone());
+    Ok(state)
 }
 
 fn edit_state(dir: &Path, id: &str) -> Res<Value> {
@@ -450,9 +445,14 @@ pub async fn import_template(app: AppHandle) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub fn load_seed_state(app: AppHandle, profile_id: String) -> Result<Value, String> {
-    let profile = load_profile(&profiles_dir(&app)?, &profile_id)?;
-    seed_state(&profile, &output_root_for(&app, &profile)?)
+pub async fn load_seed_state(app: AppHandle, profile_id: String) -> Result<Value, String> {
+    // The server seed is a blocking HTTP round trip; keep it off the async runtime.
+    tauri::async_runtime::spawn_blocking(move || {
+        let profile = load_profile(&profiles_dir(&app)?, &profile_id)?;
+        seed_state(&profile, &output_root_for(&app, &profile)?)
+    })
+    .await
+    .map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -611,7 +611,9 @@ mod tests {
             (&json!([]), &json!([]), &json!(""), &json!(0), &json!(0)));
         let mut srv = p.clone();
         srv["backend"] = json!("releases-doorserver");
-        assert_eq!(seed_state(&srv, Path::new("/o")).unwrap_err(), "not ported: server seed");
+        srv["server"] = json!({ "baseUrl": "http://127.0.0.1:1", "writeKey": "k" });
+        srv["renderer"] = json!("uprough");
+        assert!(seed_state(&srv, Path::new("/o")).unwrap_err().starts_with("could not reach releases.uprough.net: "));
     }
 
     #[test]
