@@ -70,6 +70,11 @@ int main(void) {
     CHECK(has(&r, "REL/a.txt") && !has(&r, "REL/rel/"));
     rp_preview_free(&r);
 
+    /* no drawer: the three fixed rows still list */
+    CHECK(rp_preview_archive("REL", paths, 0, &r, err, sizeof(err)) == 0);
+    CHECK(r.nentries >= 3 && strcmp(r.entries[0], "file_id.diz") == 0 && strcmp(r.entries[2], "REL/REL.NFO") == 0);
+    rp_preview_free(&r);
+
     rp_remove_tree(g_dir, err, sizeof(err));
     if (failures == 0) printf("archive_preview: ok\n");
     return failures ? 1 : 0;

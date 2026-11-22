@@ -183,12 +183,13 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
     const char *paths[1];
     rp_preview_free(&g_prev);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
-    if (g_files[0] != '\0') {
+    {
         GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
         rp_upper(shell_field_text(code_field), code, sizeof(code));
         rp_base_name(groups[gactive].file_prefix, code, base, sizeof(base));
         paths[0] = g_files;
-        if (rp_preview_archive(base, paths, 1, &g_prev, errmsg, sizeof(errmsg)) != 0) {
+        /* no drawer picked: zero paths still lists file_id.diz, <REL>/ and <REL>/<REL>.NFO */
+        if (rp_preview_archive(base, paths, g_files[0] != '\0' ? 1 : 0, &g_prev, errmsg, sizeof(errmsg)) != 0) {
             SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         } else if (g_prev.nnested > 0) {
             snprintf(g_warn, sizeof(g_warn), "Extra nested folder: %s only wraps %s", g_prev.nested[0].path,
@@ -542,7 +543,9 @@ static int shell_main(void) {
     warn_text = shell_label("", UPV_Text_Tone_Normal);
     *(void **)&g_preview_hook.h_Entry = (void *)rp_preview_row_tramp;
     preview_list = MUI_NewObject((char *)"UP-List.mcc", UPA_List_RowHook, (ULONG)&g_preview_hook, UPA_List_NoSelect,
-                                 (ULONG)TRUE, UPA_List_MaxRows, 8UL, TAG_DONE);
+                                 (ULONG)TRUE, UPA_List_MaxRows, 8UL,
+                                 UPA_List_Count, 6UL, /* the list asks its height from the row count at open: start at 6 rows, emptied after open */
+                                 TAG_DONE);
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
     status = shell_label(broken[0] ? broken : "Fill in the release, then press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
@@ -601,6 +604,7 @@ static int shell_main(void) {
         CloseLibrary(MUIMasterBase);
         return 20;
     }
+    SetAttrs(preview_list, UPA_List_Count, 0UL, TAG_DONE);
     for (;;) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
