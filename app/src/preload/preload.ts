@@ -7,6 +7,7 @@ import {
   BuildResult,
   DeleteReleaseOutcome,
   MakereleaseApi,
+  ArchivePreview,
   OutputsPreview,
   ProfileEditOutcome,
   ProfileEditRequest,
@@ -37,6 +38,8 @@ const api: MakereleaseApi = {
   },
   previewOutputs: (form: ReleaseFormData): Promise<OutputsPreview | null> =>
     ipcRenderer.invoke('previewOutputs', form),
+  previewArchive: (form: ReleaseFormData): Promise<ArchivePreview> =>
+    ipcRenderer.invoke('previewArchive', form),
   pickImage: (): Promise<string | null> => ipcRenderer.invoke('pickImage'),
   publishToWeb: (
     profileId: string,

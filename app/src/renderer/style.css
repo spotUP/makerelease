@@ -283,7 +283,10 @@ textarea#release-notes-text { height: calc(100vh - 15rem); min-height: 12rem; re
 #selected-files-list li .thumb { max-height: 48px; }
 .media-embed-row .thumb { max-height: 48px; }
 
-/* NFO page: the notes on the left, the NFO as a build would write it on the right. */
+/* NFO page: the notes on the left, the NFO as a build would write it on the right.
+   An NFO is 80 columns wide, so the page drops the body width cap and stacks when the window is narrow. */
+body:has(#wizard-page-nfo.wizard-page-active) { max-width: none; }
+@media (max-width: 1300px) { .nfo-panes { grid-template-columns: minmax(0, 1fr); } }
 .nfo-panes { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 1rem; align-items: start; }
 pre.nfo-preview {
   margin: 0.5rem 0 0;

@@ -4,6 +4,7 @@ import {
   AminetUploadOutcome,
   AminetUploadRequest,
   BuildResult,
+  ArchivePreview,
   OutputsPreview,
   ProfileEditOutcome,
   ProfileEditRequest,
@@ -14,6 +15,7 @@ import {
   SeedState,
 } from '../shared/types';
 import { divisionIdOf, slugifyProfileId, summarize, type GroupProfile, type ProfileListEntry } from '../shared/profile';
+import { previewArchive } from './archive-preview';
 import { archiveFileName, releaseBaseName } from '../shared/naming';
 import {
   deleteProfile,
@@ -219,6 +221,11 @@ export function registerIpcHandlers(
   // renderers preview through the same backend a dry run uses (nothing is
   // reserved); a server that cannot be reached leaves the history empty and
   // says so in `problems` instead of blanking the preview.
+  ipcMain.handle('previewArchive', async (_event, sentForm: ReleaseFormData): Promise<ArchivePreview> => {
+    const profile = await loadProfile(profilesDir, sentForm.profileId);
+    return previewArchive(releaseBaseName(profile, sentForm.code || 'CODE'), sentForm.selectedPaths);
+  });
+
   ipcMain.handle('previewOutputs', async (_event, sentForm: ReleaseFormData): Promise<OutputsPreview | null> => {
     const profile = await loadProfile(profilesDir, sentForm.profileId);
     const division = divisionIdOf(profile.renderer) ?? undefined;

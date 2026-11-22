@@ -31,6 +31,12 @@ export type MediaEmbedFormEntry =
   | { type: 'youtube'; caption: string; youtubeUrl: string }
   | { type: 'image'; caption: string };
 
+/** The archive's contents as staged, and selected folders that only wrap one more folder. */
+export interface ArchivePreview {
+  entries: string[];
+  nested: Array<{ path: string; flattenTo: string }>;
+}
+
 export interface ReleaseFormData {
   /** The group profile this release is built for (its folder name). */
   profileId: string;
@@ -268,6 +274,7 @@ export interface MakereleaseApi {
   onBuildProgress(callback: (progress: BuildProgress) => void): () => void;
   /** A placeholder profile's NFO and DIZ as they would build now; null for the code renderers. */
   previewOutputs(form: ReleaseFormData): Promise<OutputsPreview | null>;
+  previewArchive(form: ReleaseFormData): Promise<ArchivePreview>;
   pickImage(): Promise<string | null>;
   publishToWeb(
     profileId: string,

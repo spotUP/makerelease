@@ -93,6 +93,8 @@ const dizReleaseLineHint = $<HTMLElement>('diz-release-line-hint');
 const cleanupSection = $<HTMLElement>('cleanup-section');
 const creatorsPreview = $<HTMLDivElement>('creators-preview');
 const dizBannerPreview = $<HTMLPreElement>('diz-banner-preview');
+const nestedWarning = $<HTMLDivElement>('nested-warning');
+const archivePreview = $<HTMLPreElement>('archive-preview');
 const nfoPreview = $<HTMLPreElement>('nfo-preview');
 const nfoPreviewStatus = $<HTMLDivElement>('nfo-preview-status');
 const dizReleaseLinesContainer = $<HTMLDivElement>('diz-release-lines');
@@ -468,7 +470,37 @@ function resetPublishState(): void {
   deleteStatus.className = 'status';
 }
 
+let archiveRequest = 0;
+async function refreshArchivePreview(): Promise<void> {
+  const mine = ++archiveRequest;
+  nestedWarning.replaceChildren();
+  nestedWarning.hidden = true;
+  if (!currentProfile || selectedPaths.length === 0) {
+    archivePreview.textContent = '';
+    return;
+  }
+  const result = await window.api.previewArchive(
+    readForm(codeInput.value.trim().toUpperCase() || 'X'.repeat(currentProfile.codeLength ?? 5)),
+  );
+  if (mine !== archiveRequest) return;
+  archivePreview.textContent = result.entries.join('\n');
+  for (const n of result.nested) {
+    nestedWarning.hidden = false;
+    const text = document.createElement('span');
+    text.textContent = `Extra nested folder: ${n.path} only wraps ${n.flattenTo}. `;
+    const fix = document.createElement('button');
+    fix.type = 'button';
+    fix.textContent = 'Remove extra nested folder';
+    fix.addEventListener('click', () => {
+      selectedPaths = selectedPaths.map((sp) => (sp === n.path ? n.flattenTo : sp));
+      renderSelectedFiles();
+    });
+    nestedWarning.append(text, fix, document.createElement('br'));
+  }
+}
+
 function renderSelectedFiles(): void {
+  void refreshArchivePreview();
   // A button fires no input event, so its "choose a file" message is cleared here.
   if (selectedPaths.length) clearFieldError(pickFilesBtn);
   selectedFilesList.innerHTML = '';

@@ -23,7 +23,7 @@ function outputRootFor(profile: GroupProfile): string {
 
 function createWindow(): void {
   const win = new BrowserWindow({
-    width: 900,
+    width: 1400,
     height: 800,
     webPreferences: {
       preload: path.join(__dirname, '..', '..', 'preload', 'preload', 'preload.js'),
