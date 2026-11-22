@@ -23,7 +23,7 @@ export function initWizard(): void {
 
   // A page is available while any of its sections is shown (the Publish page
   // also needs a finished build, which is what un-hides its sections).
-  const available = (i: number): boolean => pages[i].querySelector(':scope > section:not([hidden])') !== null;
+  const available = (i: number): boolean => pages[i].querySelector('section:not([hidden])') !== null;
 
   const buttons = STEPS.map((label, i) => {
     const b = document.createElement('button');
@@ -87,7 +87,7 @@ export function initWizard(): void {
   // Only page sections count: render() itself toggles `hidden` on the step
   // and Back/Next buttons, and reacting to those would loop forever.
   new MutationObserver((records) => {
-    if (!records.some((r) => r.target instanceof HTMLElement && r.target.matches('[data-wizard-page] > section'))) return;
+    if (!records.some((r) => r.target instanceof HTMLElement && r.target.matches('[data-wizard-page] section'))) return;
     const now = available(PUBLISH);
     if (now && !publishWasAvailable) {
       publishWasAvailable = now;
