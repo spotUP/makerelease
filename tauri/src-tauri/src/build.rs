@@ -77,7 +77,7 @@ pub enum Renderer {
     Placeholder,
 }
 
-/// What the build needs of a profile. TODO(Batch A): replace load_profile with the profiles.rs loader.
+/// What the build needs of a profile.
 #[derive(Clone, Debug)]
 pub struct Profile {
     pub id: String,
@@ -1063,22 +1063,16 @@ fn stage_release(prefix: &str, form: &Form, generated: &Generated) -> Result<Pat
     Ok(outer_dir)
 }
 
-// ---------------------------------------------------------------- profiles (TODO Batch A: use profiles.rs)
+// ---------------------------------------------------------------- profiles
 
 fn load_profile(profiles_dir: &Path, id: &str) -> Result<Profile, String> {
-    if id.is_empty() || !id.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'-') {
-        return Err(format!("\"{id}\" is not a valid profile id"));
-    }
-    let file = profiles_dir.join(id).join("profile.json");
-    let bytes = fs::read(&file).map_err(|e| format!("{}: could not be read ({e})", file.display()))?;
-    let text = String::from_utf8_lossy(&bytes);
-    let v: Value = serde_json::from_str(text.trim_start_matches('\u{feff}')).map_err(|e| format!("{}: {e}", file.display()))?;
+    let v = crate::profiles::load_profile(profiles_dir, id)?;
     let s = |key: &str| v.get(key).and_then(Value::as_str).unwrap_or("").to_string();
     let renderer = match s("renderer").as_str() {
         "uprough" => Renderer::UpRough,
         "xinnovations" => Renderer::XInnovations,
         "placeholder" => Renderer::Placeholder,
-        other => return Err(format!("{}: unknown renderer \"{other}\"", file.display())),
+        other => return Err(format!("{id}: unknown renderer \"{other}\"")),
     };
     Ok(Profile {
         id: id.to_string(),
@@ -1233,23 +1227,16 @@ pub fn preview_outputs_core(env: &Env, sent: &Value) -> Result<Value, String> {
 
 // ---------------------------------------------------------------- Tauri commands
 
-/// TODO(Batch A): ask profiles.rs for its profiles folder; this mirrors the Electron userData location.
 fn profiles_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
     if let Some(dir) = std::env::var_os("MAKERELEASE_PROFILES_DIR") {
         return Ok(PathBuf::from(dir));
     }
-    Ok(app.path().app_data_dir().map_err(|e| e.to_string())?.join("profiles"))
+    crate::profiles::profiles_dir(app)
 }
 
-/// TODO(Batch A): align with profiles.rs. Packaged Electron output: <Documents>/<label> Releases.
 fn output_root(app: &tauri::AppHandle, profile: &Profile) -> PathBuf {
-    let base = app
-        .path()
-        .document_dir()
-        .or_else(|_| app.path().home_dir())
-        .or_else(|_| app.path().app_data_dir())
-        .unwrap_or_else(|_| PathBuf::from("."));
-    base.join(format!("{} Releases", profile.label))
+    let v = serde_json::json!({ "id": profile.id, "label": profile.label });
+    crate::profiles::output_root_for(app, &v).unwrap_or_else(|_| PathBuf::from("."))
 }
 
 #[tauri::command]
@@ -1782,7 +1769,7 @@ mod tests {
         let root = scratch("srv");
         let ur = root.join("profiles/uprough");
         fs::create_dir_all(&ur).unwrap();
-        fs::write(ur.join("profile.json"), "{\"id\":\"uprough\",\"label\":\"Up Rough\",\"url\":\"u\",\"filePrefix\":\"UP-\",\"renderer\":\"uprough\",\"backend\":\"releases-doorserver\"}").unwrap();
+        fs::write(ur.join("profile.json"), "{\"id\":\"uprough\",\"label\":\"Up Rough\",\"url\":\"u\",\"filePrefix\":\"UP-\",\"renderer\":\"uprough\",\"backend\":\"releases-doorserver\",\"server\":{\"baseUrl\":\"http://x\"}}").unwrap();
         let profiles = root.join("profiles");
         let outf = |_: &Profile| root.join("out");
         let env = Env { profiles_dir: &profiles, output_root: &outf, run: &|_, _, _| Ok(()), progress: &|_| {} };

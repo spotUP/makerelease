@@ -318,7 +318,7 @@ pub fn resolve_packaged_output_root(lookup: impl Fn(&str) -> Option<PathBuf>, fo
     Err(format!("Could not resolve any of documents, home, userData to put the \"{folder_name}\" folder in"))
 }
 
-fn output_root_for(app: &AppHandle, profile: &Value) -> Res<PathBuf> {
+pub fn output_root_for(app: &AppHandle, profile: &Value) -> Res<PathBuf> {
     let id = profile["id"].as_str().unwrap_or_default();
     if cfg!(debug_assertions) {
         // Dev: <repo root>/releases-out/<id>; this crate sits at <repo>/tauri/src-tauri.
