@@ -6,6 +6,11 @@ mod profiles;
 
 fn main() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
+        .setup(|app| {
+            profiles::prepare_profiles(app.handle()).map_err(|e| format!("Could not prepare the group profiles folder: {e}"))?;
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             profiles::list_profiles,
             profiles::open_profiles_folder,
