@@ -493,8 +493,6 @@ static int shell_main(void) {
     int n, i;
 
     MUIMasterBase = OpenLibrary((CONST_STRPTR) "muimaster.library", 19);
-    printf("packer: muimaster open\n");
-    fflush(stdout);
     if (MUIMasterBase == NULL) {
         shell_requester("muimaster.library 19 (MUI 3.8) is not installed.\nInstall MUI 3.8, then start Release Packer again.");
         return 20;
@@ -669,8 +667,6 @@ static int ui_run_stack(void) {
     struct Task *me = FindTask(NULL);
     unsigned long have = (unsigned long)me->tc_SPUpper - (unsigned long)me->tc_SPLower;
     UBYTE *mem;
-    printf("packer: start, stack %lu\n", have);
-    fflush(stdout);
     if (have >= SHELL_STACK_BYTES) return shell_main();
     mem = (UBYTE *)AllocMem(SHELL_STACK_BYTES, MEMF_PUBLIC | MEMF_CLEAR);
     if (mem == NULL) return shell_main();
