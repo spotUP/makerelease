@@ -1,0 +1,5 @@
+build/
+scratch-rig/
+.DS_Store
+# Per-person session start prompt (read once by the next-session hook)
+thoughts/*/next-session*.md
