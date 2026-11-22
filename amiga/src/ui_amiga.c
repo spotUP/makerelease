@@ -558,6 +558,9 @@ static int shell_main(void) {
                         MUIA_Window_RootObject,
                         (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Panel,
                                              MUIA_Group_Child,
+                                             (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea,
+                                                                  (ULONG)FALSE, /* side by side: stacked, the cards outgrow an 800x600 screen */
+                                             MUIA_Group_Child,
                                              (ULONG)shell_card("Release", shell_row(shell_label("Group", UPV_Text_Tone_Normal), group_cycle),
                                                               shell_row(shell_label("Name", UPV_Text_Tone_Normal), name_field),
                                                               shell_row(shell_label("Code", UPV_Text_Tone_Normal), code_field),
@@ -568,6 +571,7 @@ static int shell_main(void) {
                                                               shell_row(shell_label("Description", UPV_Text_Tone_Normal), desc_field),
                                                               shell_row(shell_label("Files", UPV_Text_Tone_Normal), files_text),
                                                               shell_row(pick_btn, preview_btn), shell_row(build_btn, NULL), NULL),
+                                             TAG_DONE),
                                              MUIA_Group_Child, (ULONG)shell_card("Archive preview", warn_row, preview_list, NULL, NULL, NULL, NULL),
                                              MUIA_Group_Child, (ULONG)status, TAG_DONE),
                         TAG_DONE);
