@@ -23,3 +23,7 @@ UP-*.LHA
 UP-*.ZIP
 UP-*.lha
 UP-*.zip
+tauri/web/
+tauri/node_modules/
+tauri/src-tauri/target/
+tauri/src-tauri/gen/

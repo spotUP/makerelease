@@ -1,0 +1,1 @@
+{ "name": "makerelease-tauri", "private": true, "devDependencies": { "@tauri-apps/cli": "^2" } }
