@@ -306,11 +306,12 @@
       <div id="pe-templates">
         <h3>Templates</h3>
         <p class="hint">ASCII art with placeholders in double braces, drawn in PabloDraw or Moebius.</p>
-        <div><strong>file_id.diz</strong> <span id="pe-diz-info" class="hint"></span></div>
+        <label for="pe-diz-text"><strong>file_id.diz</strong></label>
+        <textarea id="pe-diz-text" class="template-text" rows="10" spellcheck="false" wrap="off"></textarea>
         <button type="button" id="pe-import-diz">Import DIZ</button>
-        <div><strong>release.nfo</strong> <span id="pe-nfo-info" class="hint"></span></div>
+        <label for="pe-nfo-text"><strong>release.nfo</strong> <span class="hint">leave empty for no NFO</span></label>
+        <textarea id="pe-nfo-text" class="template-text" rows="14" spellcheck="false" wrap="off"></textarea>
         <button type="button" id="pe-import-nfo">Import NFO</button>
-        <button type="button" id="pe-remove-nfo">Remove NFO</button>
       </div>
       <div id="pe-error" class="status warn"></div>
       <div class="dialog-actions">

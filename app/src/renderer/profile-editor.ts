@@ -87,8 +87,8 @@ export function createProfileEditor(): ProfileEditor {
   const membersBody = $<HTMLTableSectionElement>('pe-members');
   const membersNote = $<HTMLElement>('pe-members-note');
   const templatesBox = $<HTMLElement>('pe-templates');
-  const dizInfo = $<HTMLElement>('pe-diz-info');
-  const nfoInfo = $<HTMLElement>('pe-nfo-info');
+  const dizText = $<HTMLTextAreaElement>('pe-diz-text');
+  const nfoText = $<HTMLTextAreaElement>('pe-nfo-text');
   const errorLine = $<HTMLElement>('pe-error');
 
   let form: ProfileForm | null = null;
@@ -151,11 +151,10 @@ export function createProfileEditor(): ProfileEditor {
     );
   }
 
-  function renderTemplateInfo(): void {
+  function renderTemplateText(): void {
     if (!form) return;
-    dizInfo.textContent = form.templates.diz === '' ? 'empty' : `${form.templates.diz.split('\n').length - 1} lines`;
-    nfoInfo.textContent =
-      form.templates.nfo === null ? 'none, the archive gets no NFO' : `${form.templates.nfo.split('\n').length - 1} lines`;
+    dizText.value = form.templates.diz;
+    nfoText.value = form.templates.nfo ?? '';
   }
 
   function applyVisibility(): void {
@@ -177,6 +176,7 @@ export function createProfileEditor(): ProfileEditor {
       backend: backendSelect.value as BackendKind,
       baseUrl: baseUrlInput.value,
       writeKey: writeKeyInput.value,
+      templates: { diz: dizText.value, nfo: nfoText.value === '' ? null : nfoText.value },
     };
   }
 
@@ -191,8 +191,7 @@ export function createProfileEditor(): ProfileEditor {
     try {
       const picked = await window.api.importTemplate();
       if (!picked) return;
-      form.templates[target] = picked.text;
-      renderTemplateInfo();
+      (target === 'diz' ? dizText : nfoText).value = picked.text;
     } catch (err) {
       showError(err instanceof Error ? err.message : String(err));
     }
@@ -217,10 +216,6 @@ export function createProfileEditor(): ProfileEditor {
   });
   $<HTMLButtonElement>('pe-import-diz').addEventListener('click', () => void importInto('diz'));
   $<HTMLButtonElement>('pe-import-nfo').addEventListener('click', () => void importInto('nfo'));
-  $<HTMLButtonElement>('pe-remove-nfo').addEventListener('click', () => {
-    if (form) form.templates.nfo = null;
-    renderTemplateInfo();
-  });
   $<HTMLButtonElement>('pe-cancel').addEventListener('click', () => close(null));
   dialog.addEventListener('cancel', () => {
     finish?.(null);
@@ -263,7 +258,7 @@ export function createProfileEditor(): ProfileEditor {
       writeKeyInput.type = 'password';
       showKeyBtn.textContent = 'Show';
       renderMembers();
-      renderTemplateInfo();
+      renderTemplateText();
       applyVisibility();
       dialog.showModal();
       return new Promise<string | null>((resolve) => {
