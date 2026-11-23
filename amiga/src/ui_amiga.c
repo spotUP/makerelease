@@ -32,6 +32,7 @@
 #include <proto/asl.h>
 
 #include "archive.h"
+#include "aminet.h"
 #include "archive_preview.h"
 #include "date.h"
 #include "groups.h"
@@ -128,6 +129,7 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 #define ID_REVOKE 7
 #define ID_DOOR 8
 #define ID_NAME 9
+#define ID_AMINET 10
 
 #define RP_MAX_FILES_PATH 511
 
@@ -597,6 +599,82 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
 }
 
+/* Aminet upload: the readme comes from the form (Aminet tab) and the group, the archive is the one
+ * Build wrote. Synchronous like shell_online. */
+static void shell_aminet(Object *app, Object *status, const rp_group *groups, Object *group_cycle,
+                         Object *code_field, Object *desc_field, Object *format_cycle, Object *type_field,
+                         Object *arch_field, Object *uname_field, Object *email_field) {
+    ULONG gactive = 0, active = 0, sigs = 0;
+    const rp_group *g;
+    char code[40], base[64], packed[72], archive[160], lname[RP_AMINET_FILENAME_MAX + 16], lreadme[RP_AMINET_FILENAME_MAX + 16];
+    char creators[256], msg[400];
+    rp_aminet_credit credits[RP_MEMBERS_MAX];
+    rp_aminet_readme_in in;
+    char *readme = NULL, *norm = NULL, *data = NULL;
+    FILE *f;
+    long len;
+    size_t i;
+    GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
+    GetAttr(UPA_Cycle_Active, format_cycle, &active);
+    g = &groups[gactive];
+    rp_upper(shell_field_text(code_field), code, sizeof(code));
+    rp_base_name(g->file_prefix, code, base, sizeof(base));
+    snprintf(packed, sizeof(packed), "%s.%s", base, active ? "ZIP" : "LHA");
+    snprintf(archive, sizeof(archive), "PROGDIR:releases/%s", packed);
+    SetAttrs(status, UPA_Text_Contents, (ULONG) "Working...", TAG_DONE);
+    DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
+    creators[0] = '\0';
+    for (i = 0; i < g->nmembers; i++) {
+        credits[i].role = g->members[i].role;
+        credits[i].name = g->members[i].nickname;
+        if (strlen(creators) + strlen(g->members[i].nickname) + 3 < sizeof(creators)) {
+            if (i > 0) strcat(creators, ", ");
+            strcat(creators, g->members[i].nickname);
+        }
+    }
+    memset(&in, 0, sizeof in);
+    in.short_text = shell_field_text(desc_field);
+    in.type = shell_field_text(type_field);
+    in.architecture = shell_field_text(arch_field);
+    in.uploader_email = shell_field_text(email_field);
+    in.uploader_name = shell_field_text(uname_field);
+    in.group_label = g->label;
+    in.group_url = g->url;
+    in.entry_creators = creators;
+    in.description = shell_field_text(desc_field);
+    in.release_notes = "";
+    in.credits = credits;
+    in.n_credits = g->nmembers;
+    readme = rp_aminet_render_readme(&in);
+    norm = readme ? rp_aminet_normalize_readme(readme) : NULL;
+    if (norm == NULL || rp_aminet_names(packed, lname, lreadme, sizeof(lname)) != 0) {
+        snprintf(msg, sizeof(msg), "Aminet readme could not be prepared.");
+        goto done;
+    }
+    if (rp_aminet_problems(lname, lreadme, norm, msg, sizeof(msg)) > 0) goto done;
+    f = fopen(archive, "rb");
+    if (f == NULL) {
+        snprintf(msg, sizeof(msg), "%s not found - press Build first.", packed);
+        goto done;
+    }
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    data = len > 0 ? (char *)malloc((size_t)len) : NULL;
+    if (data == NULL || fread(data, 1, (size_t)len, f) != (size_t)len) {
+        fclose(f);
+        snprintf(msg, sizeof(msg), "Could not read %s.", packed);
+        goto done;
+    }
+    fclose(f);
+    rp_aminet_upload(&rp_tcp_amiga_ops, NULL, packed, in.uploader_email, norm, data, (size_t)len, msg, sizeof(msg));
+done:
+    free(data);
+    free(norm);
+    free(readme);
+    SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+}
+
 /* Event ids above MUIV_Application_ReturnID_Quit are ours. */
 #define RP_MAX_SHELL_GROUPS 16
 
@@ -631,6 +709,7 @@ static int shell_main(void) {
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     Object *files_text, *pick_btn, *build_btn, *status;
     Object *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
+    Object *aminet_btn, *type_field, *arch_field, *uname_field, *email_field;
     Object *tabs, *pages, *preview_btn, *quit_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
     static const char *const formats[] = { "LHA", "ZIP", NULL };
@@ -690,6 +769,11 @@ static int shell_main(void) {
                                 (ULONG)UPV_Button_Role_Accent, TAG_DONE);
     revoke_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Revoke", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     door_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Door repo", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    aminet_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Aminet", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    type_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Directory, e.g. demo/aga", TAG_DONE);
+    arch_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. m68k-amigaos", TAG_DONE);
+    uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
+    email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
@@ -703,7 +787,8 @@ static int shell_main(void) {
     if (group_cycle == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
-        cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL) {
+        cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
+        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -720,13 +805,17 @@ static int shell_main(void) {
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
                                           shell_row(row_label("Cover"), cover_text),
-                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), NULL, NULL);
-        static const char *const tab_captions[] = { "Release", "Files", "Publish", NULL };
+                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL);
+        Object *page_aminet = shell_card("Aminet upload", shell_row(row_label("Directory"), type_field),
+                                         shell_row(row_label("Architecture"), arch_field),
+                                         shell_row(row_label("Uploader"), uname_field),
+                                         shell_row(row_label("Email"), email_field), NULL, NULL);
+        static const char *const tab_captions[] = { "Release", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                               MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_files),
-                              MUIA_Group_Child, (ULONG)top_page(page_publish), TAG_DONE);
+                              MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)tabs,
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_row(status, quit_btn),
                                                   TAG_DONE)
@@ -765,6 +854,7 @@ static int shell_main(void) {
     DoMethod(cover_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_COVER);
     DoMethod(publish_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PUBLISH);
     DoMethod(revoke_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REVOKE);
+    DoMethod(aminet_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
     {
         ULONG name_str = 0;
@@ -796,6 +886,10 @@ static int shell_main(void) {
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
             shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,
                          format_cycle);
+        }
+        if (id == ID_AMINET) {
+            shell_aminet(app, status, g_groups, group_cycle, code_field, desc_field, format_cycle, type_field, arch_field,
+                         uname_field, email_field);
         }
         if (id == ID_PICK && shell_pick_drawer()) {
             SetAttrs(files_text, UPA_Text_Contents, (ULONG)g_files, TAG_DONE);
