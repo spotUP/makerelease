@@ -85,6 +85,28 @@ static Object *shell_row(Object *a, Object *b) {
                          MUIA_Group_Child, (ULONG)a, MUIA_Group_Child, (ULONG)b, TAG_DONE);
 }
 
+/* A two-column form: labels in one column (as wide as the widest), fields in the other, so every input shares a left edge. */
+static Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object *l3, Object *f3, Object *l4, Object *f4,
+                          Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7) {
+    Object *kids[14];
+    struct TagItem t[18];
+    int i, n = 0;
+    kids[0] = l1; kids[1] = f1; kids[2] = l2; kids[3] = f2; kids[4] = l3; kids[5] = f3; kids[6] = l4;
+    kids[7] = f4; kids[8] = l5; kids[9] = f5; kids[10] = l6; kids[11] = f6; kids[12] = l7; kids[13] = f7;
+    t[n].ti_Tag = MUIA_Group_Columns;
+    t[n++].ti_Data = 2;
+    t[n].ti_Tag = MUIA_FillArea;
+    t[n++].ti_Data = (ULONG)FALSE;
+    for (i = 0; i < 14; i++) {
+        if (kids[i] == NULL) continue;
+        t[n].ti_Tag = MUIA_Group_Child;
+        t[n++].ti_Data = (ULONG)kids[i];
+    }
+    t[n].ti_Tag = TAG_DONE;
+    t[n].ti_Data = 0;
+    return MUI_NewObjectA((char *)MUIC_Group, t);
+}
+
 /* A raised card: a heading line, then the widgets (NULLs skipped). */
 /* A page card sits at the top of its page: a PageMode group is as tall as its tallest page and centres the shorter cards. */
 #define SHELL_PAD 4
@@ -833,22 +855,18 @@ static int shell_main(void) {
     }
     {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
-        Object *page_release = shell_card("Release", shell_row(row_label("Group"), group_cycle),
-                                          shell_row(row_label("Name"), name_field),
-                                          shell_row(row_label("Code"), code_field),
-                                          shell_row(row_label("Platform"), platform_field),
-                                          shell_row(row_label("Format"), format_cycle),
-                                          shell_row(row_label("Description"), desc_field),
-                                          shell_row(row_label("Notes"), g_notes_field));
+        Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_cycle, row_label("Name"), name_field,
+                                                                  row_label("Code"), code_field, row_label("Platform"), platform_field,
+                                                                  row_label("Format"), format_cycle, row_label("Description"), desc_field,
+                                                                  row_label("Notes"), g_notes_field), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
                                           shell_row(row_label("Cover"), cover_text),
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
-        Object *page_aminet = shell_card("Aminet upload", shell_row(row_label("Directory"), type_field),
-                                         shell_row(row_label("Architecture"), arch_field),
-                                         shell_row(row_label("Uploader"), uname_field),
-                                         shell_row(row_label("Email"), email_field), NULL, NULL, NULL);
+        Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
+                                                                     row_label("Uploader"), uname_field, row_label("Email"), email_field,
+                                                                     NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         static const char *const tab_captions[] = { "Release", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
