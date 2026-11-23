@@ -879,7 +879,7 @@ static int shell_main(void) {
                         MUIA_Window_Width, (ULONG)MUIV_Window_Width_Screen(70),
                         MUIA_Window_LeftEdge, (ULONG)MUIV_Window_LeftEdge_Centered,
                         MUIA_Window_RootObject,
-                        (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Panel,
+                        (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Surface,
                                              UPA_Panel_Popup, (ULONG)TRUE, MUIA_Group_Child, (ULONG)content, TAG_DONE),
                         TAG_DONE);
     }
