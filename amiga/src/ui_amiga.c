@@ -864,6 +864,7 @@ static int shell_main(void) {
             : MUI_NewObject((char *)MUIC_Window, MUIA_Window_ID, 0x524C5350,
                         MUIA_Window_Borderless, (ULONG)TRUE, MUIA_Window_DragBar, (ULONG)FALSE, MUIA_Window_CloseGadget, (ULONG)FALSE,
                         MUIA_Window_SizeGadget, (ULONG)FALSE, MUIA_Window_DepthGadget, (ULONG)FALSE,
+                        MUIA_Window_Width, (ULONG)MUIV_Window_Width_Screen(70),
                         MUIA_Window_LeftEdge, (ULONG)MUIV_Window_LeftEdge_Centered,
                         MUIA_Window_RootObject,
                         (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Panel,
