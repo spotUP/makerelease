@@ -87,6 +87,13 @@ static Object *shell_row(Object *a, Object *b) {
 
 /* A raised card: a heading line, then the widgets (NULLs skipped). */
 /* A page card sits at the top of its page: a PageMode group is as tall as its tallest page and centres the shorter cards. */
+#define SHELL_PAD 12
+/* A fixed blank gap (w x h px) for window padding and the space above the bottom row. */
+static Object *shell_gap(ULONG w, ULONG h) {
+    return MUI_NewObject((char *)MUIC_Rectangle, MUIA_FillArea, (ULONG)FALSE, w ? MUIA_FixWidth : TAG_IGNORE, w,
+                         h ? MUIA_FixHeight : TAG_IGNORE, h, TAG_DONE);
+}
+
 static Object *top_page(Object *card) {
     return MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_VertSpacing, 0UL, MUIA_Group_Child, (ULONG)card,
                          MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Rectangle, MUIA_FillArea, (ULONG)FALSE, TAG_DONE), TAG_DONE);
@@ -106,6 +113,8 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
     kids[7] = g;
     t[n].ti_Tag = UPA_Panel_Role;
     t[n++].ti_Data = (ULONG)UPV_Panel_Role_Raised;
+    t[n].ti_Tag = UPA_Panel_FlatTopLeft; /* flush against the first tab */
+    t[n++].ti_Data = (ULONG)TRUE;
     for (i = 0; i < 8; i++) {
         if (kids[i] == NULL) continue;
         t[n].ti_Tag = MUIA_Group_Child;
@@ -785,7 +794,9 @@ static int shell_main(void) {
     build_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Build", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
                               (ULONG)UPV_Button_Role_Accent, TAG_DONE);
     preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
-    quit_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "X", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    quit_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Role, (ULONG)UPV_Button_Role_Ghost, UPA_Button_Icon, (ULONG) "x",
+                             UPA_Button_IconOnly, (ULONG)TRUE, UPA_Button_Flat, (ULONG)TRUE, UPA_Button_FixedWidth, 24UL,
+                             UPA_Button_FixedHeight, 24UL, TAG_DONE);
     cover_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick cover...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     publish_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Publish", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
                                 (ULONG)UPV_Button_Role_Accent, TAG_DONE);
@@ -840,10 +851,21 @@ static int shell_main(void) {
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                               MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
-        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)tabs,
-                                                  MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_row(status, quit_btn),
+        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
+                                                  MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD),
+                                                  MUIA_Group_Child, (ULONG)status,
                                                   TAG_DONE)
                                   : NULL;
+        if (content != NULL) { /* window padding: blank bands round the content */
+            content = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Spacing, 0UL,
+                                    MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)content,
+                                    MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), TAG_DONE);
+        }
+        if (content != NULL) {
+            content = MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Spacing, 0UL,
+                                    MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD), MUIA_Group_Child, (ULONG)content,
+                                    MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD), TAG_DONE);
+        }
         win = content == NULL ? NULL
             : MUI_NewObject((char *)MUIC_Window, MUIA_Window_ID, 0x524C5350,
                         MUIA_Window_Borderless, (ULONG)TRUE, MUIA_Window_DragBar, (ULONG)FALSE, MUIA_Window_CloseGadget, (ULONG)FALSE,
