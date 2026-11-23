@@ -21,6 +21,12 @@ int main(void) {
     CHECK_STR(out, "HYPOC-2");
     rp_lower("UP-HYPOC.LHA", out, sizeof(out));
     CHECK_STR(out, "up-hypoc.lha");
+    rp_suggest_code("Fleisch Bitte AD 006", 5, out, sizeof(out));
+    CHECK_STR(out, "FB006");
+    rp_suggest_code("Hypocrisy", 5, out, sizeof(out));
+    CHECK_STR(out, "HYPOC");
+    rp_suggest_code("Fleisch Bitte 12345678", 5, out, sizeof(out));
+    CHECK_STR(out, "45678");
     if (failures == 0) puts("naming: all passed");
     return failures != 0;
 }

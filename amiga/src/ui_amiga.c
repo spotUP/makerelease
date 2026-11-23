@@ -68,6 +68,12 @@ static Object *shell_label(const char *text, ULONG tone) {
     return MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)text, UPA_Text_Tone, tone, TAG_DONE);
 }
 
+/* A row label: fixed to its text width so the field beside it gets the rest of the row (an unbounded label took half and cut the placeholder). */
+static Object *row_label(const char *text) {
+    return MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)text, UPA_Text_Tone, (ULONG)UPV_Text_Tone_Normal, UPA_Text_Fixed,
+                         (ULONG)TRUE, TAG_DONE);
+}
+
 /* A row of one or two widgets; a NULL second half leaves a full-width row. */
 static Object *shell_row(Object *a, Object *b) {
     if (b == NULL) {
@@ -121,6 +127,7 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 #define ID_PUBLISH 6
 #define ID_REVOKE 7
 #define ID_DOOR 8
+#define ID_NAME 9
 
 #define RP_MAX_FILES_PATH 511
 
@@ -300,6 +307,11 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     DateStamp(&ds);
     rp_iso_date((long)ds.ds_Days + 2922, date, sizeof(date));
     rp_upper(code_txt, code, sizeof(code));
+    if ((int)strlen(code) != g->code_length) {
+        snprintf(errmsg, sizeof(errmsg), "Code must be exactly %d letters or digits.", g->code_length);
+        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        return;
+    }
     rp_base_name(g->file_prefix, code, base, sizeof(base));
     snprintf(packed, sizeof(packed), "%s.%s", base, active ? "ZIP" : "LHA");
     snprintf(path, sizeof(path), "PROGDIR:groups/%s/file_id.diz", g->id);
@@ -592,6 +604,28 @@ static rp_group g_groups[RP_MAX_SHELL_GROUPS];
 static const char *g_group_labels[RP_MAX_SHELL_GROUPS + 1];
 static int g_ngroups;
 
+/* The code follows the release name until the user types their own (the desktop Prefill rule). */
+static char g_code_filled[40];
+
+static void shell_suggest_code(Object *name_field, Object *code_field, Object *group_cycle) {
+    ULONG np = 0, cp = 0, ga = 0;
+    STRPTR name = (STRPTR) "", cur = (STRPTR) "";
+    char sug[40];
+    GetAttr(UPA_Field_String, name_field, &np);
+    GetAttr(UPA_Field_String, code_field, &cp);
+    if (np == 0 || cp == 0) return;
+    GetAttr(MUIA_String_Contents, (Object *)np, (ULONG *)&name);
+    GetAttr(MUIA_String_Contents, (Object *)cp, (ULONG *)&cur);
+    if (name == NULL) name = (STRPTR) "";
+    if (cur == NULL) cur = (STRPTR) "";
+    if (cur[0] != '\0' && strcmp((const char *)cur, g_code_filled) != 0) return;
+    GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+    rp_suggest_code((const char *)name, ga < (ULONG)g_ngroups ? g_groups[ga].code_length : 5, sug, sizeof(sug));
+    strcpy(g_code_filled, sug);
+    SetAttrs((Object *)cp, MUIA_String_Contents, (ULONG)sug, TAG_DONE);
+}
+
+
 static int shell_main(void) {
     Object *app = NULL, *win = NULL;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
@@ -676,21 +710,21 @@ static int shell_main(void) {
     }
     {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
-        Object *page_release = shell_card("Release", shell_row(shell_label("Group", UPV_Text_Tone_Normal), group_cycle),
-                                          shell_row(shell_label("Name", UPV_Text_Tone_Normal), name_field),
-                                          shell_row(shell_label("Code", UPV_Text_Tone_Normal), code_field),
-                                          shell_row(shell_label("Platform", UPV_Text_Tone_Normal), platform_field),
-                                          shell_row(shell_label("Format", UPV_Text_Tone_Normal), format_cycle),
-                                          shell_row(shell_label("Description", UPV_Text_Tone_Normal), desc_field));
-        Object *page_files = shell_card("Files to include", shell_row(shell_label("Drawer", UPV_Text_Tone_Normal), files_text),
+        Object *page_release = shell_card("Release", shell_row(row_label("Group"), group_cycle),
+                                          shell_row(row_label("Name"), name_field),
+                                          shell_row(row_label("Code"), code_field),
+                                          shell_row(row_label("Platform"), platform_field),
+                                          shell_row(row_label("Format"), format_cycle),
+                                          shell_row(row_label("Description"), desc_field));
+        Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
-                                          shell_row(shell_label("Cover", UPV_Text_Tone_Normal), cover_text),
+                                          shell_row(row_label("Cover"), cover_text),
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), NULL, NULL);
         static const char *const tab_captions[] = { "Release", "Files", "Publish", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
-        pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_Group_VertSpacing, 0UL, MUIA_FillArea, (ULONG)FALSE,
+        pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                               MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), TAG_DONE);
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)tabs,
@@ -732,6 +766,13 @@ static int shell_main(void) {
     DoMethod(publish_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PUBLISH);
     DoMethod(revoke_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REVOKE);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
+    {
+        ULONG name_str = 0;
+        GetAttr(UPA_Field_String, name_field, &name_str);
+        if (name_str != 0) {
+            DoMethod((Object *)name_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NAME);
+        }
+    }
     DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage,
              MUIV_TriggerValue);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
@@ -750,6 +791,7 @@ static int shell_main(void) {
         if (id == ID_BUILD) {
             shell_build(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
+        if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
         if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
             shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,

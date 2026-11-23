@@ -35,3 +35,32 @@ void rp_archive_name(const char *prefix, const char *code, int lha, char *out, s
     rp_base_name(prefix, code, base, sizeof(base));
     snprintf(out, cap, "%s.%s", base, lha ? "LHA" : "ZIP");
 }
+
+void rp_suggest_code(const char *name, int length, char *out, size_t cap) {
+    char up[128], letters[16], first[16] = "";
+    int nl = 0, nd = 0, end, room, i;
+    const char *digits;
+    rp_upper(name, up, sizeof(up));
+    end = (int)strlen(up);
+    while (end > 0 && up[end - 1] == ' ') end--;
+    digits = up + end;
+    while (digits > up && digits[-1] >= '0' && digits[-1] <= '9') digits--;
+    nd = (int)(up + end - digits);
+    if (nd > length) { digits += nd - length; nd = length; }
+    room = length - nd;
+    if (room > (int)sizeof(letters) - 1) room = (int)sizeof(letters) - 1;
+    for (i = 0; i < (int)(digits - up) && i < end; i++) {
+        int in_word = up[i] >= 'A' && up[i] <= 'Z';
+        if (!in_word) continue;
+        if (i > 0 && up[i - 1] >= 'A' && up[i - 1] <= 'Z') continue;
+        if (nl < room) letters[nl++] = up[i];
+        if (first[0] == '\0') {
+            int k = 0;
+            while (up[i + k] >= 'A' && up[i + k] <= 'Z' && k < (int)sizeof(first) - 1) { first[k] = up[i + k]; k++; }
+            first[k] = '\0';
+        }
+    }
+    for (i = 1; nl < room && first[i] != '\0'; i++) letters[nl++] = first[i];
+    letters[nl] = '\0';
+    snprintf(out, cap, "%s%.*s", letters, nd, digits);
+}
