@@ -860,6 +860,18 @@ static int shell_main(void) {
                                                   MUIA_Group_Child, (ULONG)status,
                                                   TAG_DONE)
                                   : NULL;
+        /* Window padding: MUI adds 4 px (3 px top and bottom) itself, these bands bring every edge to 8. KeepSpacing stops UP-Panel
+         * from giving the bands its card gap. */
+        if (content != NULL) {
+            content = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
+                                    MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)content,
+                                    MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), TAG_DONE);
+        }
+        if (content != NULL) {
+            content = MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
+                                    MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD + 1), MUIA_Group_Child, (ULONG)content,
+                                    MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD + 1), TAG_DONE);
+        }
         win = content == NULL ? NULL
             : MUI_NewObject((char *)MUIC_Window, MUIA_Window_ID, 0x524C5350,
                         MUIA_Window_Borderless, (ULONG)TRUE, MUIA_Window_DragBar, (ULONG)FALSE, MUIA_Window_CloseGadget, (ULONG)FALSE,
