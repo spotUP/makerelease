@@ -821,7 +821,7 @@ static int shell_main(void) {
                                  UPA_List_Count, 6UL, /* the list asks its height from the row count at open: start at 6 rows, emptied after open */
                                  TAG_DONE);
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
-    status = shell_label(broken[0] ? broken : "Fill in the release, then press Build.", UPV_Text_Tone_Muted);
+    status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
