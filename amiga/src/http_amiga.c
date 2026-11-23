@@ -281,4 +281,35 @@ done:
     if (rc && !resp->error[0]) fail(resp, "request failed%s", "");
     return rc ? -1 : 0;
 }
+
+/* Plain TCP for the Aminet FTP client (aminet.h). SocketBase is opened with the
+ * first connection and closed with the last. */
+#include "aminet.h"
+static int tcp_open_count;
+static int tcp_open(void *ctx, const char *host, int port, char *err, size_t errcap)
+{
+    rp_http_resp r;
+    int s;
+    (void)ctx;
+    memset(&r, 0, sizeof r);
+    if (!SocketBase && !(SocketBase = OpenLibrary((STRPTR)"bsdsocket.library", 4))) {
+        snprintf(err, errcap, "no TCP/IP stack (bsdsocket.library)"); return -1;
+    }
+    if ((s = connect_to(host, port, &r)) < 0) {
+        snprintf(err, errcap, "%s", r.error);
+        if (!tcp_open_count) { CloseLibrary(SocketBase); SocketBase = NULL; }
+        return -1;
+    }
+    tcp_open_count++;
+    return s;
+}
+static int tcp_send(void *ctx, int h, const char *d, size_t n) { (void)ctx; return send_all(h, NULL, d, n); }
+static int tcp_recv(void *ctx, int h, char *b, size_t cap) { (void)ctx; return (int)recv(h, (APTR)b, (long)cap, 0); }
+static void tcp_close(void *ctx, int h)
+{
+    (void)ctx;
+    CloseSocket(h);
+    if (--tcp_open_count <= 0 && SocketBase) { CloseLibrary(SocketBase); SocketBase = NULL; tcp_open_count = 0; }
+}
+const rp_tcp_ops rp_tcp_amiga_ops = { tcp_open, tcp_send, tcp_recv, tcp_close };
 #endif
