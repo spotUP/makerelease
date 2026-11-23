@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Pure pack logic, no UI and no OS calls: the host build unit-tests it, the
 # Amiga build compiles the same files for 68020.
 add_library(packer STATIC src/template.c src/naming.c src/json.c src/groups.c src/date.c src/wrap.c src/nfo_uprough.c src/nfo_x.c
-            src/stage.c src/archive.c src/archive_preview.c)
+            src/releases_client.c src/online.c src/json_write.c src/multipart.c src/door_repo_client.c src/stage.c src/archive.c src/archive_preview.c)
 target_include_directories(packer PUBLIC src)
 
 # The UI is per platform: the MUI shell on Amiga (release headers only,
@@ -15,7 +15,12 @@ target_include_directories(packer PUBLIC src)
 if(CMAKE_CROSSCOMPILING)
     add_executable(packer-cli src/main.c src/ui_amiga.c src/archive_run.c)
     target_include_directories(packer-cli PRIVATE vendor/up-mcc/include)
-    target_link_libraries(packer-cli PRIVATE mui)
+    target_link_libraries(packer-cli PRIVATE mui http_amiga)
+    # HTTP(S) transport: bsdsocket + AmiSSL (libraries opened by hand, no libamisslauto).
+    add_library(http_amiga STATIC src/http_amiga.c)
+    target_include_directories(http_amiga PUBLIC src vendor/amissl-sdk/include)
+    add_executable(net-probe src/net_probe.c)
+    target_link_libraries(net-probe PRIVATE http_amiga)
 else()
     add_executable(packer-cli src/main.c src/ui_host.c)
 endif()
@@ -25,7 +30,7 @@ target_link_libraries(packer-cli PRIVATE packer)
 # host builds run the suites through ctest.
 if(NOT CMAKE_CROSSCOMPILING)
     enable_testing()
-    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview)
+    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview releases_client online_writers online)
         add_executable(test_${suite} tests/test_${suite}.c)
         target_link_libraries(test_${suite} PRIVATE packer)
         add_test(NAME ${suite} COMMAND test_${suite} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

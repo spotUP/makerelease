@@ -1,0 +1,7 @@
+# up-mcc bisect (2026-11-23, rig 3)
+First bad: d3bcc7a "Slim class libraries: theme parser and stdio out, support API for log, fonts, icons" (fresh rig 3 disk, packer-cli HEAD, ping refused 10 s after launch).
+Last good: 1b65a7d (fresh disk; window "Release Packer" 548x556 opened, ping ok). packer-cli built against c556119 headers worked with it (tag IDs unchanged).
+Not testable: dc93e21 does not link (up_mcc_library: undefined UP_DrawLive/UP_Tip*/up_draw_init). 13b4621 and c556119 are code-identical (c556119 only adds packaging: Developer/ layout, CI); built libs md5-identical to the frozen build.
+Caveat: two earlier "good" runs (d3bcc7a, 13b4621) on a non-fresh disk were invalid: put over an in-use up-mcc.library kept the old 1.0 file and old packer processes stayed. Only fresh-disk runs are counted.
+Hypothesis (not verified): class libs now call up-mcc.library at Setup/Draw through lib/classlib_shims.c (aa_log -> UP_Log, mui_font_files -> UP_FontFiles, mui_icon_pick -> UP_IconBody). UP_Log lands in src/map/mui_log.c aa_vlog, which calls vfprintf(stderr, fmt, (va_list)args) inside the library (libnix stdio in a library with no initialised stderr, called with a foreign stack va_list). Also suspect UP_FontFiles/UP_IconBody (src/map/mui_icons.c) returning a bad table. Next test: build d3bcc7a with aa_vlog body emptied (and/or classlib_shims aa_log made a no-op); if no freeze, that is the cause. Serial log not checked.
+Deleted: bisect worktree, 5 build dirs, cfg/build logs in scratchpad. Rig 3 left frozen (d3bcc7a test); restart before reuse.

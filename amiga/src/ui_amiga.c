@@ -18,6 +18,9 @@
 #include <exec/types.h>
 #include <intuition/intuition.h>
 #include <libraries/mui.h>
+#ifndef MUIA_Window_Borderless
+#define MUIA_Window_Borderless 0x80429d2bUL
+#endif
 #include <proto/dos.h>
 #include <proto/exec.h>
 #include <proto/intuition.h>
@@ -35,6 +38,7 @@
 #include "naming.h"
 #include "nfo_uprough.h"
 #include "nfo_x.h"
+#include "online.h"
 #include "stage.h"
 #include "template.h"
 
@@ -75,6 +79,12 @@ static Object *shell_row(Object *a, Object *b) {
 }
 
 /* A raised card: a heading line, then the widgets (NULLs skipped). */
+/* A page card sits at the top of its page: a PageMode group is as tall as its tallest page and centres the shorter cards. */
+static Object *top_page(Object *card) {
+    return MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_VertSpacing, 0UL, MUIA_Group_Child, (ULONG)card,
+                         MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Rectangle, MUIA_FillArea, (ULONG)FALSE, TAG_DONE), TAG_DONE);
+}
+
 static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f) {
     struct TagItem t[16];
     Object *kids[7];
@@ -107,10 +117,53 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 #define ID_PICK 2
 #define ID_PREVIEW 3
 #define ID_FLATTEN 4
+#define ID_COVER 5
+#define ID_PUBLISH 6
+#define ID_REVOKE 7
+#define ID_DOOR 8
 
 #define RP_MAX_FILES_PATH 511
 
 static char g_files[RP_MAX_FILES_PATH + 1];
+static char g_cover[RP_MAX_FILES_PATH + 1];
+
+/* The ASL file requester for the cover image. Returns 1 when a file was picked. */
+static int shell_pick_cover(void) {
+    struct FileRequester *req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG) "Pick the cover image",
+                                                    ASLFR_RejectIcons, TRUE, TAG_DONE);
+    if (req == NULL) {
+        shell_requester("The file requester could not open.\nFree some memory and try again.");
+        return 0;
+    }
+    if (!AslRequest(req, NULL) || req->rf_File == NULL || req->rf_File[0] == '\0') {
+        FreeAslRequest(req);
+        return 0;
+    }
+    strncpy(g_cover, req->rf_Dir, sizeof(g_cover) - 1);
+    g_cover[sizeof(g_cover) - 1] = '\0';
+    AddPart((STRPTR)g_cover, req->rf_File, sizeof(g_cover));
+    FreeAslRequest(req);
+    return 1;
+}
+
+/* Revoke cannot be undone: ask first, like the desktop confirm. Returns 1 on Revoke. */
+static int shell_confirm_revoke(const char *code) {
+    struct EasyStruct es;
+    struct IntuitionBase *prev = IntuitionBase;
+    struct IntuitionBase *ib = (struct IntuitionBase *)OpenLibrary((CONST_STRPTR) "intuition.library", 36);
+    LONG r;
+    if (ib == NULL) return 0;
+    IntuitionBase = ib;
+    es.es_StructSize = sizeof es;
+    es.es_Flags = 0;
+    es.es_Title = (UBYTE *)"Release Packer";
+    es.es_TextFormat = (UBYTE *)"Revoke release %s?\nThis removes its catalog entry, frees its release number\nand code, and deletes the published archive.\nOnly the most recently created release can be revoked.";
+    es.es_GadgetFormat = (UBYTE *)"Revoke|Cancel";
+    r = EasyRequest(NULL, &es, NULL, (APTR)code);
+    CloseLibrary((struct Library *)ib);
+    IntuitionBase = prev;
+    return r == 1;
+}
 
 /* The ASL drawer requester. Returns 1 when a drawer was picked. */
 static int shell_pick_drawer(void) {
@@ -201,10 +254,14 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
     SetAttrs(list, UPA_List_Count, (ULONG)g_prev.nentries, UPA_List_Active, (ULONG)-1, TAG_DONE);
 }
 
+/* Same choices as the desktop app; index 0 is no platform tag. */
+static const char *const g_platform_labels[] = { "None", "A500", "A1200", "Console", NULL };
+static const char *const g_platform_tags[] = { "", "A500", "A1200", "Console" };
+
 static void shell_build(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
                         Object *code_field, Object *platform_field, Object *desc_field, Object *format_cycle) {
     /* The inner string gadgets hold the text; UPA_Field_String gives them. */
-    ULONG name_ptr = 0, code_ptr = 0, plat_ptr = 0, desc_ptr = 0, gactive = 0, active = 0;
+    ULONG name_ptr = 0, code_ptr = 0, desc_ptr = 0, gactive = 0, active = 0;
     STRPTR name_txt, code_txt, plat_txt, desc_txt;
     const rp_group *g;
     char path[256], *diz = NULL, *nfo = NULL, code[40], base[64], packed[72], date[16];
@@ -221,7 +278,6 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
 
     GetAttr(UPA_Field_String, name_field, &name_ptr);
     GetAttr(UPA_Field_String, code_field, &code_ptr);
-    GetAttr(UPA_Field_String, platform_field, &plat_ptr);
     GetAttr(UPA_Field_String, desc_field, &desc_ptr);
     name_txt = (STRPTR) "";
     code_txt = (STRPTR) "";
@@ -229,11 +285,14 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     desc_txt = (STRPTR) "";
     if (name_ptr != 0) GetAttr(MUIA_String_Contents, (Object *)name_ptr, (ULONG *)&name_txt);
     if (code_ptr != 0) GetAttr(MUIA_String_Contents, (Object *)code_ptr, (ULONG *)&code_txt);
-    if (plat_ptr != 0) GetAttr(MUIA_String_Contents, (Object *)plat_ptr, (ULONG *)&plat_txt);
+    {
+        ULONG pa = 0;
+        GetAttr(UPA_Cycle_Active, platform_field, &pa);
+        plat_txt = (STRPTR)(pa < 4 ? g_platform_tags[pa] : "");
+    }
     if (desc_ptr != 0) GetAttr(MUIA_String_Contents, (Object *)desc_ptr, (ULONG *)&desc_txt);
     if (name_txt == NULL) name_txt = (STRPTR) "";
     if (code_txt == NULL) code_txt = (STRPTR) "";
-    if (plat_txt == NULL) plat_txt = (STRPTR) "";
     if (desc_txt == NULL) desc_txt = (STRPTR) "";
     GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
     GetAttr(UPA_Cycle_Active, format_cycle, &active);
@@ -475,6 +534,57 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     }
 }
 
+/* Publish / Revoke / Door repository. Synchronous: the status line says
+ * "Working..." and MUI gets one input pump to draw it, then the call blocks the
+ * window until the server answers (no cancel; the transport has its own limits). */
+static void shell_online(Object *app, Object *status, int action, const rp_group *groups, Object *group_cycle,
+                         Object *name_field, Object *code_field, Object *platform_field, Object *desc_field,
+                         Object *format_cycle) {
+    ULONG gactive = 0, active = 0, sigs = 0, pa = 0;
+    const rp_group *g;
+    char code[40], base[64], packed[72], archive[160], diz[160], msg[400];
+    struct DateStamp ds;
+    unsigned long seed;
+    GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
+    GetAttr(UPA_Cycle_Active, format_cycle, &active);
+    g = &groups[gactive];
+    rp_upper(shell_field_text(code_field), code, sizeof(code));
+    rp_base_name(g->file_prefix, code, base, sizeof(base));
+    snprintf(packed, sizeof(packed), "%s.%s", base, active ? "ZIP" : "LHA");
+    snprintf(archive, sizeof(archive), "PROGDIR:releases/%s", packed);
+    snprintf(diz, sizeof(diz), "PROGDIR:releases/%s/file_id.diz", base);
+    DateStamp(&ds);
+    seed = (unsigned long)ds.ds_Days * 4321UL + (unsigned long)ds.ds_Minute * 3000UL + (unsigned long)ds.ds_Tick;
+    if (action == ID_REVOKE && (code[0] == '\0' || !shell_confirm_revoke(code))) {
+        SetAttrs(status, UPA_Text_Contents, (ULONG)(code[0] ? "Revoke cancelled." : "Enter the code of the release to revoke."), TAG_DONE);
+        return;
+    }
+    SetAttrs(status, UPA_Text_Contents, (ULONG) "Working...", TAG_DONE);
+    DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
+    if (action == ID_PUBLISH) {
+        rp_online_publish_args a;
+        memset(&a, 0, sizeof a);
+        GetAttr(UPA_Cycle_Active, platform_field, &pa);
+        a.group = g;
+        a.code = code;
+        a.release_name = shell_field_text(name_field);
+        a.platform_tag = pa < 4 ? g_platform_tags[pa] : "";
+        a.description = shell_field_text(desc_field);
+        a.format = active ? "ZIP" : "LHA";
+        a.diz_path = diz;
+        a.archive_path = archive;
+        a.image_path = g_cover;
+        a.seed = seed;
+        a.http = rp_http_amiga;
+        rp_online_publish(&a, msg, sizeof(msg));
+    } else if (action == ID_REVOKE) {
+        rp_online_revoke(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
+    } else {
+        rp_online_door(g, archive, seed, rp_http_amiga, NULL, msg, sizeof(msg));
+    }
+    SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+}
+
 /* Event ids above MUIV_Application_ReturnID_Quit are ours. */
 #define RP_MAX_SHELL_GROUPS 16
 
@@ -486,7 +596,8 @@ static int shell_main(void) {
     Object *app = NULL, *win = NULL;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     Object *files_text, *pick_btn, *build_btn, *status;
-    Object *preview_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
+    Object *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
+    Object *tabs, *pages, *preview_btn, *quit_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
     static const char *const formats[] = { "LHA", "ZIP", NULL };
     char ids[RP_MAX_SHELL_GROUPS][RP_ID_MAX + 1];
@@ -530,16 +641,23 @@ static int shell_main(void) {
     group_cycle = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_group_labels, TAG_DONE);
     name_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Release name", TAG_DONE);
     code_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Code", TAG_DONE);
-    platform_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Platform, e.g. A1200", TAG_DONE);
+    platform_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_platform_labels, TAG_DONE);
     desc_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "One-line description", TAG_DONE);
     format_cycle =
         MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)formats, TAG_DONE);
     files_text = shell_label("(no files drawer picked)", UPV_Text_Tone_Muted);
-    pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick...", TAG_DONE);
-    build_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Build", UPA_Button_Role,
+    pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    build_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Build", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
                               (ULONG)UPV_Button_Role_Accent, TAG_DONE);
-    preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview", TAG_DONE);
-    flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", TAG_DONE);
+    preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    quit_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "X", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    cover_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick cover...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    publish_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Publish", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
+                                (ULONG)UPV_Button_Role_Accent, TAG_DONE);
+    revoke_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Revoke", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    door_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Door repo", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
+    flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
     *(void **)&g_preview_hook.h_Entry = (void *)rp_preview_row_tramp;
     preview_list = MUI_NewObject((char *)"UP-List.mcc", UPA_List_RowHook, (ULONG)&g_preview_hook, UPA_List_NoSelect,
@@ -550,37 +668,45 @@ static int shell_main(void) {
     status = shell_label(broken[0] ? broken : "Fill in the release, then press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
-        build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL) {
+        build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
+        cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
     }
-    win = MUI_NewObject((char *)MUIC_Window, MUIA_Window_Title, (ULONG) "Release Packer", MUIA_Window_ID, 0x524C5350,
+    {
+        /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
+        Object *page_release = shell_card("Release", shell_row(shell_label("Group", UPV_Text_Tone_Normal), group_cycle),
+                                          shell_row(shell_label("Name", UPV_Text_Tone_Normal), name_field),
+                                          shell_row(shell_label("Code", UPV_Text_Tone_Normal), code_field),
+                                          shell_row(shell_label("Platform", UPV_Text_Tone_Normal), platform_field),
+                                          shell_row(shell_label("Format", UPV_Text_Tone_Normal), format_cycle),
+                                          shell_row(shell_label("Description", UPV_Text_Tone_Normal), desc_field));
+        Object *page_files = shell_card("Files to include", shell_row(shell_label("Drawer", UPV_Text_Tone_Normal), files_text),
+                                        shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL);
+        Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
+                                          shell_row(shell_label("Cover", UPV_Text_Tone_Normal), cover_text),
+                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), NULL, NULL);
+        static const char *const tab_captions[] = { "Release", "Files", "Publish", NULL };
+        Object *content;
+        tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
+        pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_Group_VertSpacing, 0UL, MUIA_FillArea, (ULONG)FALSE,
+                              MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_files),
+                              MUIA_Group_Child, (ULONG)top_page(page_publish), TAG_DONE);
+        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)tabs,
+                                                  MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_row(status, quit_btn),
+                                                  TAG_DONE)
+                                  : NULL;
+        win = content == NULL ? NULL
+            : MUI_NewObject((char *)MUIC_Window, MUIA_Window_ID, 0x524C5350,
+                        MUIA_Window_Borderless, (ULONG)TRUE, MUIA_Window_DragBar, (ULONG)FALSE, MUIA_Window_CloseGadget, (ULONG)FALSE,
+                        MUIA_Window_SizeGadget, (ULONG)FALSE, MUIA_Window_DepthGadget, (ULONG)FALSE,
+                        MUIA_Window_Width, (ULONG)MUIV_Window_Width_Screen(70), MUIA_Window_LeftEdge, (ULONG)MUIV_Window_LeftEdge_Centered,
                         MUIA_Window_RootObject,
                         (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Panel,
-                                             MUIA_Group_Child,
-                                             (ULONG)MUI_NewObject((char *)MUIC_Scrollgroup, MUIA_Scrollgroup_FreeHoriz, (ULONG)FALSE,
-                                             /* the cards stack taller than a 640x256 screen: the window clamps to the screen and this scrolls */
-                                             MUIA_Scrollgroup_Contents,
-                                             (ULONG)MUI_NewObject((char *)MUIC_Virtgroup, MUIA_FillArea, (ULONG)FALSE,
-                                             MUIA_Group_Child,
-                                             (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea,
-                                                                  (ULONG)FALSE, /* side by side: stacked, the cards outgrow an 800x600 screen */
-                                             MUIA_Group_Child,
-                                             (ULONG)shell_card("Release", shell_row(shell_label("Group", UPV_Text_Tone_Normal), group_cycle),
-                                                              shell_row(shell_label("Name", UPV_Text_Tone_Normal), name_field),
-                                                              shell_row(shell_label("Code", UPV_Text_Tone_Normal), code_field),
-                                                              shell_row(shell_label("Platform", UPV_Text_Tone_Normal), platform_field),
-                                                              NULL, NULL),
-                                             MUIA_Group_Child,
-                                             (ULONG)shell_card("Pack", shell_row(shell_label("Format", UPV_Text_Tone_Normal), format_cycle),
-                                                              shell_row(shell_label("Description", UPV_Text_Tone_Normal), desc_field),
-                                                              shell_row(shell_label("Files", UPV_Text_Tone_Normal), files_text),
-                                                              shell_row(pick_btn, preview_btn), shell_row(build_btn, NULL), NULL),
-                                             TAG_DONE),
-                                             MUIA_Group_Child, (ULONG)shell_card("Archive preview", warn_row, preview_list, NULL, NULL, NULL, NULL),
-                                             MUIA_Group_Child, (ULONG)status, TAG_DONE), TAG_DONE), TAG_DONE),
+                                             UPA_Panel_Popup, (ULONG)TRUE, MUIA_Group_Child, (ULONG)content, TAG_DONE),
                         TAG_DONE);
+    }
     if (win == NULL) {
         shell_requester("The window could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
@@ -596,10 +722,18 @@ static int shell_main(void) {
     }
     DoMethod(win, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, (ULONG)app, 2UL, MUIM_Application_ReturnID,
              (ULONG)MUIV_Application_ReturnID_Quit);
+    DoMethod(quit_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID,
+             (ULONG)MUIV_Application_ReturnID_Quit);
     DoMethod(build_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BUILD);
     DoMethod(pick_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PICK);
     DoMethod(preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PREVIEW);
     DoMethod(flatten_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FLATTEN);
+    DoMethod(cover_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_COVER);
+    DoMethod(publish_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PUBLISH);
+    DoMethod(revoke_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REVOKE);
+    DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
+    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage,
+             MUIV_TriggerValue);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
@@ -615,6 +749,11 @@ static int shell_main(void) {
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
         if (id == ID_BUILD) {
             shell_build(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+        }
+        if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
+        if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
+            shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,
+                         format_cycle);
         }
         if (id == ID_PICK && shell_pick_drawer()) {
             SetAttrs(files_text, UPA_Text_Contents, (ULONG)g_files, TAG_DONE);
