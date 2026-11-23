@@ -50,4 +50,11 @@ char *rp_aminet_render_readme(const rp_aminet_readme_in *in);
 int rp_aminet_upload(const rp_tcp_ops *ops, void *ctx, const char *archive_base, const char *uploader_email,
                      const char *readme_text, const char *data, size_t len, char *msg, size_t cap);
 
+/* The four Aminet form values kept between runs: one per line (directory, architecture, uploader, email).
+ * load returns 0 when the file was read, -1 when it is missing (p untouched). */
+#define RP_AMINET_PREF_MAX 128
+typedef struct { char directory[RP_AMINET_PREF_MAX], architecture[RP_AMINET_PREF_MAX], uploader[RP_AMINET_PREF_MAX], email[RP_AMINET_PREF_MAX]; } rp_aminet_prefs;
+int rp_aminet_prefs_load(const char *path, rp_aminet_prefs *p);
+int rp_aminet_prefs_save(const char *path, const rp_aminet_prefs *p);
+
 #endif

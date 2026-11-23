@@ -19,3 +19,9 @@ Branch `more-classes` in amiga/vendor/up-mcc (no push). Merged: Checkmark, Radio
 - [ ] Agents running: all-classes m68k build+install+demo+counts (ad1eee...), host test link failure vs base (ab8548...).
 - [ ] After: remove app workarounds (top_page, VertSpacing 0) in ui_amiga.c; Platform as Poplist/Cycle; commit outer repo (ui_amiga.c, CMakeLists, new online sources by name) + submodule pin; push question for up-mcc more-classes (upstream origin/main 0ac5741 has other fixes).
 - [ ] A4 remaining: cover upload, Aminet FTP, live publish test (GET-safe), AmiSSL reinstall on rig 3.
+
+## Ledger update 2026-11-23 (packer notes and settings)
+- [x] Online layer (bfbbada), Aminet upload (fef049f, c39dd41, 7fc0ea8), code suggestion from release name (ce0e709). Unverified on screen.
+- [x] Release notes: single-line "Notes" field in the Release tab (no multi-line UP class exists), fed to Build (both NFOs), Publish (releaseNotes) and the Aminet readme. Compiles, host tests pass; not seen on a screen.
+- [x] Aminet Directory/Architecture/Uploader/Email persist in PROGDIR:aminet.prefs (rp_aminet_prefs_load/save in aminet.c, saved on the Aminet button, loaded at start; host test in test_aminet.c). No prior settings mechanism existed (groups are drawers only).
+- [ ] Multi-line notes needs an UP-MCC multi-line text class; then swap the field.

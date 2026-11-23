@@ -97,6 +97,16 @@ int main(void) {
     CHECK(rp_aminet_upload(&ops, NULL, "UP-HYPOC.LHA", "nomail", good, "D", 1, msg, sizeof msg) == -1);
     CHECK(strstr(msg, "email is missing"));
 
+    {
+        rp_aminet_prefs p, q;
+        memset(&p, 0, sizeof p);
+        strcpy(p.directory, "demo/aga"); strcpy(p.architecture, "m68k-amigaos"); strcpy(p.uploader, "Me"); strcpy(p.email, "me@x.org");
+        CHECK(rp_aminet_prefs_save("/tmp/rp_aminet.prefs", &p) == 0);
+        CHECK(rp_aminet_prefs_load("/tmp/rp_aminet.prefs", &q) == 0);
+        CHECK(!strcmp(q.directory, "demo/aga") && !strcmp(q.architecture, "m68k-amigaos") && !strcmp(q.uploader, "Me") && !strcmp(q.email, "me@x.org"));
+        CHECK(rp_aminet_prefs_load("/tmp/rp_no_such_file", &q) == -1);
+        remove("/tmp/rp_aminet.prefs");
+    }
     if (failures) return 1;
     puts("aminet ok");
     return 0;

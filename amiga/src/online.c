@@ -96,7 +96,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     f.format = a->format;
     f.release_name = s[ns++] = u8dup(a->release_name);
     f.platform_tag = s[ns++] = u8dup(a->platform_tag);
-    f.release_notes = "";
+    f.release_notes = s[ns++] = u8dup(a->release_notes ? a->release_notes : "");
     f.news = "";
     f.diz_banner = s[ns++] = u8dup(dizraw);
     f.entry_title = f.release_name;

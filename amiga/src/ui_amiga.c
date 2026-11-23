@@ -92,9 +92,9 @@ static Object *top_page(Object *card) {
                          MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Rectangle, MUIA_FillArea, (ULONG)FALSE, TAG_DONE), TAG_DONE);
 }
 
-static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f) {
+static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f, Object *g) {
     struct TagItem t[16];
-    Object *kids[7];
+    Object *kids[8];
     int i, n = 0;
     kids[0] = shell_label(title, UPV_Text_Tone_Title);
     kids[1] = a;
@@ -103,9 +103,10 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
     kids[4] = d;
     kids[5] = e;
     kids[6] = f;
+    kids[7] = g;
     t[n].ti_Tag = UPA_Panel_Role;
     t[n++].ti_Data = (ULONG)UPV_Panel_Role_Raised;
-    for (i = 0; i < 7; i++) {
+    for (i = 0; i < 8; i++) {
         if (kids[i] == NULL) continue;
         t[n].ti_Tag = MUIA_Group_Child;
         t[n++].ti_Data = (ULONG)kids[i];
@@ -230,6 +231,9 @@ __asm__(".text\n.even\n.globl _rp_preview_row_tramp\n_rp_preview_row_tramp:\n"
 
 static struct Hook g_preview_hook;
 
+/* The Release tab notes field; read by Build, Publish and Aminet. */
+static Object *g_notes_field;
+
 static const char *shell_field_text(Object *field) {
     ULONG ptr = 0;
     STRPTR txt = NULL;
@@ -237,6 +241,14 @@ static const char *shell_field_text(Object *field) {
     if (ptr != 0) GetAttr(MUIA_String_Contents, (Object *)ptr, (ULONG *)&txt);
     return txt ? (const char *)txt : "";
 }
+
+static void shell_set_field(Object *field, const char *text) {
+    ULONG ptr = 0;
+    GetAttr(UPA_Field_String, field, &ptr);
+    if (ptr != 0) SetAttrs((Object *)ptr, MUIA_String_Contents, (ULONG)text, TAG_DONE);
+}
+
+#define RP_AMINET_PREFS_PATH "PROGDIR:aminet.prefs"
 
 static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_text, const rp_group *groups,
                                   Object *group_cycle, Object *code_field, Object *status) {
@@ -403,7 +415,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         nf.code = code;
         nf.format_lha = active ? 0 : 1;
         nf.release_date = date;
-        nf.notes = "";
+        nf.notes = shell_field_text(g_notes_field);
         nf.news = "";
         nf.members = g->members;
         nf.nmembers = g->nmembers;
@@ -423,7 +435,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         xf.coder = "";
         xf.system = plat_txt;
         xf.design = "";
-        xf.notes = "";
+        xf.notes = shell_field_text(g_notes_field);
         xf.news = "";
         xf.members = g->members;
         xf.nmembers = g->nmembers;
@@ -584,6 +596,7 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
         a.release_name = shell_field_text(name_field);
         a.platform_tag = pa < 4 ? g_platform_tags[pa] : "";
         a.description = shell_field_text(desc_field);
+        a.release_notes = shell_field_text(g_notes_field);
         a.format = active ? "ZIP" : "LHA";
         a.diz_path = diz;
         a.archive_path = archive;
@@ -642,9 +655,18 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     in.group_url = g->url;
     in.entry_creators = creators;
     in.description = shell_field_text(desc_field);
-    in.release_notes = "";
+    in.release_notes = shell_field_text(g_notes_field);
     in.credits = credits;
     in.n_credits = g->nmembers;
+    {
+        rp_aminet_prefs pr;
+        memset(&pr, 0, sizeof pr);
+        strncpy(pr.directory, in.type, sizeof(pr.directory) - 1);
+        strncpy(pr.architecture, in.architecture, sizeof(pr.architecture) - 1);
+        strncpy(pr.uploader, in.uploader_name, sizeof(pr.uploader) - 1);
+        strncpy(pr.email, in.uploader_email, sizeof(pr.email) - 1);
+        rp_aminet_prefs_save(RP_AMINET_PREFS_PATH, &pr);
+    }
     readme = rp_aminet_render_readme(&in);
     norm = readme ? rp_aminet_normalize_readme(readme) : NULL;
     if (norm == NULL || rp_aminet_names(packed, lname, lreadme, sizeof(lname)) != 0) {
@@ -774,6 +796,7 @@ static int shell_main(void) {
     arch_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. m68k-amigaos", TAG_DONE);
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
+    g_notes_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Release notes (one line)", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
@@ -788,7 +811,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL) {
+        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -800,16 +823,17 @@ static int shell_main(void) {
                                           shell_row(row_label("Code"), code_field),
                                           shell_row(row_label("Platform"), platform_field),
                                           shell_row(row_label("Format"), format_cycle),
-                                          shell_row(row_label("Description"), desc_field));
+                                          shell_row(row_label("Description"), desc_field),
+                                          shell_row(row_label("Notes"), g_notes_field));
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
-                                        shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL);
+                                        shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
                                           shell_row(row_label("Cover"), cover_text),
-                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL);
+                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_row(row_label("Directory"), type_field),
                                          shell_row(row_label("Architecture"), arch_field),
                                          shell_row(row_label("Uploader"), uname_field),
-                                         shell_row(row_label("Email"), email_field), NULL, NULL);
+                                         shell_row(row_label("Email"), email_field), NULL, NULL, NULL);
         static const char *const tab_captions[] = { "Release", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
@@ -866,6 +890,15 @@ static int shell_main(void) {
     DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage,
              MUIV_TriggerValue);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
+    {
+        rp_aminet_prefs pr;
+        if (rp_aminet_prefs_load(RP_AMINET_PREFS_PATH, &pr) == 0) {
+            shell_set_field(type_field, pr.directory);
+            shell_set_field(arch_field, pr.architecture);
+            shell_set_field(uname_field, pr.uploader);
+            shell_set_field(email_field, pr.email);
+        }
+    }
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
     if (!is_open) {

@@ -402,3 +402,27 @@ char *rp_aminet_render_readme(const rp_aminet_readme_in *in)
     lv_free(&notes); lv_free(&body);
     return b.data;
 }
+
+int rp_aminet_prefs_load(const char *path, rp_aminet_prefs *p) {
+    FILE *f = fopen(path, "rb");
+    char *dst[4], line[RP_AMINET_PREF_MAX + 8];
+    int i;
+    if (!f) return -1;
+    dst[0] = p->directory; dst[1] = p->architecture; dst[2] = p->uploader; dst[3] = p->email;
+    memset(p, 0, sizeof *p);
+    for (i = 0; i < 4 && fgets(line, sizeof line, f); i++) {
+        size_t n = strcspn(line, "\r\n");
+        if (n >= RP_AMINET_PREF_MAX) n = RP_AMINET_PREF_MAX - 1;
+        memcpy(dst[i], line, n);
+        dst[i][n] = '\0';
+    }
+    fclose(f);
+    return 0;
+}
+
+int rp_aminet_prefs_save(const char *path, const rp_aminet_prefs *p) {
+    FILE *f = fopen(path, "wb");
+    if (!f) return -1;
+    fprintf(f, "%s\n%s\n%s\n%s\n", p->directory, p->architecture, p->uploader, p->email);
+    return fclose(f) == 0 ? 0 : -1;
+}
