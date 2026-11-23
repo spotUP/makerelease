@@ -87,7 +87,7 @@ static Object *shell_row(Object *a, Object *b) {
 
 /* A raised card: a heading line, then the widgets (NULLs skipped). */
 /* A page card sits at the top of its page: a PageMode group is as tall as its tallest page and centres the shorter cards. */
-#define SHELL_PAD 12
+#define SHELL_PAD 4
 /* A fixed blank gap (w x h px) for window padding and the space above the bottom row. */
 static Object *shell_gap(ULONG w, ULONG h) {
     return MUI_NewObject((char *)MUIC_Rectangle, MUIA_FillArea, (ULONG)FALSE, w ? MUIA_FixWidth : TAG_IGNORE, w,
@@ -860,21 +860,11 @@ static int shell_main(void) {
                                                   MUIA_Group_Child, (ULONG)status,
                                                   TAG_DONE)
                                   : NULL;
-        if (content != NULL) { /* window padding: blank bands round the content */
-            content = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Spacing, 0UL,
-                                    MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)content,
-                                    MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), TAG_DONE);
-        }
-        if (content != NULL) {
-            content = MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Spacing, 0UL,
-                                    MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD), MUIA_Group_Child, (ULONG)content,
-                                    MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD), TAG_DONE);
-        }
         win = content == NULL ? NULL
             : MUI_NewObject((char *)MUIC_Window, MUIA_Window_ID, 0x524C5350,
                         MUIA_Window_Borderless, (ULONG)TRUE, MUIA_Window_DragBar, (ULONG)FALSE, MUIA_Window_CloseGadget, (ULONG)FALSE,
                         MUIA_Window_SizeGadget, (ULONG)FALSE, MUIA_Window_DepthGadget, (ULONG)FALSE,
-                        MUIA_Window_Width, (ULONG)MUIV_Window_Width_Screen(70), MUIA_Window_LeftEdge, (ULONG)MUIV_Window_LeftEdge_Centered,
+                        MUIA_Window_LeftEdge, (ULONG)MUIV_Window_LeftEdge_Centered,
                         MUIA_Window_RootObject,
                         (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Panel,
                                              UPA_Panel_Popup, (ULONG)TRUE, MUIA_Group_Child, (ULONG)content, TAG_DONE),
