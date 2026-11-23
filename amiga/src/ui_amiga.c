@@ -33,6 +33,7 @@
 
 #include "archive.h"
 #include "aminet.h"
+#include "aminet_types.h"
 #include "archive_preview.h"
 #include "date.h"
 #include "groups.h"
@@ -162,6 +163,7 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 #define ID_DOOR 8
 #define ID_NAME 9
 #define ID_AMINET 10
+#define ID_PLATFORM 11
 
 #define RP_MAX_FILES_PATH 511
 
@@ -281,6 +283,28 @@ static void shell_set_field(Object *field, const char *text) {
 
 #define RP_AMINET_PREFS_PATH "PROGDIR:aminet.prefs"
 
+/* Aminet Directory cycle entries: index 0 is "(choose)" (no directory), index i+1 is rp_aminet_types[i]. */
+static const char *g_type_labels[RP_AMINET_TYPES_MAX + 2];
+
+static void shell_type_labels_init(void) {
+    int i;
+    g_type_labels[0] = "(choose)";
+    for (i = 0; rp_aminet_types[i] && i < RP_AMINET_TYPES_MAX; i++) g_type_labels[i + 1] = rp_aminet_types[i];
+    g_type_labels[i + 1] = NULL;
+}
+
+static const char *shell_type_dir(Object *cycle) {
+    ULONG a = 0;
+    GetAttr(UPA_Cycle_Active, cycle, &a);
+    return a > 0 && a <= (ULONG)rp_aminet_type_count() ? rp_aminet_types[a - 1] : "";
+}
+
+/* An unknown or empty directory selects "(choose)". */
+static void shell_set_type(Object *cycle, const char *dir) {
+    SetAttrs(cycle, UPA_Cycle_Active, (ULONG)(rp_aminet_type_index(dir) + 1), TAG_DONE);
+}
+
+
 static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_text, const rp_group *groups,
                                   Object *group_cycle, Object *code_field, Object *status) {
     ULONG gactive = 0;
@@ -309,6 +333,15 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
 /* Same choices as the desktop app; index 0 is no platform tag. */
 static const char *const g_platform_labels[] = { "None", "A500", "A1200", "Console", NULL };
 static const char *const g_platform_tags[] = { "", "A500", "A1200", "Console" };
+
+/* No category field on the Release tab yet, so the guess uses the empty category: no directory unless a later category field feeds it. */
+static void shell_guess_type(Object *type_cycle, Object *platform_field) {
+    ULONG pa = 0;
+    const char *guess;
+    GetAttr(UPA_Cycle_Active, platform_field, &pa);
+    guess = rp_aminet_guess_type("", pa < 4 ? g_platform_tags[pa] : "");
+    if (guess[0]) shell_set_type(type_cycle, guess);
+}
 
 static void shell_build(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
                         Object *code_field, Object *platform_field, Object *desc_field, Object *format_cycle) {
@@ -678,7 +711,7 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     }
     memset(&in, 0, sizeof in);
     in.short_text = shell_field_text(desc_field);
-    in.type = shell_field_text(type_field);
+    in.type = shell_type_dir(type_field);
     in.architecture = shell_field_text(arch_field);
     in.uploader_email = shell_field_text(email_field);
     in.uploader_name = shell_field_text(uname_field);
@@ -809,7 +842,7 @@ static int shell_main(void) {
     {   /* longest code any group allows; the exact length per group is still checked at Build */
         int i, maxcode = 1;
         for (i = 0; i < g_ngroups; i++) if (g_groups[i].code_length > maxcode) maxcode = g_groups[i].code_length;
-        code_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Code", MUIA_String_MaxLen, (ULONG)maxcode + 1, TAG_DONE);
+        code_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Short release code", MUIA_String_MaxLen, (ULONG)maxcode + 1, TAG_DONE);
     }
     platform_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_platform_labels, TAG_DONE);
     desc_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "One-line description", TAG_DONE);
@@ -829,7 +862,8 @@ static int shell_main(void) {
     revoke_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Revoke", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     door_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Door repo", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     aminet_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Aminet", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
-    type_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Directory, e.g. demo/aga", TAG_DONE);
+    shell_type_labels_init();
+    type_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_type_labels, TAG_DONE);
     arch_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. m68k-amigaos", TAG_DONE);
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
@@ -927,6 +961,7 @@ static int shell_main(void) {
     DoMethod(publish_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PUBLISH);
     DoMethod(revoke_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REVOKE);
     DoMethod(aminet_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET);
+    DoMethod(platform_field, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
     {
         ULONG name_str = 0;
@@ -941,12 +976,13 @@ static int shell_main(void) {
     {
         rp_aminet_prefs pr;
         if (rp_aminet_prefs_load(RP_AMINET_PREFS_PATH, &pr) == 0) {
-            shell_set_field(type_field, pr.directory);
+            shell_set_type(type_field, pr.directory);
             shell_set_field(arch_field, pr.architecture);
             shell_set_field(uname_field, pr.uploader);
             shell_set_field(email_field, pr.email);
         }
     }
+    if (shell_type_dir(type_field)[0] == '\0') shell_guess_type(type_field, platform_field);
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
     if (!is_open) {
@@ -962,6 +998,7 @@ static int shell_main(void) {
         if (id == ID_BUILD) {
             shell_build(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
+        if (id == ID_PLATFORM) shell_guess_type(type_field, platform_field);
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
         if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
