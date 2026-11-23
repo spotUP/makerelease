@@ -96,7 +96,7 @@ static Object *shell_gap(ULONG w, ULONG h) {
 
 static Object *top_page(Object *card) {
     return MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_VertSpacing, 0UL, MUIA_Group_Child, (ULONG)card,
-                         MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Rectangle, MUIA_FillArea, (ULONG)FALSE, TAG_DONE), TAG_DONE);
+                         MUIA_Group_Child, (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Surface, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, TAG_DONE), TAG_DONE); /* the filler erases what a taller page left below this card */
 }
 
 static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f, Object *g) {
@@ -856,8 +856,9 @@ static int shell_main(void) {
                               MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
-                                                  MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD),
-                                                  MUIA_Group_Child, (ULONG)status,
+                                                  MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
+                                                  MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
+                                                                          MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status, TAG_DONE),
                                                   TAG_DONE)
                                   : NULL;
         /* Window padding: MUI adds 4 px (3 px top and bottom) itself, these bands bring every edge to 8. KeepSpacing stops UP-Panel
