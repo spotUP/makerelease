@@ -35,6 +35,15 @@ char *rp_aminet_normalize_readme(const char *latin1);
  * Returns the number of problems (0 = may upload). */
 int rp_aminet_problems(const char *archive, const char *readme, const char *readme_text, char *msg, size_t cap);
 
+typedef struct { const char *role, *name; } rp_aminet_credit;
+typedef struct {
+    const char *short_text, *type, *architecture, *uploader_email, *uploader_name;
+    const char *group_label, *group_url, *entry_creators, *description, *release_notes;
+    const rp_aminet_credit *credits; size_t n_credits;
+} rp_aminet_readme_in;
+/* renderAminetReadme: header block, blank line, wrapped body (78 columns, LF). malloc'd; NULL on OOM. */
+char *rp_aminet_render_readme(const rp_aminet_readme_in *in);
+
 /* uploadToAminet: validates, then uploads archive and readme in one FTP session. data/len = the
  * built archive bytes; readme_text = the already normalized readme. Returns 0 on success, -1
  * otherwise; msg is the status line (desktop wording). Never contacts anything but via ops. */

@@ -62,6 +62,20 @@ int main(void) {
     t = rp_aminet_normalize_readme("a\xE4\r\nb\xE9\xFF\r");
     CHECK(t && !strcmp(t, "aae\nbe?\n")); free(t);
 
+    {
+        /* golden from the TS renderAminetReadme (app/src/shared/aminet-readme.ts), same input */
+        static const rp_aminet_credit cr[] = {{"Code", "Spot"}, {"Music", "Dipswitch"}, {"", ""}};
+        static const char *gold = "Short:        A500 HDD demo from Chaos Constructions\nUploader:     spot@uprough.net (Spot)\nAuthor:       Up Rough (Spot, Dipswitch)\nType:         demo/aga\nArchitecture: m68k-amigaos\nDistribution: Aminet\n\nHypocrisy, our AGA demo for Chaos Constructions 2025.\n\nNeeds 2MB chip and a hard drive.\nTested on A1200/030. word word word word word word word word word word word\nword word word word word word word word word\n\nCredits:\n  Code: Spot\n  Music: Dipswitch\n\nReleased by Up Rough - https://www.uprough.net\n";
+        rp_aminet_readme_in in = {"A500 HDD demo from Chaos Constructions", "demo/aga", "m68k-amigaos",
+            "spot@uprough.net", "Spot", "Up Rough", "https://www.uprough.net", "Spot, Dipswitch",
+            "Hypocrisy, our AGA demo for Chaos Constructions 2025.",
+            "\nHypocrisy, our AGA demo for Chaos Constructions 2025.\n\nNeeds 2MB chip and a hard drive.  \n"
+            "Tested on A1200/030. word word word word word word word word word word word word word word word word word word word word\n",
+            cr, 3};
+        t = rp_aminet_render_readme(&in);
+        CHECK(t && !strcmp(t, gold)); free(t);
+    }
+
     CHECK(rp_aminet_problems(a, r, good, msg, sizeof msg) == 0);
     CHECK(rp_aminet_problems(a, r, "Short: \nUploader: bad\nType: Demo\n", msg, sizeof msg) >= 4);
     CHECK(strstr(msg, "Short: is empty") && strstr(msg, "Architecture: is empty"));

@@ -214,8 +214,8 @@ int rp_http_amiga(void *ctx, const rp_http_req *req, rp_http_resp *resp)
             fail(resp, "amisslmaster.library missing%s", ""); goto done;
         }
         if (OpenAmiSSLTags(AMISSL_CURRENT_VERSION, AmiSSL_UsesOpenSSLStructs, FALSE,
-                           AmiSSL_GetAmiSSLBase, &AmiSSLBase, AmiSSL_GetAmiSSLExtBase, &AmiSSLExtBase,
-                           AmiSSL_SocketBase, SocketBase, AmiSSL_ErrNoPtr, &errno, TAG_DONE) != 0) {
+                           AmiSSL_GetAmiSSLBase, (ULONG)&AmiSSLBase, AmiSSL_GetAmiSSLExtBase, (ULONG)&AmiSSLExtBase,
+                           AmiSSL_SocketBase, (ULONG)SocketBase, AmiSSL_ErrNoPtr, (ULONG)&errno, TAG_DONE) != 0) {
             fail(resp, "cannot open AmiSSL%s", ""); goto done;
         }
         ssl_open = 1;

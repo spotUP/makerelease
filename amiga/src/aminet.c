@@ -6,6 +6,7 @@
 #include <string.h>
 
 #include "strbuf.h"
+#include "wrap.h"
 
 int rp_aminet_names(const char *base, char *archive, char *readme, size_t cap)
 {
@@ -264,4 +265,140 @@ int rp_aminet_upload(const rp_tcp_ops *ops, void *ctx, const char *base, const c
     snprintf(msg, cap, "Aminet upload of %s failed: %s", an, err);
     ops->close(ctx, f.h);
     return -1;
+}
+
+/* ---- renderAminetReadme ---- */
+
+typedef struct { char **v; size_t n, cap; int oom; } lvec;
+
+static void lv_add(lvec *l, const char *s, size_t len)
+{
+    char *d;
+    if (l->oom) return;
+    if (l->n == l->cap) {
+        char **p = realloc(l->v, (l->cap ? l->cap * 2 : 16) * sizeof *p);
+        if (!p) { l->oom = 1; return; }
+        l->v = p; l->cap = l->cap ? l->cap * 2 : 16;
+    }
+    d = malloc(len + 1);
+    if (!d) { l->oom = 1; return; }
+    memcpy(d, s, len); d[len] = 0;
+    l->v[l->n++] = d;
+}
+
+static void lv_free(lvec *l) { size_t i; for (i = 0; i < l->n; i++) free(l->v[i]); free(l->v); }
+
+static void lv_wrap(lvec *l, const char *text)
+{
+    rp_lines w = rp_wrap_words(text, RP_AMINET_LINE_MAX, RP_AMINET_LINE_MAX);
+    size_t i;
+    for (i = 0; i < w.n; i++) lv_add(l, w.lines[i], strlen(w.lines[i]));
+    rp_free_lines(&w);
+}
+
+/* wrapPreformatted: own line breaks kept, only lines over 78 columns re-wrapped. */
+static void lv_preformatted(lvec *l, const char *text)
+{
+    const char *p = text;
+    for (;;) {
+        const char *e = p;
+        size_t n;
+        while (*e && *e != '\n' && *e != '\r') e++;
+        n = (size_t)(e - p);
+        if (n > RP_AMINET_LINE_MAX) {
+            char *tmp = malloc(n + 1);
+            if (!tmp) { l->oom = 1; return; }
+            memcpy(tmp, p, n); tmp[n] = 0;
+            lv_wrap(l, tmp);
+            free(tmp);
+        } else {
+            while (n && (p[n - 1] == ' ' || p[n - 1] == '\t')) n--;
+            lv_add(l, p, n);
+        }
+        if (!*e) break;
+        if (*e == '\r' && e[1] == '\n') e++;
+        p = e + 1;
+    }
+}
+
+static const char *trim(const char *s, size_t *len)
+{
+    const char *e;
+    while (isspace((unsigned char)*s)) s++;
+    e = s + strlen(s);
+    while (e > s && isspace((unsigned char)e[-1])) e--;
+    *len = (size_t)(e - s);
+    return s;
+}
+
+static void put_trim(strbuf *b, const char *s) { size_t n; s = trim(s, &n); sb_putn(b, s, n); }
+
+static void header(strbuf *b, const char *label, const char *value)
+{
+    size_t n = strlen(label) + 1;
+    sb_puts(b, label); sb_puts(b, ":");
+    for (; n < 14; n++) sb_puts(b, " ");
+    put_trim(b, value);
+    sb_puts(b, "\n");
+}
+
+static void edges(lvec *l, size_t *first, size_t *end)
+{
+    while (*first < *end && !l->v[*first][0]) (*first)++;
+    while (*end > *first && !l->v[*end - 1][0]) (*end)--;
+}
+
+char *rp_aminet_render_readme(const rp_aminet_readme_in *in)
+{
+    strbuf b = {0};
+    lvec notes = {0}, body = {0};
+    size_t i, nf, ne, bf, be, dl;
+    const char *desc = trim(in->description, &dl);
+    size_t cl;
+    const char *cr = trim(in->entry_creators, &cl);
+
+    lv_preformatted(&notes, in->release_notes);
+    nf = 0; ne = notes.n; edges(&notes, &nf, &ne);
+    if (nf < ne) {
+        size_t n; const char *t = trim(notes.v[nf], &n);
+        if (dl && n == dl && !memcmp(t, desc, n)) { nf++; edges(&notes, &nf, &ne); }
+    }
+    lv_wrap(&body, in->description);
+    lv_add(&body, "", 0);
+    for (i = nf; i < ne; i++) lv_add(&body, notes.v[i], strlen(notes.v[i]));
+    {
+        int any = 0;
+        for (i = 0; i < in->n_credits; i++) {
+            size_t rl, nl; const char *r = trim(in->credits[i].role, &rl), *nm = trim(in->credits[i].name, &nl);
+            char *line;
+            if (!rl && !nl) continue;
+            if (!any) { lv_add(&body, "", 0); lv_add(&body, "Credits:", 8); any = 1; }
+            line = malloc(rl + nl + 5);
+            if (!line) { body.oom = 1; break; }
+            sprintf(line, "  %.*s: %.*s", (int)rl, r, (int)nl, nm);
+            lv_preformatted(&body, line);
+            free(line);
+        }
+    }
+    lv_add(&body, "", 0);
+    {
+        char *sig = malloc(strlen(in->group_label) + strlen(in->group_url) + 32);
+        if (!sig) body.oom = 1;
+        else { sprintf(sig, "Released by %s - %s", in->group_label, in->group_url); lv_add(&body, sig, strlen(sig)); free(sig); }
+    }
+    if (notes.oom || body.oom) { lv_free(&notes); lv_free(&body); return NULL; }
+
+    header(&b, "Short", in->short_text);
+    sb_puts(&b, "Uploader:     "); put_trim(&b, in->uploader_email); sb_puts(&b, " ("); put_trim(&b, in->uploader_name); sb_puts(&b, ")\n");
+    sb_puts(&b, "Author:       "); sb_puts(&b, in->group_label);
+    if (cl) { sb_puts(&b, " ("); sb_putn(&b, cr, cl); sb_puts(&b, ")"); }
+    sb_puts(&b, "\n");
+    header(&b, "Type", in->type);
+    header(&b, "Architecture", in->architecture);
+    header(&b, "Distribution", "Aminet");
+    sb_puts(&b, "\n");
+    bf = 0; be = body.n; edges(&body, &bf, &be);
+    for (i = bf; i < be; i++) { sb_puts(&b, body.v[i]); sb_puts(&b, "\n"); }
+    lv_free(&notes); lv_free(&body);
+    return b.data;
 }
