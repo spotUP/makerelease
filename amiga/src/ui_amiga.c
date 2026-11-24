@@ -35,6 +35,7 @@
 #include "build_gate.h"
 #include "last_choice.h"
 #include "platform_tag.h"
+#include "aminet_short.h"
 #include "aminet.h"
 #include "aminet_preview.h"
 #include "release_preview.h"
@@ -303,6 +304,8 @@ static char g_number_text[24];
 /* The Platform detail text (which console / the Other tag) and its row, shown for Console and Other only. */
 static Object *g_platform_text_field, *g_platform_row;
 static char g_platform_tag_buf[64];
+/* The Aminet Short line (40 characters at most), prefilled from the Description when empty. */
+static Object *g_short_field;
 
 const char *shell_field_text(Object *field) {
     ULONG ptr = 0;
@@ -1236,7 +1239,12 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
         }
     }
     memset(&in, 0, sizeof in);
-    in.short_text = shell_field_text(desc_field);
+    if (shell_field_text(g_short_field)[0] == '\0') {
+        char sh[RP_AMINET_SHORT_MAX + 1];
+        rp_aminet_short_prefill(shell_field_text(desc_field), sh, sizeof sh);
+        shell_set_field(g_short_field, sh);
+    }
+    in.short_text = shell_field_text(g_short_field);
     in.type = shell_type_dir(type_field);
     GetAttr(UPA_Cycle_Active, arch_field, &arch_active);
     in.architecture = rp_aminet_architectures[arch_active <= 7 ? arch_active : 0];
@@ -1399,6 +1407,7 @@ static int shell_main(void) {
     platform_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)rp_platform_labels, TAG_DONE);
     g_platform_text_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Which console, or CD32", MUIA_String_MaxLen, (ULONG)(sizeof(g_platform_tag_buf)), TAG_DONE);
     g_platform_row = g_platform_text_field ? shell_row(row_label("Platform detail"), g_platform_text_field) : NULL;
+    g_short_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Aminet index line", MUIA_String_MaxLen, (ULONG)(RP_AMINET_SHORT_MAX + 1), TAG_DONE);
     desc_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "One-line description", TAG_DONE);
     format_cycle =
         MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)formats, TAG_DONE);
@@ -1453,7 +1462,7 @@ static int shell_main(void) {
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
-        g_date_field == NULL || g_released_field == NULL || g_number_row == NULL || g_platform_row == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
+        g_date_field == NULL || g_released_field == NULL || g_number_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1479,8 +1488,9 @@ static int shell_main(void) {
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
+                                                                     row_label("Short"), g_short_field,
                                                                      area_label("Readme"), g_readme_view,
-                                                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
+                                                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
