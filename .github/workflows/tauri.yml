@@ -1,0 +1,72 @@
+name: Tauri build
+
+# Builds the Tauri port on Windows (WebView2), Linux (webkit2gtk) and macOS
+# so the render can be checked on real machines before the release switch.
+on:
+  push:
+    branches: [main]
+    paths: ['tauri/**', 'app/src/**', 'app/package*.json', '.github/workflows/tauri.yml']
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            bundles: nsis
+          - os: ubuntu-22.04
+            bundles: appimage,deb
+          - os: macos-latest
+            bundles: app
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Linux packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf libssl-dev libxdo-dev build-essential
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: tauri/src-tauri
+
+      - name: Install app and Tauri CLI
+        run: |
+          (cd app && npm ci)
+          (cd tauri && npm ci)
+
+      - name: Sync renderer into tauri/web
+        run: sh tauri/scripts/sync-web.sh
+
+      - name: Rust tests
+        run: cargo test --manifest-path tauri/src-tauri/Cargo.toml
+
+      - name: Icons for all platforms
+        working-directory: tauri
+        run: npx tauri icon src-tauri/icons/icon.png -o src-tauri/icons
+
+      - name: Build bundle
+        working-directory: tauri
+        run: npx tauri build --bundles ${{ matrix.bundles }}
+
+      - name: Bundle sizes
+        run: du -sh tauri/src-tauri/target/release/bundle/*/* || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: makerelease-tauri-${{ runner.os }}
+          path: tauri/src-tauri/target/release/bundle/
+          if-no-files-found: error
