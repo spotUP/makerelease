@@ -5,62 +5,54 @@ working on the app itself.
 
 ## Commands
 
-All commands run from `app/`.
+The app is the Tauri port in `../tauri/`; this folder holds only the
+renderer (the window) and the shared TypeScript it uses. The Tauri build
+compiles it with `npm run build:renderer` through `tauri/scripts/sync-web.sh`.
 
 ```sh
 npm install
-npm start            # build main, preload and renderer, then launch Electron
-npm run typecheck    # main, preload and renderer projects
+npm run typecheck    # renderer and shared
 npm test             # vitest run, suites under test/unit/
 npx vitest run test/unit/<name>.spec.ts
-npm run dist         # electron-builder for this system
-npm run dist:private # two-distribution private build: mac, Windows, Linux
+npm run build:renderer
 ```
 
-## Two distributions
+Run the app from the repo root: `sh tauri/scripts/sync-web.sh && cd tauri && npx tauri dev`.
 
-`npm run dist` builds the public app: first launch seeds the example group,
-and anyone adds their own groups through the Manage groups menu.
+## Private groups
 
-`npm run dist:private` builds the private app for our own groups: it bundles
-`app/private-profiles/` (git-ignored; copy the group folders there, key
-included, never the example) and first launch seeds those instead. The script
-refuses to build when the folder is missing, empty, holds `example`, or holds
-a doorserver group without a real write key. Seeding copies missing ids only,
-so reinstalling never overwrites a group the user edited.
-`PRIVATE_PROFILES_DIR=<dir> npm start` previews private seeding in a dev run.
+`app/private-profiles/` (git-ignored; the group folders, key included, never
+the example) is what a private build seeds on first launch instead of the
+example. The Tauri app reads it from `PRIVATE_PROFILES_DIR` or a bundled
+`private-profiles` resource. Seeding copies missing ids only, so reinstalling
+never overwrites a group the user edited.
 
 ## Layout
 
-- `src/main/` Electron main process: profiles, build, staging, archiving,
-  backends, Aminet upload.
 - `src/renderer/` the form and its previews.
-- `src/shared/` code both sides use: profile parsing, the placeholder
+- `src/shared/` code the renderer uses: profile parsing, the placeholder
   template language, naming, the DIZ release line, the Aminet readme.
-- `test/unit/` vitest suites. `test/fixtures/` byte-exact NFO and DIZ files.
+- `test/unit/` vitest suites. `test/fixtures/` byte-exact NFO and DIZ files,
+  also read by the Rust tests in `tauri/src-tauri/`.
 
 ## How a build flows
 
-1. `profiles.ts` loads `profile.json` and the templates from the user data
-   folder.
-2. `backendFor` in `backend.ts` picks the backend named in the profile:
-   `none` builds on disk only, `releases-doorserver` numbers and publishes
-   through a server.
-3. `generateOutputs` in `nfo-generator.ts` dispatches on the profile's
-   renderer: `placeholder` fills the group's templates, `uprough` and
-   `xinnovations` draw the two built-in layouts.
-4. `staging.ts` lays out the release folder and `archiver.ts` runs `lha` or
-   `zip`.
+The backend is Rust in `tauri/src-tauri/src/`:
 
-Each path has a reachability test (`test/unit/reach-*.spec.ts`) that drives
-the real IPC handlers.
+1. `profiles.rs` loads `profile.json` and the templates from the user data
+   folder.
+2. `net.rs` holds the backends: `none` builds on disk only,
+   `releases-doorserver` numbers and publishes through a server.
+3. `build.rs` renders the outputs (`placeholder` fills the group's
+   templates, `uprough` and `xinnovations` draw the two built-in layouts),
+   stages the release folder and runs `lha` or `zip`.
 
 ## Golden output
 
 The `uprough` and `xinnovations` renderers must keep producing the same
-bytes. `test/unit/ur-golden.spec.ts` and `test/unit/x-golden.spec.ts` compare
-them with fixtures. Update a fixture only from a measured source, never by
-retyping it.
+bytes. The `ur_golden`, `ex_golden` and `x_golden` tests in
+`tauri/src-tauri/src/build.rs` compare them with `test/fixtures/`. Update a
+fixture only from a measured source, never by retyping it.
 
 ## Up Rough and /X Innovations profiles
 

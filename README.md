@@ -152,15 +152,14 @@ or upload a corrected archive under the same file name.
 
 ## Building from source
 
-Needs Node.js and npm.
+Needs Node.js, npm and a Rust toolchain (Tauri 2).
 
 ```sh
-cd app
-npm install
-npm start          # build and launch
-npm test           # unit tests
-npm run dist       # installable build for this system
-npm run dist:private  # private build for our groups (mac, Windows, Linux)
+(cd app && npm install) && (cd tauri && npm install)
+sh tauri/scripts/sync-web.sh && (cd tauri && npx tauri dev)    # build and launch
+(cd app && npm test)                                           # renderer and shared unit tests
+cargo test --manifest-path tauri/src-tauri/Cargo.toml          # backend tests
+sh tauri/scripts/sync-web.sh && (cd tauri && npx tauri build)  # installable build for this system
 ```
 
 Developer notes are in [`app/README.md`](app/README.md).
