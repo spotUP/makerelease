@@ -1696,7 +1696,7 @@ mod tests {
         fn walk(d: &Path, base: &Path, out: &mut Vec<String>) {
             for e in fs::read_dir(d).unwrap() {
                 let p = e.unwrap().path();
-                let rel = p.strip_prefix(base).unwrap().to_string_lossy().to_string();
+                let rel = p.strip_prefix(base).unwrap().to_string_lossy().replace(std::path::MAIN_SEPARATOR, "/");
                 if p.is_dir() {
                     out.push(format!("{rel}/"));
                     walk(&p, base, out);
