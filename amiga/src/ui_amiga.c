@@ -723,6 +723,7 @@ static void shell_apply_sections(const rp_group *g) {
     SetAttrs(g_template_status, MUIA_ShowMe, (ULONG)s.diz_preview, TAG_DONE);
     SetAttrs(g_diz_count, MUIA_ShowMe, (ULONG)s.diz_line, TAG_DONE); /* a placeholder diz has no release line row */
     SetAttrs(g_number_row, MUIA_ShowMe, (ULONG)s.number, TAG_DONE);
+    if (!s.number) shell_set_field(g_number_field, ""); /* a server counts releases: a hidden typed number must not linger to confuse the status */
 }
 
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
