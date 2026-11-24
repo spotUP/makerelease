@@ -82,6 +82,11 @@ static Object *row_label(const char *text) {
                          (ULONG)TRUE, TAG_DONE);
 }
 
+/* A label for a multi-line row: a column group sizes a row by its least stretchy cell, so the label sits above a spacer that stretches. */
+static Object *area_label(const char *text) {
+    return MUI_NewObject((char *)MUIC_Group, MUIA_Group_Child, (ULONG)row_label(text), MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Rectangle, TAG_DONE), TAG_DONE);
+}
+
 /* A row of one or two widgets; a NULL second half leaves a full-width row. */
 static Object *shell_row(Object *a, Object *b) {
     if (b == NULL) {
@@ -125,7 +130,7 @@ static Object *shell_gap(ULONG w, ULONG h) {
 
 static Object *top_page(Object *card) {
     return MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_VertSpacing, 0UL, MUIA_Group_Child, (ULONG)card,
-                         MUIA_Group_Child, (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Surface, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, TAG_DONE), TAG_DONE); /* the filler erases what a taller page left below this card */
+                         MUIA_Group_Child, (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Surface, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Weight, 1UL, TAG_DONE), TAG_DONE); /* the filler erases what a taller page left below this card */
 }
 
 static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f, Object *g) {
@@ -144,6 +149,8 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
     t[n++].ti_Data = (ULONG)UPV_Panel_Role_Raised;
     t[n].ti_Tag = UPA_Panel_FlatTopLeft; /* flush against the first tab */
     t[n++].ti_Data = (ULONG)TRUE;
+    t[n].ti_Tag = MUIA_Weight; /* outweighs the surface filler in top_page: a multi-line text area takes the spare window height */
+    t[n++].ti_Data = 1000UL;
     for (i = 0; i < 8; i++) {
         if (kids[i] == NULL) continue;
         t[n].ti_Tag = MUIA_Group_Child;
@@ -1326,12 +1333,12 @@ static int shell_main(void) {
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, row_label("Category"), g_category_cycle,
                                                                   row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), NULL, NULL, NULL, NULL, NULL, NULL);
-        Object *page_notes = shell_card("Notes and news", shell_form(row_label("Notes"), g_notes_field, row_label("News"), g_news_field,
+        Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
-        Object *page_roster = shell_card("Members, boards and media", shell_form(row_label("Members"), g_members_field, row_label("Boards"), g_boards_field,
-                                                                                 row_label("Media embeds"), g_embeds_field,
+        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, area_label("Boards"), g_boards_field,
+                                                                                 area_label("Media embeds"), g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
-        Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Text"), g_nfo_view,
+        Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(area_label("Text"), g_nfo_view,
                                                                         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
@@ -1340,7 +1347,7 @@ static int shell_main(void) {
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
-                                                                     row_label("Readme"), g_readme_view,
+                                                                     area_label("Readme"), g_readme_view,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
         Object *content;
