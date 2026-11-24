@@ -33,6 +33,7 @@
 
 #include "archive.h"
 #include "build_gate.h"
+#include "last_choice.h"
 #include "aminet.h"
 #include "aminet_preview.h"
 #include "release_preview.h"
@@ -418,6 +419,35 @@ static void shell_today(char *out, size_t cap) {
 }
 
 #define RP_AMINET_PREFS_PATH "PROGDIR:aminet.prefs"
+#define RP_LAST_CHOICE_PATH "PROGDIR:last.prefs"
+
+/* Remember the open group and format for the next start (desktop main.ts keeps both in localStorage). */
+static void shell_last_save(const rp_group *groups, int ngroups, Object *group_cycle, Object *format_cycle) {
+    ULONG ga = 0, fa = 0;
+    rp_last_choice c;
+    GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+    GetAttr(UPA_Cycle_Active, format_cycle, &fa);
+    if (ga >= (ULONG)ngroups) return;
+    memset(&c, 0, sizeof c);
+    snprintf(c.group, sizeof c.group, "%s", groups[ga].id);
+    c.zip = fa != 0;
+    rp_last_choice_save(RP_LAST_CHOICE_PATH, &c);
+}
+
+/* Select the remembered group and format; a group that no longer exists leaves the first one. Returns the open group's index. */
+static ULONG shell_last_restore(const rp_group *groups, int ngroups, Object *group_cycle, Object *format_cycle) {
+    rp_last_choice c;
+    ULONG i;
+    if (rp_last_choice_load(RP_LAST_CHOICE_PATH, &c) != 0) return 0;
+    SetAttrs(format_cycle, UPA_Cycle_Active, (ULONG)(c.zip ? 1 : 0), TAG_DONE);
+    for (i = 0; i < (ULONG)ngroups; i++) {
+        if (strcmp(groups[i].id, c.group) == 0) {
+            SetAttrs(group_cycle, UPA_Cycle_Active, i, TAG_DONE);
+            return i;
+        }
+    }
+    return 0;
+}
 
 /* Aminet Directory cycle entries: index 0 is "(choose)" (no directory), index i+1 is rp_aminet_types[i]. */
 static const char *g_type_labels[RP_AMINET_TYPES_MAX + 2];
@@ -1322,6 +1352,7 @@ static int shell_main(void) {
     Object *app = NULL, *win = NULL;
     Object *group_slot, *edit_groups_btn;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
+    ULONG open_group = 0;
     Object *files_text, *pick_btn, *build_btn, *status;
     Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
@@ -1506,6 +1537,8 @@ static int shell_main(void) {
     DoMethod(platform_field, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
     DoMethod(g_category_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
+    /* restored before the notifies so the programmatic set does not queue a second seed load */
+    open_group = shell_last_restore(g_groups, g_ngroups, group_cycle, format_cycle);
     DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
     DoMethod(format_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FORMAT);
     DoMethod(edit_groups_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_EDIT_GROUPS);
@@ -1548,7 +1581,7 @@ static int shell_main(void) {
         return 20;
     }
     SetAttrs(preview_list, UPA_List_Count, 0UL, TAG_DONE);
-    shell_seed_status(status, &g_groups[0], code_field, format_cycle);
+    shell_seed_status(status, &g_groups[open_group], code_field, format_cycle);
     for (;;) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
@@ -1577,6 +1610,7 @@ static int shell_main(void) {
             shell_seed_status(status, &g_groups[0], code_field, format_cycle);
         }
         if (id == ID_PLATFORM) shell_guess_type(type_field, platform_field);
+        if (id == ID_GROUP || id == ID_FORMAT) shell_last_save(g_groups, g_ngroups, group_cycle, format_cycle);
         if (id == ID_GROUP) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
