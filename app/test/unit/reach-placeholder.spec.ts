@@ -41,7 +41,6 @@ afterEach(async () => {
 });
 
 const outer = (...parts: string[]) => path.join(outputRoot, 'dry-run', 'EX-TEST1', ...parts);
-const inner = (...parts: string[]) => outer('EX-TEST1', ...parts);
 
 describe('a placeholder profile reaches a finished build', () => {
   it('fills the profile release.nfo and file_id.diz into a dry-run archive', async () => {
@@ -51,7 +50,7 @@ describe('a placeholder profile reaches a finished build', () => {
 
     expect(runExternal).toHaveBeenCalledTimes(1);
     expect(result.archivePath).toBe(path.join(outputRoot, 'dry-run', 'EX-TEST1.LHA'));
-    expect(await fs.readFile(inner('EX-TEST1.NFO'), 'latin1')).toBe(`${SENTINEL} Example Group\n`);
+    expect(await fs.readFile(outer('EX-TEST1.NFO'), 'latin1')).toBe(`${SENTINEL} Example Group\n`);
     const diz = await fs.readFile(outer('file_id.diz'), 'latin1');
     expect(diz).toContain('Demo Disk');
     expect(new Set(diz.split('\n').filter((l) => l.startsWith('|')).map((l) => l.length))).toEqual(new Set([46]));
@@ -63,7 +62,7 @@ describe('a placeholder profile reaches a finished build', () => {
     await handlers.buildRelease(null, EX_FORM, true);
 
     expect(runExternal).toHaveBeenCalledTimes(1);
-    expect((await fs.readdir(inner())).filter((f) => /\.nfo$/i.test(f))).toEqual([]);
+    expect((await fs.readdir(outer())).filter((f) => /\.nfo$/i.test(f))).toEqual([]);
     expect(await fs.readdir(outer())).toContain('file_id.diz');
   });
 
