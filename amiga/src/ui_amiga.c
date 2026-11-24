@@ -34,6 +34,7 @@
 #include "archive.h"
 #include "aminet.h"
 #include "aminet_preview.h"
+#include "release_preview.h"
 #include "aminet_types.h"
 #include "archive_preview.h"
 #include "credits.h"
@@ -171,6 +172,7 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 #define ID_GROUP 12
 #define ID_CODE 13
 #define ID_AMINET_PREVIEW 14
+#define ID_NFO_PREVIEW 15
 
 #define RP_MAX_FILES_PATH 511
 
@@ -278,7 +280,7 @@ static Object *g_news_field;
 /* The Release tab authors field: "Role: Name, Name; Role: Name", parsed by rp_parse_credits. */
 static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
-static Object *g_date_field, *g_released_field, *g_readme_view;
+static Object *g_date_field, *g_released_field, *g_readme_view, *g_nfo_view;
 
 static const char *shell_field_text(Object *field) {
     ULONG ptr = 0;
@@ -292,6 +294,7 @@ static const char *shell_field_text(Object *field) {
 #define SHELL_NOTES_MAX 2000
 #define SHELL_NEWS_MAX 1000
 #define SHELL_README_MAX 4000
+#define SHELL_NFO_VIEW_MAX 4000 /* the Preview tab box: the diz and the NFO together */
 static char g_notes_buf[SHELL_NOTES_MAX + 1], g_news_buf[SHELL_NEWS_MAX + 1];
 
 static const char *shell_area_text(Object *area, char *buf, size_t cap) {
@@ -524,8 +527,26 @@ static void shell_phase(Object *app, Object *status, const char *text) {
     DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
 }
 
-static void shell_build(Object *app, Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
-                        Object *code_field, Object *platform_field, Object *desc_field, Object *format_cycle) {
+/* The generated release texts and the names around them; Build packs them, the Preview tab shows them. */
+typedef struct {
+    const rp_group *g;
+    int zip;
+    char base[64], packed[72];
+    const char *number;
+    char *nfo; /* NULL: a placeholder group without release.nfo */
+    char *diz;
+} shell_rendered;
+
+static int shell_fail(char *err, size_t cap, const char *m) {
+    snprintf(err, cap, "%s", m);
+    return -1;
+}
+
+/* The one place the NFO and file_id.diz text is made: validates the form, loads the template and roster,
+ * renders both. Returns 0 (caller frees out->nfo and out->diz) or -1 with the reason in err. */
+static int shell_render_release(const rp_group *groups, Object *group_cycle, Object *name_field, Object *code_field,
+                                Object *platform_field, Object *desc_field, Object *format_cycle, shell_rendered *out,
+                                char *err, size_t errcap) {
     /* The inner string gadgets hold the text; UPA_Field_String gives them. */
     ULONG name_ptr = 0, code_ptr = 0, desc_ptr = 0, gactive = 0, active = 0;
     STRPTR name_txt, code_txt, plat_txt, desc_txt;
@@ -533,7 +554,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
     const rp_member *members;
     size_t nmembers;
     rp_x_board xboards[RP_ONLINE_BOARDS_MAX];
-    char path[256], *diz = NULL, *nfo = NULL, code[40], base[64], packed[72], date[16];
+    char path[256], *diz = NULL, *nfo = NULL, code[40], *base = out->base, *packed = out->packed, date[16];
     char membuf[RP_MEMBERS_MAX][RP_NICK_MAX + RP_ROLE_MAX + 4];
     const char *memberlines[RP_MEMBERS_MAX];
     static char creditbuf[RP_CREDITS_MAX][RP_CREDIT_ROLE_MAX + RP_CREDIT_NAME_MAX + 4];
@@ -576,13 +597,9 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
     rp_upper(code_txt, code, sizeof(code));
     if ((int)strlen(code) != g->code_length) {
         snprintf(errmsg, sizeof(errmsg), "Code must be exactly %d letters or digits.", g->code_length);
-        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
-        return;
+        return shell_fail(err, errcap, errmsg);
     }
-    if (shell_roster_read(g, errmsg, sizeof(errmsg)) != 0) {
-        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
-        return;
-    }
+    if (shell_roster_read(g, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
     if (g_nrows_members > 0) {
         members = g_rows_members;
         nmembers = g_nrows_members;
@@ -594,22 +611,15 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         /* the history entry needs the server's next number and a category */
         category = shell_category();
         if (category[0] == '\0') {
-            SetAttrs(status, UPA_Text_Contents, (ULONG) "Choose a category on the Release tab first.", TAG_DONE);
-            return;
+            return shell_fail(err, errcap, "Choose a category on the Release tab first.");
         }
-        if (shell_seed_load(g, errmsg, sizeof(errmsg)) != 0) {
-            SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
-            return;
-        }
+        if (shell_seed_load(g, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
         if (g_seed.number_text[0]) number = g_seed.number_text;
     }
-    rp_base_name(g->file_prefix, code, base, sizeof(base));
-    snprintf(packed, sizeof(packed), "%s.%s", base, active ? "ZIP" : "LHA");
+    rp_base_name(g->file_prefix, code, base, sizeof(out->base));
+    snprintf(packed, sizeof(out->packed), "%s.%s", base, active ? "ZIP" : "LHA");
     snprintf(path, sizeof(path), "PROGDIR:groups/%s/file_id.diz", g->id);
-    if (rp_read_template(path, 0, &diz, errmsg, sizeof(errmsg)) != 0) {
-        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
-        return;
-    }
+    if (rp_read_template(path, 0, &diz, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
     width = 0;
     for (i = 0; i < nmembers; i++) {
         size_t nl = strlen(members[i].nickname);
@@ -674,17 +684,15 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         char nfo_path[256], *tpl = NULL;
         snprintf(nfo_path, sizeof(nfo_path), "PROGDIR:groups/%s/release.nfo", g->id);
         if (rp_read_template(nfo_path, 1, &tpl, errmsg, sizeof(errmsg)) != 0) {
-            SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
             free(diz);
-            return;
+            return shell_fail(err, errcap, errmsg);
         }
         if (tpl != NULL) {
             nfo = rp_render_template(tpl, &v, &errline, errmsg, sizeof(errmsg));
             free(tpl);
             if (nfo == NULL) {
-                SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
                 free(diz);
-                return;
+                return shell_fail(err, errcap, errmsg);
             }
         }
     } else if (g->renderer == R_UPROUGH) {
@@ -708,9 +716,8 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         nf.nmembers = nmembers;
         nfo = rp_render_nfo_uprough(g->file_prefix, &hist, 1, &nf, errmsg, sizeof(errmsg));
         if (nfo == NULL) {
-            SetAttrs(status, UPA_Text_Contents, (ULONG)(errmsg[0] ? errmsg : "out of memory"), TAG_DONE);
             free(diz);
-            return;
+            return shell_fail(err, errcap, errmsg[0] ? errmsg : "out of memory");
         }
     } else {
         /* /X: the framed drawing. The release list comes from the catalog
@@ -736,17 +743,15 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         xf.nboards = g_nrows_boards;
         nfo = rp_render_nfo_x(&xf);
         if (nfo == NULL) {
-            SetAttrs(status, UPA_Text_Contents, (ULONG) "out of memory", TAG_DONE);
             free(diz);
-            return;
+            return shell_fail(err, errcap, "out of memory");
         }
     }
     rendered = rp_render_template(diz, &v, &errline, errmsg, sizeof(errmsg));
     free(diz);
     if (rendered == NULL) {
-        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         free(nfo);
-        return;
+        return shell_fail(err, errcap, errmsg);
     }
     if (g->renderer != R_PLACEHOLDER) {
         /* banner art: Released at turns the release line into "<name> at <place>" (placeholder groups use {{released_at}}) */
@@ -754,11 +759,36 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         free(rendered);
         rendered = at;
         if (rendered == NULL) {
-            SetAttrs(status, UPA_Text_Contents, (ULONG) "out of memory", TAG_DONE);
             free(nfo);
-            return;
+            return shell_fail(err, errcap, "out of memory");
         }
     }
+    out->g = g;
+    out->zip = active ? 1 : 0;
+    out->number = number;
+    out->nfo = nfo;
+    out->diz = rendered;
+    return 0;
+}
+
+static void shell_build(Object *app, Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
+                        Object *code_field, Object *platform_field, Object *desc_field, Object *format_cycle) {
+    shell_rendered r;
+    char errmsg[256];
+    const rp_group *g;
+    const char *base = r.base, *packed = r.packed, *number;
+    char *nfo, *rendered;
+    int active;
+    if (shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, &r,
+                             errmsg, sizeof(errmsg)) != 0) {
+        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        return;
+    }
+    g = r.g;
+    active = r.zip;
+    number = r.number;
+    nfo = r.nfo;
+    rendered = r.diz;
     /* Staged like the desktop: outer/ holds file_id.diz next to BASE/,
      * which holds BASE.NFO and the files. Then the archive, then the whole
      * outer drawer moves into PROGDIR:releases/BASE. */
@@ -873,6 +903,26 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         free(nfo);
         return;
     }
+}
+
+/* The Preview tab: the file_id.diz and NFO Build would write, made by the same shell_render_release. */
+static void shell_preview_nfo(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field, Object *code_field,
+                              Object *platform_field, Object *desc_field, Object *format_cycle) {
+    shell_rendered r;
+    char errmsg[256], text[SHELL_NFO_VIEW_MAX + 1], msg[160];
+    size_t full;
+    if (shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, &r, errmsg,
+                             sizeof(errmsg)) != 0) {
+        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        return;
+    }
+    full = rp_release_preview_view(r.diz, r.nfo, text, sizeof text);
+    SetAttrs(g_nfo_view, UPA_TextArea_Text, (ULONG)text, TAG_DONE);
+    if (full > SHELL_NFO_VIEW_MAX) snprintf(msg, sizeof(msg), "Preview cut at %d of %lu bytes - Build writes the whole NFO.", SHELL_NFO_VIEW_MAX, (unsigned long)full);
+    else snprintf(msg, sizeof(msg), "Preview of file_id.diz and the NFO (%lu bytes).", (unsigned long)full);
+    SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+    free(r.nfo);
+    free(r.diz);
 }
 
 /* Publish / Revoke / Door repository. Synchronous: the status line says
@@ -1095,7 +1145,7 @@ static int shell_main(void) {
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     Object *files_text, *pick_btn, *build_btn, *status;
     Object *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
-    Object *aminet_btn, *aminet_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
+    Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
     Object *tabs, *pages, *preview_btn, *quit_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
     static const char *const formats[] = { "LHA", "ZIP", NULL };
@@ -1173,6 +1223,8 @@ static int shell_main(void) {
     g_date_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "2026-09-21", MUIA_String_MaxLen, 15UL, TAG_DONE);
     g_released_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Mysdata 2026 (optional)", MUIA_String_MaxLen, 100UL, TAG_DONE);
     g_readme_view = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_README_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview readme to see the readme and its problems here", TAG_DONE);
+    g_nfo_view = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NFO_VIEW_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview NFO to see the file_id.diz and the NFO here", TAG_DONE);
+    nfo_preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview NFO", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     aminet_preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview readme", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     g_notes_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NOTES_MAX, UPA_TextArea_Placeholder, (ULONG) "Release notes, one paragraph per line", TAG_DONE);
     g_news_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NEWS_MAX, UPA_TextArea_Placeholder, (ULONG) "News", TAG_DONE);
@@ -1194,7 +1246,7 @@ static int shell_main(void) {
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
-        g_date_field == NULL || g_released_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL) {
+        g_date_field == NULL || g_released_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1211,6 +1263,8 @@ static int shell_main(void) {
         Object *page_roster = shell_card("Members, boards and media", shell_form(row_label("Members"), g_members_field, row_label("Boards"), g_boards_field,
                                                                                  row_label("Media embeds"), g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
+        Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Text"), g_nfo_view,
+                                                                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
@@ -1220,11 +1274,11 @@ static int shell_main(void) {
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
                                                                      row_label("Readme"), g_readme_view,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
-        static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Files", "Publish", "Aminet", NULL };
+        static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
-                              MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_roster), MUIA_Group_Child, (ULONG)top_page(page_files),
+                              MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_roster), MUIA_Group_Child, (ULONG)top_page(page_nfo), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
@@ -1280,6 +1334,7 @@ static int shell_main(void) {
     DoMethod(publish_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PUBLISH);
     DoMethod(revoke_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REVOKE);
     DoMethod(aminet_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET);
+    DoMethod(nfo_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NFO_PREVIEW);
     DoMethod(aminet_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET_PREVIEW);
     DoMethod(platform_field, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
@@ -1343,6 +1398,9 @@ static int shell_main(void) {
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
             shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,
                          format_cycle);
+        }
+        if (id == ID_NFO_PREVIEW) {
+            shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
         if (id == ID_AMINET || id == ID_AMINET_PREVIEW) {
             shell_aminet(app, status, g_groups, group_cycle, code_field, desc_field, format_cycle, type_field, arch_field,
