@@ -6,6 +6,7 @@
 
 #include "door_repo_client.h"
 #include "json.h"
+#include "naming.h"
 #include "releases_client.h"
 
 int rp_latin1_to_utf8(const char *in, char *out, size_t cap) {
@@ -84,6 +85,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     size_t dlen = 0;
 
     if (group_cfg(g, a->http, a->http_ctx, 1, &cfg, &division, msg, cap) != 0) return -1;
+    if (!a->category || !a->category[0]) { snprintf(msg, cap, "Not published - choose a category first"); return -1; }
     if (!a->image_path[0]) { snprintf(msg, cap, "Not published - pick a cover image first"); return -1; }
     archive = read_all(a->archive_path, &alen);
     if (!archive) { snprintf(msg, cap, "Not published - build the release first (%s is missing)", a->archive_path); goto done; }
@@ -101,7 +103,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     f.news = "";
     f.diz_banner = s[ns++] = u8dup(dizraw);
     f.entry_title = f.release_name;
-    f.entry_category = "";
+    f.entry_category = s[ns++] = u8dup(a->category);
     f.entry_creators = s[ns++] = u8dup(a->creators ? a->creators : "");
     f.division = division;
     f.description = s[ns++] = u8dup(a->description);
@@ -142,6 +144,38 @@ done:
     for (i = 0; i < ns; i++) free(s[i]);
     free(archive); free(image); free(dizraw); free(json);
     return rc;
+}
+
+int rp_online_seed(const rp_group *g, rp_http_fn http, void *http_ctx, long now_seconds, rp_seed_info *info,
+                   jnode **tree, char *msg, size_t cap) {
+    rp_rel_cfg cfg;
+    const char *division;
+    rp_rel_err err;
+    jnode *seed = NULL, *num = NULL;
+    if (group_cfg(g, http, http_ctx, 0, &cfg, &division, msg, cap) != 0) return -1;
+    if (rp_rel_seed(&cfg, division, &seed, &err) != 0) { snprintf(msg, cap, "%s", err.message); return -1; }
+    /* the numbering check is a warning, not a precondition: a failed call means no check */
+    if (rp_rel_numbering_check(&cfg, &num, &err) != 0) num = NULL;
+    if (rp_seed_parse(seed, num, now_seconds, g->id, g->server_key[0] != '\0', info) != 0) {
+        snprintf(msg, cap, "The release server sent no seed data");
+        json_free(seed);
+        json_free(num);
+        return -1;
+    }
+    json_free(num);
+    *tree = seed;
+    msg[0] = '\0';
+    return 0;
+}
+
+int rp_online_code_check(const rp_group *g, const char *code, rp_http_fn http, void *http_ctx, char *msg, size_t cap) {
+    rp_rel_cfg cfg;
+    const char *division;
+    char base[64], none[8];
+    msg[0] = '\0';
+    if (group_cfg(g, http, http_ctx, 0, &cfg, &division, none, sizeof none) != 0) return 0;
+    rp_base_name(g->file_prefix, code, base, sizeof base);
+    return rp_code_check(&cfg, code, base, msg, cap);
 }
 
 int rp_online_revoke(const rp_group *g, const char *code, rp_http_fn http, void *http_ctx, char *msg, size_t cap) {

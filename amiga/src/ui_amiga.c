@@ -33,6 +33,7 @@
 
 #include "archive.h"
 #include "aminet.h"
+#include "aminet_preview.h"
 #include "aminet_types.h"
 #include "archive_preview.h"
 #include "credits.h"
@@ -42,6 +43,7 @@
 #include "nfo_uprough.h"
 #include "nfo_x.h"
 #include "online.h"
+#include "release_seed.h"
 #include "stage.h"
 #include "template.h"
 
@@ -89,17 +91,17 @@ static Object *shell_row(Object *a, Object *b) {
 
 /* A two-column form: labels in one column (as wide as the widest), fields in the other, so every input shares a left edge. */
 static Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object *l3, Object *f3, Object *l4, Object *f4,
-                          Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7, Object *l8, Object *f8) {
-    Object *kids[16];
-    struct TagItem t[20];
+                          Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7, Object *l8, Object *f8, Object *l9, Object *f9) {
+    Object *kids[18];
+    struct TagItem t[22];
     int i, n = 0;
     kids[0] = l1; kids[1] = f1; kids[2] = l2; kids[3] = f2; kids[4] = l3; kids[5] = f3; kids[6] = l4;
-    kids[7] = f4; kids[8] = l5; kids[9] = f5; kids[10] = l6; kids[11] = f6; kids[12] = l7; kids[13] = f7; kids[14] = l8; kids[15] = f8;
+    kids[7] = f4; kids[8] = l5; kids[9] = f5; kids[10] = l6; kids[11] = f6; kids[12] = l7; kids[13] = f7; kids[14] = l8; kids[15] = f8; kids[16] = l9; kids[17] = f9;
     t[n].ti_Tag = MUIA_Group_Columns;
     t[n++].ti_Data = 2;
     t[n].ti_Tag = MUIA_FillArea;
     t[n++].ti_Data = (ULONG)FALSE;
-    for (i = 0; i < 16; i++) {
+    for (i = 0; i < 18; i++) {
         if (kids[i] == NULL) continue;
         t[n].ti_Tag = MUIA_Group_Child;
         t[n++].ti_Data = (ULONG)kids[i];
@@ -165,6 +167,8 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 #define ID_NAME 9
 #define ID_AMINET 10
 #define ID_PLATFORM 11
+#define ID_GROUP 12
+#define ID_CODE 13
 
 #define RP_MAX_FILES_PATH 511
 
@@ -323,6 +327,73 @@ static void shell_set_type(Object *cycle, const char *dir) {
     SetAttrs(cycle, UPA_Cycle_Active, (ULONG)(rp_aminet_type_index(dir) + 1), TAG_DONE);
 }
 
+/* Category cycle: index 0 is "(choose)", index i+1 is rp_release_categories[i]. */
+static const char *g_category_labels[RP_RELEASE_CATEGORY_COUNT + 2];
+static Object *g_category_cycle;
+
+static void shell_category_labels_init(void) {
+    int i;
+    g_category_labels[0] = "(choose)";
+    for (i = 0; rp_release_categories[i] && i < RP_RELEASE_CATEGORY_COUNT; i++) g_category_labels[i + 1] = rp_release_categories[i];
+    g_category_labels[i + 1] = NULL;
+}
+
+/* The chosen history category, "" when none. */
+static const char *shell_category(void) {
+    ULONG a = 0;
+    GetAttr(UPA_Cycle_Active, g_category_cycle, &a);
+    return a > 0 && a <= (ULONG)RP_RELEASE_CATEGORY_COUNT ? rp_release_categories[a - 1] : "";
+}
+
+/* AmigaOS clock (days since 1978-01-01) as Unix seconds, for the seed's stale-draft ages. */
+static long shell_unix_now(void) {
+    struct DateStamp ds;
+    DateStamp(&ds);
+    return ((long)ds.ds_Days + 2922L) * 86400L + (long)ds.ds_Minute * 60L + (long)ds.ds_Tick / 50L;
+}
+
+/* The release server's seed for the open group (next number, warnings). Static: rp_seed_info is about 7 KB. */
+static rp_seed_info g_seed;
+static jnode *g_seed_tree;
+static char g_code_checked[48]; /* "<group>:<code>" last asked about, so a repeat notify does not ask again */
+
+static int shell_seed_load(const rp_group *g, char *msg, size_t cap) {
+    json_free(g_seed_tree);
+    g_seed_tree = NULL;
+    memset(&g_seed, 0, sizeof g_seed);
+    g_code_checked[0] = '\0';
+    return rp_online_seed(g, rp_http_amiga, NULL, shell_unix_now(), &g_seed, &g_seed_tree, msg, cap);
+}
+
+/* On open and on a group change: load the seed and show its warnings (or the failure) in the status line. */
+static void shell_seed_status(Object *status, const rp_group *g) {
+    char msg[400], ok[48];
+    if (!RP_ONLINE_HAS_SERVER(g)) return;
+    if (shell_seed_load(g, msg, sizeof(msg)) != 0) {
+        SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+        return;
+    }
+    snprintf(ok, sizeof(ok), "Next release number: %s", g_seed.number_text[0] ? g_seed.number_text : "unknown");
+    SetAttrs(status, UPA_Text_Contents, (ULONG)(g_seed.warnings[0] ? g_seed.warnings : ok), TAG_DONE);
+}
+
+/* Once the typed code has the group's length, ask the server whether it is taken. */
+static void shell_code_check(Object *status, const rp_group *groups, Object *group_cycle, Object *code_field) {
+    ULONG ga = 0;
+    const rp_group *g;
+    char code[40], key[48], base[64], msg[400];
+    int rc;
+    GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+    g = &groups[ga];
+    rp_upper(shell_field_text(code_field), code, sizeof(code));
+    if (!RP_ONLINE_HAS_SERVER(g) || (int)strlen(code) != g->code_length) return;
+    snprintf(key, sizeof(key), "%s:%s", g->id, code);
+    if (strcmp(key, g_code_checked) == 0) return;
+    strcpy(g_code_checked, key);
+    rc = rp_online_code_check(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
+    if (rc == 0) snprintf(msg, sizeof(msg), "Code %s is free.", code);
+    SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+}
 
 static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_text, const rp_group *groups,
                                   Object *group_cycle, Object *code_field, Object *status) {
@@ -353,12 +424,11 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
 static const char *const g_platform_labels[] = { "None", "A500", "A1200", "Console", NULL };
 static const char *const g_platform_tags[] = { "", "A500", "A1200", "Console" };
 
-/* No category field on the Release tab yet, so the guess uses the empty category: no directory unless a later category field feeds it. */
 static void shell_guess_type(Object *type_cycle, Object *platform_field) {
     ULONG pa = 0;
     const char *guess;
     GetAttr(UPA_Cycle_Active, platform_field, &pa);
-    guess = rp_aminet_guess_type("", pa < 4 ? g_platform_tags[pa] : "");
+    guess = rp_aminet_guess_type(shell_category(), pa < 4 ? g_platform_tags[pa] : "");
     if (guess[0]) shell_set_type(type_cycle, guess);
 }
 
@@ -383,6 +453,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     size_t i, width;
     int errline = 0;
     char errmsg[256], *rendered;
+    const char *number = "?", *category = "";
 
     GetAttr(UPA_Field_String, name_field, &name_ptr);
     GetAttr(UPA_Field_String, code_field, &code_ptr);
@@ -412,6 +483,19 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         snprintf(errmsg, sizeof(errmsg), "Code must be exactly %d letters or digits.", g->code_length);
         SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         return;
+    }
+    if (RP_ONLINE_HAS_SERVER(g)) {
+        /* the history entry needs the server's next number and a category */
+        category = shell_category();
+        if (category[0] == '\0') {
+            SetAttrs(status, UPA_Text_Contents, (ULONG) "Choose a category on the Release tab first.", TAG_DONE);
+            return;
+        }
+        if (shell_seed_load(g, errmsg, sizeof(errmsg)) != 0) {
+            SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+            return;
+        }
+        if (g_seed.number_text[0]) number = g_seed.number_text;
     }
     rp_base_name(g->file_prefix, code, base, sizeof(base));
     snprintf(packed, sizeof(packed), "%s.%s", base, active ? "ZIP" : "LHA");
@@ -455,7 +539,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     scalars[7].name = "date";
     scalars[7].value = date;
     scalars[8].name = "release_number";
-    scalars[8].value = "?";
+    scalars[8].value = number;
     scalars[9].name = "description";
     scalars[9].value = desc_txt;
     scalars[10].name = "creators";
@@ -500,10 +584,10 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         rp_nfo_form nf;
         char lower[72];
         rp_lower(packed, lower, sizeof(lower));
-        hist.number = "?";
+        hist.number = number;
         hist.filenames = lower;
         hist.title = name_txt;
-        hist.category = "";
+        hist.category = category;
         hist.creators = creators;
         nf.release_name = name_txt;
         nf.platform = plat_txt;
@@ -692,6 +776,7 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
         a.platform_tag = pa < 4 ? g_platform_tags[pa] : "";
         a.description = shell_field_text(desc_field);
         a.release_notes = shell_field_text(g_notes_field);
+        a.category = shell_category();
         a.n_credits = shell_credits();
         a.credits = g_credits;
         shell_take(pub_creators, sizeof(pub_creators), rp_creators_from_credits(g_credits, a.n_credits));
@@ -718,15 +803,16 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
                          Object *arch_field, Object *uname_field, Object *email_field) {
     ULONG gactive = 0, active = 0, sigs = 0;
     const rp_group *g;
-    char code[40], base[64], packed[72], archive[160], lname[RP_AMINET_FILENAME_MAX + 16], lreadme[RP_AMINET_FILENAME_MAX + 16];
-    char creators[256], msg[400];
+    char code[40], base[64], packed[72], archive[160], creators[256], msg[400];
     rp_aminet_credit credits[RP_MEMBERS_MAX > RP_CREDITS_MAX ? RP_MEMBERS_MAX : RP_CREDITS_MAX];
     size_t ncredits;
     rp_aminet_readme_in in;
-    char *readme = NULL, *norm = NULL, *data = NULL;
+    rp_aminet_preview prev;
+    char *data = NULL;
     FILE *f;
     long len;
     size_t i;
+    memset(&prev, 0, sizeof prev);
     GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
     GetAttr(UPA_Cycle_Active, format_cycle, &active);
     g = &groups[gactive];
@@ -779,13 +865,14 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
         strncpy(pr.email, in.uploader_email, sizeof(pr.email) - 1);
         rp_aminet_prefs_save(RP_AMINET_PREFS_PATH, &pr);
     }
-    readme = rp_aminet_render_readme(&in);
-    norm = readme ? rp_aminet_normalize_readme(readme) : NULL;
-    if (norm == NULL || rp_aminet_names(packed, lname, lreadme, sizeof(lname)) != 0) {
-        snprintf(msg, sizeof(msg), "Aminet readme could not be prepared.");
+    if (rp_aminet_make_preview(packed, &in, &prev) != 0) {
+        snprintf(msg, sizeof(msg), "Aminet readme could not be prepared: %s", prev.problems);
         goto done;
     }
-    if (rp_aminet_problems(lname, lreadme, norm, msg, sizeof(msg)) > 0) goto done;
+    if (prev.n_problems > 0) {
+        snprintf(msg, sizeof(msg), "Not uploaded - %s", prev.problems);
+        goto done;
+    }
     f = fopen(archive, "rb");
     if (f == NULL) {
         snprintf(msg, sizeof(msg), "%s not found - press Build first.", packed);
@@ -801,11 +888,10 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
         goto done;
     }
     fclose(f);
-    rp_aminet_upload(&rp_tcp_amiga_ops, NULL, packed, in.uploader_email, norm, data, (size_t)len, msg, sizeof(msg));
+    rp_aminet_upload(&rp_tcp_amiga_ops, NULL, packed, in.uploader_email, prev.readme, data, (size_t)len, msg, sizeof(msg));
 done:
     free(data);
-    free(norm);
-    free(readme);
+    rp_aminet_preview_free(&prev);
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
 }
 
@@ -911,6 +997,8 @@ static int shell_main(void) {
     door_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Door repo", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     aminet_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Aminet", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     shell_type_labels_init();
+    shell_category_labels_init();
+    g_category_cycle = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_category_labels, TAG_DONE);
     type_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_type_labels, TAG_DONE);
     arch_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. m68k-amigaos", TAG_DONE);
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
@@ -931,7 +1019,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_authors_field == NULL) {
+        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_authors_field == NULL || g_category_cycle == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -941,7 +1029,7 @@ static int shell_main(void) {
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_cycle, row_label("Name"), name_field,
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
-                                                                  row_label("Authors"), g_authors_field, row_label("Notes"), g_notes_field), NULL, NULL, NULL, NULL, NULL, NULL);
+                                                                  row_label("Authors"), g_authors_field, row_label("Notes"), g_notes_field, row_label("Category"), g_category_cycle), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
@@ -949,7 +1037,7 @@ static int shell_main(void) {
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
-                                                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
+                                                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         static const char *const tab_captions[] = { "Release", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
@@ -1012,6 +1100,13 @@ static int shell_main(void) {
     DoMethod(aminet_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET);
     DoMethod(platform_field, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
+    DoMethod(g_category_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
+    DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
+    {
+        ULONG code_str = 0;
+        GetAttr(UPA_Field_String, code_field, &code_str);
+        if (code_str != 0) DoMethod((Object *)code_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CODE);
+    }
     {
         ULONG name_str = 0;
         GetAttr(UPA_Field_String, name_field, &name_str);
@@ -1041,6 +1136,7 @@ static int shell_main(void) {
         return 20;
     }
     SetAttrs(preview_list, UPA_List_Count, 0UL, TAG_DONE);
+    shell_seed_status(status, &g_groups[0]);
     for (;;) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
@@ -1048,6 +1144,12 @@ static int shell_main(void) {
             shell_build(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
         if (id == ID_PLATFORM) shell_guess_type(type_field, platform_field);
+        if (id == ID_GROUP) {
+            ULONG ga = 0;
+            GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+            if (ga < (ULONG)g_ngroups) shell_seed_status(status, &g_groups[ga]);
+        }
+        if (id == ID_CODE) shell_code_check(status, g_groups, group_cycle, code_field);
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
         if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
@@ -1074,6 +1176,7 @@ static int shell_main(void) {
         if (sigs != 0) Wait(sigs | SIGBREAKF_CTRL_C);
     }
     MUI_DisposeObject(app);
+    json_free(g_seed_tree);
     rp_preview_free(&g_prev);
     CloseLibrary(MUIMasterBase);
     return 0;

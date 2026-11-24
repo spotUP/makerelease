@@ -54,7 +54,7 @@ int main(void) {
     memset(&a, 0, sizeof a);
     a.group = &g; a.code = "ABC"; a.release_name = "Caf\xE9"; a.platform_tag = "A500"; a.description = "d";
     a.format = "LHA"; a.diz_path = "online_t.diz"; a.archive_path = "online_t.lha"; a.image_path = "online_t.png";
-    a.seed = 1; a.http = fake_http;
+    a.seed = 1; a.http = fake_http; a.category = "Demo";
 
     {
         rp_credit cr[1] = {{ "Code", "R\xE9my" }};
@@ -78,6 +78,15 @@ int main(void) {
     CHECK(strstr(create_body, "R\xC3\xA9my") != NULL);
     CHECK(strstr(create_body, "\"division\":\"uprough\"") != NULL);
 
+    CHECK(strstr(create_body, "\"entryCategory\":\"Demo\"") != NULL);
+    /* no category: refused before any request */
+    a.category = "";
+    reset();
+    CHECK(rp_online_publish(&a, msg, sizeof msg) == -1);
+    CHECK_STR(msg, "Not published - choose a category first");
+    CHECK(log_[0] == 0);
+    a.category = "Demo";
+
     /* create refused: publish never sent */
     reply_status[0] = 409; reply_body[0] = "{\"error\":\"code taken\"}";
     reset();
@@ -93,6 +102,34 @@ int main(void) {
     CHECK(rp_online_publish(&a, msg, sizeof msg) == -1);
     CHECK(strstr(msg, "write key") != NULL);
     strcpy(g.server_key, "sekrit");
+
+    /* seed: number comes through, numbering-check failure is only a missing warning */
+    {
+        static rp_seed_info info;
+        jnode *tree = NULL;
+        reply_status[0] = 200; reply_body[0] = "{\"nextReleaseNumber\":218,\"currentDizText\":\"DIZ\"}";
+        reply_status[1] = 500; reply_body[1] = "{}";
+        reset();
+        CHECK(rp_online_seed(&g, fake_http, NULL, 1000, &info, &tree, msg, sizeof msg) == 0);
+        CHECK_STR(info.number_text, "218");
+        CHECK(strstr(log_, "GET https://rel.test/api/releases/seed") != NULL && tree != NULL);
+        json_free(tree);
+        reply_status[0] = 500; reply_body[0] = "{\"error\":\"down\"}";
+        reset();
+        CHECK(rp_online_seed(&g, fake_http, NULL, 1000, &info, &tree, msg, sizeof msg) == -1 && msg[0] != 0);
+        /* code check: taken, free, and a group with no server */
+        reply_status[0] = 200; reply_body[0] = "{\"exists\":true}";
+        reset();
+        CHECK(rp_online_code_check(&g, "ABC", fake_http, NULL, msg, sizeof msg) == 1);
+        CHECK(strstr(msg, "already exists") != NULL);
+        reply_body[0] = "{\"exists\":false}";
+        reset();
+        CHECK(rp_online_code_check(&g, "ABC", fake_http, NULL, msg, sizeof msg) == 0 && msg[0] == 0);
+        g.backend_doorserver = 0;
+        reset();
+        CHECK(rp_online_code_check(&g, "ABC", fake_http, NULL, msg, sizeof msg) == 0 && log_[0] == 0);
+        g.backend_doorserver = 1;
+    }
 
     /* revoke */
     reply_status[0] = 200; reply_body[0] = "{\"deleted\":true,\"releaseNumber\":5,\"wasDraft\":false,\"wordpressPostUrl\":\"https://wp/p\",\"wordpressPostError\":\"boom\",\"archiveRemoved\":false}";
