@@ -261,13 +261,16 @@ static int shell_confirm_revoke(const char *code) {
     return r == 1;
 }
 
-/* The ASL requester for a drawer or a file: the pick joins g_paths. Returns 1 when the list changed. */
+/* The ASL requester for a drawer or files: every pick joins g_paths (Add file takes several with Shift-click).
+ * No file picked adds the drawer itself, as before. Returns 1 when the list changed. */
 static int shell_pick_path(int drawers_only) {
     struct FileRequester *req;
     char path[RP_PATH_CAP];
-    int added;
-    req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG)(drawers_only ? "Add a drawer" : "Add a file"),
-                              ASLFR_DrawersOnly, (ULONG)(drawers_only ? TRUE : FALSE), ASLFR_RejectIcons, TRUE, TAG_DONE);
+    int changed = 0, full = 0, added;
+    LONG i, n;
+    req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG)(drawers_only ? "Add a drawer" : "Add files"),
+                              ASLFR_DrawersOnly, (ULONG)(drawers_only ? TRUE : FALSE), ASLFR_DoMultiSelect,
+                              (ULONG)(drawers_only ? FALSE : TRUE), ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (req == NULL) {
         shell_requester("The file requester could not open.\nasl.library may be missing, or memory ran out.");
         return 0;
@@ -276,15 +279,19 @@ static int shell_pick_path(int drawers_only) {
         FreeAslRequest(req);
         return 0;
     }
-    snprintf(path, sizeof(path), "%s", req->rf_Dir);
-    if (!drawers_only && req->rf_File != NULL && req->rf_File[0] != '\0' && !AddPart((STRPTR)path, req->rf_File, sizeof(path))) {
-        FreeAslRequest(req);
-        return 0;
+    /* multi-select fills rf_ArgList (names in rf_Dir); a single typed or clicked name may only be in rf_File */
+    n = drawers_only ? 0 : req->rf_NumArgs;
+    for (i = 0; i < (n > 0 ? n : 1) && !full; i++) {
+        const char *name = n > 0 ? (const char *)req->rf_ArgList[i].wa_Name : (drawers_only ? NULL : (const char *)req->rf_File);
+        snprintf(path, sizeof(path), "%s", req->rf_Dir);
+        if (name != NULL && name[0] != '\0' && !AddPart((STRPTR)path, (STRPTR)name, sizeof(path))) continue;
+        added = rp_paths_add(&g_paths, path);
+        if (added < 0) full = 1;
+        else if (added > 0) changed = 1;
     }
     FreeAslRequest(req);
-    added = rp_paths_add(&g_paths, path);
-    if (added < 0) shell_requester("The list is full or the path is too long.\nRemove an entry first.");
-    return added > 0;
+    if (full) shell_requester("The list is full or the path is too long.\nRemove an entry first.");
+    return changed;
 }
 
 static const char *base_name_of(const char *path) {
