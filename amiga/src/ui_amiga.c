@@ -935,14 +935,24 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
         }
         shell_take(creators, sizeof(creators), rp_creators_from_credits(g_credits, ncredits));
     } else {
-        /* no authors entered: credit the group's members as before */
-        ncredits = g->nmembers;
-        for (i = 0; i < g->nmembers; i++) {
-            credits[i].role = g->members[i].role;
-            credits[i].name = g->members[i].nickname;
-            if (strlen(creators) + strlen(g->members[i].nickname) + 3 < sizeof(creators)) {
+        /* no authors entered: credit the Roster tab's members, else the group's own */
+        const rp_member *mem = g->members;
+        size_t nmem = g->nmembers;
+        if (shell_roster_read(g, msg, sizeof(msg)) != 0) {
+            SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+            return;
+        }
+        if (g_nrows_members > 0) {
+            mem = g_rows_members;
+            nmem = g_nrows_members;
+        }
+        ncredits = nmem;
+        for (i = 0; i < nmem; i++) {
+            credits[i].role = mem[i].role;
+            credits[i].name = mem[i].nickname;
+            if (strlen(creators) + strlen(mem[i].nickname) + 3 < sizeof(creators)) {
                 if (i > 0) strcat(creators, ", ");
-                strcat(creators, g->members[i].nickname);
+                strcat(creators, mem[i].nickname);
             }
         }
     }
