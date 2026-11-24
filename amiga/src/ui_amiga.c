@@ -325,6 +325,7 @@ static Object *g_revoke_field; /* desktop revoke-code: code to revoke, blank = t
 static Object *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[6], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
+static Object *g_template_status; /* desktop template-status: preview notes of a placeholder group, own line on the NFO tab */
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
 static Object *g_number_field, *g_number_row;
 static char g_number_text[24];
@@ -707,6 +708,7 @@ static void shell_apply_sections(const rp_group *g) {
     shell_show_all(g_sec_media, 3, s.media);
     shell_show_all(g_sec_publish, 6, s.publish);
     shell_show_all(g_sec_door, 1, s.door);
+    SetAttrs(g_template_status, MUIA_ShowMe, (ULONG)(g->renderer == R_PLACEHOLDER), TAG_DONE);
 }
 
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
@@ -1236,9 +1238,12 @@ static void shell_preview_nfo(Object *status, const rp_group *groups, Object *gr
     shell_rendered r;
     char errmsg[256], text[SHELL_NFO_VIEW_MAX + 1], msg[160];
     size_t full;
+    ULONG gactive = 0;
+    GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
     if (shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, &r, errmsg,
                              sizeof(errmsg)) != 0) {
         SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        if (groups[gactive].renderer == R_PLACEHOLDER) SetAttrs(g_template_status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         return;
     }
     full = rp_release_preview_view(r.diz, r.nfo, text, sizeof text);
@@ -1246,6 +1251,7 @@ static void shell_preview_nfo(Object *status, const rp_group *groups, Object *gr
     if (full > SHELL_NFO_VIEW_MAX) snprintf(msg, sizeof(msg), "Preview cut at %d of %lu bytes - Build writes the whole NFO.", SHELL_NFO_VIEW_MAX, (unsigned long)full);
     else snprintf(msg, sizeof(msg), "Preview of file_id.diz and the NFO (%lu bytes).", (unsigned long)full);
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+    if (r.g->renderer == R_PLACEHOLDER) SetAttrs(g_template_status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
     free(r.nfo);
     free(r.diz);
 }
@@ -1619,10 +1625,11 @@ static int shell_main(void) {
                                  TAG_DONE);
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
     g_gauge = MUI_NewObject((char *)"UP-Progress.mcc", UPA_Progress_Value, 0UL, UPA_Progress_Max, 100UL, MUIA_ShowMe, (ULONG)FALSE, MUIA_FixWidth, 160UL, TAG_DONE);
+    g_template_status = shell_label("", UPV_Text_Tone_Muted);
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
-        build_btn == NULL || status == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
+        build_btn == NULL || status == NULL || g_template_status == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
@@ -1645,7 +1652,7 @@ static int shell_main(void) {
                                                                                  embeds_lbl, g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Diz line"), g_diz_line_field, area_label("Text"), g_nfo_view,
-                                                                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
+                                                                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), g_template_status, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(pick_btn, add_file_btn), files_list,
                                         shell_row(remove_file_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *revoke_row = shell_row(row_label("Revoke code"), g_revoke_field);
