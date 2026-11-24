@@ -56,12 +56,13 @@ jobs:
       - name: Sync renderer into tauri/web
         run: sh tauri/scripts/sync-web.sh
 
-      - name: Rust tests
-        run: cargo test --manifest-path tauri/src-tauri/Cargo.toml
-
+      # tauri-build needs icons/icon.ico on Windows, also for cargo test.
       - name: Icons for all platforms
         working-directory: tauri
         run: npx tauri icon src-tauri/icons/icon.png -o src-tauri/icons
+
+      - name: Rust tests
+        run: cargo test --manifest-path tauri/src-tauri/Cargo.toml
 
       - name: Build bundle
         working-directory: tauri
