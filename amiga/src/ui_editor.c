@@ -109,7 +109,7 @@ static int ed_choice(const char *text, const char *gadgets) {
 
 static Object *ed_button(const char *caption, ULONG role) {
     return MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG)caption, UPA_Button_Align, (ULONG)UPV_Button_Align_Centre,
-                         UPA_Button_Role, role, TAG_DONE);
+                         UPA_Button_Role, role, MUIA_Weight, 1UL, TAG_DONE);
 }
 
 static void ed_notify(Object *app, Object *btn, ULONG id) {
@@ -429,7 +429,9 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     g_win = NULL;
     *(void **)&g_row_hook.h_Entry = (void *)rp_editor_row_tramp;
     g_list = MUI_NewObject((char *)"UP-List.mcc", UPA_List_RowHook, (ULONG)&g_row_hook, UPA_List_MaxRows, 10UL, UPA_List_Count, 6UL, TAG_DONE);
-    g_status = shell_label("Pick a group, or press New.", UPV_Text_Tone_Muted);
+    /* weight outweighs the buttons beside it, so a long message gets the row instead of running under Save */
+    g_status = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG) "Pick a group, or press New.", UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted,
+                             MUIA_Weight, 1000UL, TAG_DONE);
     g_f_label = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Shown in the Group list", MUIA_String_MaxLen, (ULONG)RP_LABEL_MAX + 1, TAG_DONE);
     g_f_id = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Drawer name, letters and digits", MUIA_String_MaxLen, (ULONG)RP_ID_MAX + 1, TAG_DONE);
     g_f_url = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Group web address", MUIA_String_MaxLen, (ULONG)RP_URL_MAX + 1, TAG_DONE);
