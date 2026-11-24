@@ -86,6 +86,30 @@ int main(void) {
     e[0].caption[0] = '\0';
     CHECK_STR(rp_format_embed_rows(e, 1), "youtube |  | u\n");
 
+    /* picked image: appended as its own row, parses back to the same path */
+    CHECK_STR(rp_embed_append_image("", "Work:Pics/cover.png"), "image | cover.png | Work:Pics/cover.png\n");
+    CHECK_STR(rp_embed_append_image(NULL, "RAM:a.png"), "image | a.png | RAM:a.png\n");
+    CHECK_STR(rp_embed_append_image("youtube | T | u\n", "RAM:a.png"), "youtube | T | u\nimage | a.png | RAM:a.png\n");
+    CHECK_STR(rp_embed_append_image("youtube | T | u", "RAM:a.png"), "youtube | T | u\nimage | a.png | RAM:a.png\n");
+    CHECK(rp_embed_append_image("", "") == NULL && rp_embed_append_image("", NULL) == NULL);
+    CHECK(rp_embed_append_image("", "RAM:a|b.png") == NULL && rp_embed_append_image("", "RAM:a\nb.png") == NULL);
+    {
+        char longp[RP_EMBED_PATH_MAX + 3];
+        char *t;
+        memset(longp, 'a', sizeof longp);
+        longp[RP_EMBED_PATH_MAX + 1] = '\0';
+        CHECK(rp_embed_append_image("", longp) == NULL);
+        longp[RP_EMBED_PATH_MAX] = '\0'; /* longest accepted path; its caption is cut to the caption limit */
+        t = rp_embed_append_image("", longp);
+        CHECK(t != NULL && rp_parse_embed_rows(t, e, 8, &err) == 1 && strcmp(e[0].path, longp) == 0 && strlen(e[0].caption) == RP_EMBED_CAPTION_MAX);
+        free(t);
+    }
+    {
+        char *t = rp_embed_append_image("", "Work:Pics/cover.png");
+        CHECK(t != NULL && rp_parse_embed_rows(t, e, 8, &err) == 1 && e[0].is_image && strcmp(e[0].path, "Work:Pics/cover.png") == 0);
+        free(t);
+    }
+
     if (failures) { printf("%d failure(s)\n", failures); return 1; }
     printf("test_text_rows ok\n");
     return 0;

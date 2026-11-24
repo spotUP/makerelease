@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "credits.h"
@@ -264,4 +265,37 @@ char *rp_format_embed_rows(const rp_embed_row *rows, size_t n) {
         bad = put_row(&b, v, 3);
     }
     return finish(&b, bad);
+}
+
+char *rp_embed_append_image(const char *text, const char *path) {
+    const char *leaf, *q;
+    size_t tl, pl, ll, cl;
+    char *out, *w;
+    if (!text) text = "";
+    if (!path || !*path) return NULL;
+    pl = strlen(path);
+    if (pl > RP_EMBED_PATH_MAX || strpbrk(path, "|\r\n")) return NULL;
+    leaf = path;
+    for (q = path; *q; q++)
+        if (*q == ':' || *q == '/') leaf = q + 1;
+    ll = strlen(leaf);
+    cl = ll > RP_EMBED_CAPTION_MAX ? RP_EMBED_CAPTION_MAX : ll;
+    tl = strlen(text);
+    out = malloc(tl + 1 + 8 + cl + 3 + pl + 2);
+    if (!out) return NULL;
+    w = out;
+    memcpy(w, text, tl);
+    w += tl;
+    if (tl && text[tl - 1] != '\n' && text[tl - 1] != '\r') *w++ = '\n';
+    memcpy(w, "image | ", 8);
+    w += 8;
+    memcpy(w, leaf, cl);
+    w += cl;
+    memcpy(w, " | ", 3);
+    w += 3;
+    memcpy(w, path, pl);
+    w += pl;
+    *w++ = '\n';
+    *w = '\0';
+    return out;
 }

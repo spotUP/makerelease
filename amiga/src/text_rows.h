@@ -65,5 +65,10 @@ int rp_parse_embed_rows(const char *text, rp_embed_row *out, size_t max, rp_row_
 /* rp_rel_form view; strings point into rows. */
 void rp_embed_rows_view(const rp_embed_row *rows, size_t n, rp_rel_embed *out);
 char *rp_format_embed_rows(const rp_embed_row *rows, size_t n);
+/* Field text plus one "image | <file name> | <path>" row for a picked image file (the file requester's result), as a new
+ * malloc'd text; the row starts on its own line. NULL for an empty path, a path with '|' or a line break (the row
+ * would not parse back to it), a path over RP_EMBED_PATH_MAX, or out of memory. The caption is the file name,
+ * cut to RP_EMBED_CAPTION_MAX. */
+char *rp_embed_append_image(const char *text, const char *path);
 
 #endif

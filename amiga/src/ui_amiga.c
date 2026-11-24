@@ -184,15 +184,16 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_NFO_PREVIEW 15
 #define ID_EDIT_GROUPS 16
 #define ID_FORMAT 17
+#define ID_EMBED_PICK 18
 
 #define RP_MAX_FILES_PATH 511
 
 static char g_files[RP_MAX_FILES_PATH + 1];
 static char g_cover[RP_MAX_FILES_PATH + 1];
 
-/* The ASL file requester for the cover image. Returns 1 when a file was picked. */
-static int shell_pick_cover(void) {
-    struct FileRequester *req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG) "Pick the cover image",
+/* The ASL file requester for an image. Puts the full path in out (cap bytes). Returns 1 when a file was picked. */
+static int shell_pick_image(const char *title, char *out, size_t cap) {
+    struct FileRequester *req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG)title,
                                                     ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (req == NULL) {
         shell_requester("The file requester could not open.\nFree some memory and try again.");
@@ -202,12 +203,14 @@ static int shell_pick_cover(void) {
         FreeAslRequest(req);
         return 0;
     }
-    strncpy(g_cover, req->rf_Dir, sizeof(g_cover) - 1);
-    g_cover[sizeof(g_cover) - 1] = '\0';
-    AddPart((STRPTR)g_cover, req->rf_File, sizeof(g_cover));
+    strncpy(out, req->rf_Dir, cap - 1);
+    out[cap - 1] = '\0';
+    AddPart((STRPTR)out, req->rf_File, cap);
     FreeAslRequest(req);
     return 1;
 }
+
+static int shell_pick_cover(void) { return shell_pick_image("Pick the cover image", g_cover, sizeof(g_cover)); }
 
 /* Revoke cannot be undone: ask first, like the desktop confirm. Returns 1 on Revoke. */
 static int shell_confirm_revoke(const char *code) {
@@ -344,6 +347,20 @@ static const char *shell_area_raw(Object *area) {
     ULONG ptr = 0;
     GetAttr(UPA_TextArea_Text, area, &ptr);
     return ptr ? (const char *)ptr : "";
+}
+
+/* Pick an image file and add it to the Media embeds field as an "image | caption | path" row. */
+static void shell_embed_pick(void) {
+    char path[RP_MAX_FILES_PATH + 1];
+    char *text;
+    if (!shell_pick_image("Pick the embed image", path, sizeof(path))) return;
+    text = rp_embed_append_image(shell_area_raw(g_embeds_field), path);
+    if (text == NULL) {
+        shell_requester("That file cannot be added as a media embed.\nIts path is too long or contains a vertical bar.");
+        return;
+    }
+    SetAttrs(g_embeds_field, UPA_TextArea_Text, (ULONG)text, TAG_DONE);
+    free(text);
 }
 
 /* Parse the Roster tab for group g into the g_rows_* arrays. -1 with "<Field>: Line N: msg" in msg on a bad row. Boards
@@ -1286,7 +1303,7 @@ static int shell_main(void) {
     Object *group_slot, *edit_groups_btn;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     Object *files_text, *pick_btn, *build_btn, *status;
-    Object *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
+    Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
     Object *tabs, *pages, *preview_btn, *quit_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
@@ -1333,6 +1350,7 @@ static int shell_main(void) {
                              UPA_Button_IconOnly, (ULONG)TRUE, UPA_Button_Flat, (ULONG)TRUE, UPA_Button_FixedWidth, 24UL,
                              UPA_Button_FixedHeight, 24UL, TAG_DONE);
     cover_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick cover...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    embed_pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick image...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     publish_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Publish", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
                                 (ULONG)UPV_Button_Role_Accent, TAG_DONE);
     revoke_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Revoke", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
@@ -1370,7 +1388,7 @@ static int shell_main(void) {
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
-        cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
+        cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
@@ -1388,7 +1406,7 @@ static int shell_main(void) {
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, area_label("Boards"), g_boards_field,
                                                                                  area_label("Media embeds"), g_embeds_field,
-                                                                                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
+                                                                                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(area_label("Text"), g_nfo_view,
                                                                         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
@@ -1456,6 +1474,7 @@ static int shell_main(void) {
     DoMethod(pick_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PICK);
     DoMethod(preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PREVIEW);
     DoMethod(flatten_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FLATTEN);
+    DoMethod(embed_pick_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_EMBED_PICK);
     DoMethod(cover_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_COVER);
     DoMethod(publish_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PUBLISH);
     DoMethod(revoke_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REVOKE);
@@ -1549,6 +1568,7 @@ static int shell_main(void) {
         }
         if (id == ID_CODE) shell_code_check(status, g_groups, group_cycle, code_field);
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
+        if (id == ID_EMBED_PICK) shell_embed_pick();
         if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
             shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,
