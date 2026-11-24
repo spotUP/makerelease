@@ -1551,6 +1551,30 @@ static void shell_suggest_code(Object *name_field, Object *code_field, Object *g
 }
 
 
+/* Tab captions get a "+ " mark on each step Next has left behind. UP-Tabs captions are fixed at creation, so a new mark
+ * rebuilds the tabs; the captions alternate between two buffers because the old tabs still point at theirs until disposed. */
+static const char *const g_tab_names[SHELL_TAB_COUNT] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet" };
+static char g_tab_caps[2][SHELL_TAB_COUNT][16];
+static const char *g_tab_ptrs[2][SHELL_TAB_COUNT + 1];
+static int g_tab_buf;
+
+static Object *shell_tabs_new(unsigned done, ULONG active) {
+    int i;
+    g_tab_buf ^= 1;
+    for (i = 0; i < SHELL_TAB_COUNT; i++) {
+        snprintf(g_tab_caps[g_tab_buf][i], sizeof g_tab_caps[g_tab_buf][i], "%s%s", (done >> i) & 1u ? "+ " : "", g_tab_names[i]);
+        g_tab_ptrs[g_tab_buf][i] = g_tab_caps[g_tab_buf][i];
+    }
+    g_tab_ptrs[g_tab_buf][SHELL_TAB_COUNT] = NULL;
+    return MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)g_tab_ptrs[g_tab_buf], UPA_Tabs_Active, active, TAG_DONE);
+}
+
+/* live preview: no verified MUI timer, so refresh on tab switch and on field exit instead of debouncing */
+static void shell_tabs_notify(Object *tabs, Object *app, Object *pages) {
+    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_TAB);
+    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage, MUIV_TriggerValue);
+}
+
 static int shell_main(void) {
     Object *app = NULL, *win = NULL;
     Object *group_slot, *edit_groups_btn;
@@ -1559,8 +1583,9 @@ static int shell_main(void) {
     Object *files_list, *add_file_btn, *remove_file_btn, *pick_btn, *build_btn, *status;
     Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
-    Object *tabs, *pages, *preview_btn, *quit_btn, *back_btn, *next_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
+    Object *tabs, *tabs_row = NULL, *pages, *preview_btn, *quit_btn, *back_btn, *next_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
+    unsigned tabs_done = 0; /* bit per tab: steps Next has left behind */
     static const char *const formats[] = { "LHA", "ZIP", NULL };
     char broken[1024];
     int i;
@@ -1710,13 +1735,12 @@ static int shell_main(void) {
         g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds_field, g_sec_media[2] = embed_pick_btn;
         g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk, g_sec_publish[5] = revoke_row;
         g_sec_door[0] = door_btn;
-        static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
         Object *content;
-        tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
+        tabs = shell_tabs_new(0u, 0UL);
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                               MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_roster), MUIA_Group_Child, (ULONG)top_page(page_nfo), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
-        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
+        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)(tabs_row = shell_row(tabs, quit_btn)),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
                                                                           MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status,
@@ -1778,8 +1802,6 @@ static int shell_main(void) {
     DoMethod(aminet_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET);
     DoMethod(nfo_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NFO_PREVIEW);
     DoMethod(aminet_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET_PREVIEW);
-    /* live preview: no verified MUI timer, so refresh on tab switch and on field exit instead of debouncing */
-    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_TAB);
     DoMethod(win, MUIM_Notify, MUIA_Window_ActiveObject, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FOCUS);
     DoMethod(platform_field, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
@@ -1817,8 +1839,7 @@ static int shell_main(void) {
         GetAttr(UPA_Field_String, g_authors_field, &auth_str);
         if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AUTHORS);
     }
-    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage,
-             MUIV_TriggerValue);
+    shell_tabs_notify(tabs, app, pages);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
     {
         rp_aminet_prefs pr;
@@ -1935,6 +1956,21 @@ static int shell_main(void) {
             int to;
             GetAttr(UPA_Tabs_Active, tabs, &cur);
             to = rp_page_step((int)cur, id == ID_NEXT ? 1 : -1, NULL, SHELL_TAB_COUNT);
+            if (to >= 0 && id == ID_NEXT && !((tabs_done >> cur) & 1u)) {
+                Object *t = shell_tabs_new(tabs_done | 1u << cur, cur);
+                if (t != NULL) { /* no memory for new tabs: keep the old ones, only the mark is lost */
+                    tabs_done |= 1u << cur;
+                    DoMethod(tabs_row, MUIM_Group_InitChange);
+                    DoMethod(tabs_row, OM_REMMEMBER, (ULONG)tabs);
+                    DoMethod(tabs_row, OM_REMMEMBER, (ULONG)quit_btn);
+                    MUI_DisposeObject(tabs);
+                    tabs = t;
+                    DoMethod(tabs_row, OM_ADDMEMBER, (ULONG)tabs);
+                    DoMethod(tabs_row, OM_ADDMEMBER, (ULONG)quit_btn);
+                    DoMethod(tabs_row, MUIM_Group_ExitChange);
+                    shell_tabs_notify(tabs, app, pages);
+                }
+            }
             if (to >= 0) SetAttrs(tabs, UPA_Tabs_Active, (ULONG)to, TAG_DONE);
         }
         if (id == ID_TAB || id == ID_FOCUS) {
