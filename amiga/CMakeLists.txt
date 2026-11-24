@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Pure pack logic, no UI and no OS calls: the host build unit-tests it, the
 # Amiga build compiles the same files for 68020.
 add_library(packer STATIC src/template.c src/naming.c src/json.c src/groups.c src/date.c src/wrap.c src/nfo_uprough.c src/nfo_x.c
-            src/releases_client.c src/online.c src/json_write.c src/multipart.c src/door_repo_client.c src/stage.c src/archive.c src/archive_preview.c src/aminet.c src/credits.c src/aminet_types.c)
+            src/releases_client.c src/online.c src/json_write.c src/multipart.c src/door_repo_client.c src/stage.c src/archive.c src/archive_preview.c src/aminet.c src/credits.c src/aminet_types.c src/stale_drafts.c src/release_seed.c src/aminet_preview.c)
 target_include_directories(packer PUBLIC src)
 
 # The UI is per platform: the MUI shell on Amiga (release headers only,
@@ -30,7 +30,7 @@ target_link_libraries(packer-cli PRIVATE packer)
 # host builds run the suites through ctest.
 if(NOT CMAKE_CROSSCOMPILING)
     enable_testing()
-    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview releases_client online_writers online aminet aminet_types credits)
+    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview releases_client online_writers online aminet aminet_types credits stale_drafts release_seed aminet_preview)
         add_executable(test_${suite} tests/test_${suite}.c)
         target_link_libraries(test_${suite} PRIVATE packer)
         add_test(NAME ${suite} COMMAND test_${suite} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
