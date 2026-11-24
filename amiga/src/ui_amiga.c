@@ -745,6 +745,8 @@ static void shell_seed_status(Object *status, const rp_group *g, Object *code_fi
     shell_number_status(status, g, code_field, format_cycle);
 }
 
+static Object *g_code_status; /* the availability answer beside the Code field */
+
 /* Once the typed code has the group's length, ask the server whether it is taken. */
 static void shell_code_check(Object *status, const rp_group *groups, Object *group_cycle, Object *code_field) {
     ULONG ga = 0;
@@ -754,13 +756,18 @@ static void shell_code_check(Object *status, const rp_group *groups, Object *gro
     GetAttr(UPA_Cycle_Active, group_cycle, &ga);
     g = &groups[ga];
     rp_upper(shell_field_text(code_field), code, sizeof(code));
-    if (!RP_ONLINE_HAS_SERVER(g) || (int)strlen(code) != g->code_length) return;
+    if (!RP_ONLINE_HAS_SERVER(g) || (int)strlen(code) != g->code_length) {
+        g_code_checked[0] = '\0'; /* the old answer no longer fits the typed code */
+        SetAttrs(g_code_status, UPA_Text_Contents, (ULONG)"", TAG_DONE);
+        return;
+    }
     snprintf(key, sizeof(key), "%s:%s", g->id, code);
     if (strcmp(key, g_code_checked) == 0) return;
     strcpy(g_code_checked, key);
     rc = rp_online_code_check(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
     if (rc == 0) snprintf(msg, sizeof(msg), "Code %s is free.", code);
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+    SetAttrs(g_code_status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
 }
 
 static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_text, const rp_group *groups,
@@ -1622,6 +1629,9 @@ static int shell_main(void) {
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
     g_creators_text = shell_label("", UPV_Text_Tone_Muted);
+    /* Ellipsis keeps a long server answer from widening the window; the full answer is also in the status line */
+    g_code_status = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG) "", UPA_Text_Widest, (ULONG) "Code ABCD is free.", UPA_Text_Ellipsis, (ULONG)TRUE,
+                                  UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted, TAG_DONE);
     g_creators_row = g_creators_text ? shell_row(row_label("Creators"), g_creators_text) : NULL;
     g_system_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "aMiEXPRESS", MUIA_String_MaxLen, (ULONG)(sizeof(g_system_prefill) - 1), TAG_DONE);
     g_system_row = g_system_field ? shell_row(row_label("System"), g_system_field) : NULL;
@@ -1652,7 +1662,7 @@ static int shell_main(void) {
     g_template_status = shell_label("", UPV_Text_Tone_Muted);
     g_diz_count = shell_label("", UPV_Text_Tone_Muted);
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
-    if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
+    if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || g_code_status == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
@@ -1665,7 +1675,7 @@ static int shell_main(void) {
     {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), name_field,
-                                                                  row_label("Code"), code_field, row_label("Platform"), platform_field,
+                                                                  row_label("Code"), shell_row(code_field, g_code_status), row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, g_category_lbl, g_category_cycle,
                                                                   row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_creators_row, g_system_row, g_number_row, g_platform_row, NULL, NULL);
