@@ -3,6 +3,7 @@
  * call, "Connection: close"; the whole response is read to EOF, then parsed. */
 #ifdef __amigaos__
 #include "http.h"
+#include "http_timeout.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -30,7 +31,6 @@ struct Library *AmiSSLMasterBase = NULL;
 struct Library *AmiSSLBase = NULL;
 struct Library *AmiSSLExtBase = NULL;
 
-#define TIMEOUT_SEC 30
 #define MAX_RESPONSE (8 * 1024 * 1024)
 
 typedef struct { char *p; size_t len, cap; } rbuf;
@@ -74,7 +74,8 @@ static int split_url(const char *url, int *tls, char *host, size_t hcap, int *po
     return 0;
 }
 
-static int connect_to(const char *host, int port, rp_http_resp *resp)
+/* read_sec: the read and write limit once connected; the connect itself gets RP_HTTP_CONNECT_SEC. */
+static int connect_to(const char *host, int port, int read_sec, rp_http_resp *resp)
 {
     struct hostent *he = gethostbyname((STRPTR)host);
     struct sockaddr_in sa;
@@ -91,17 +92,20 @@ static int connect_to(const char *host, int port, rp_http_resp *resp)
     sa.sin_family = AF_INET;
     sa.sin_port = htons((unsigned short)port);
     memcpy(&sa.sin_addr, he->h_addr_list[0], 4);
-    tv.tv_secs = TIMEOUT_SEC; tv.tv_micro = 0;
+    tv.tv_secs = RP_HTTP_CONNECT_SEC; tv.tv_micro = 0;
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
     (void)on; (void)one;
     if (connect(s, (struct sockaddr *)&sa, sizeof sa) < 0) {
         char m[32];
         snprintf(m, sizeof m, "%s:%d", host, port);
-        fail(resp, "connect to %s failed", m);
+        fail(resp, "connect to %s failed or timed out", m);
         CloseSocket(s);
         return -1;
     }
+    tv.tv_secs = read_sec;
+    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
+    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
     return s;
 }
 
@@ -237,7 +241,7 @@ int rp_http_amiga(void *ctx, const rp_http_req *req, rp_http_resp *resp)
     }
     rb_add(&head, "\r\n", 2);
 
-    if ((s = connect_to(host, port, resp)) < 0) goto done;
+    if ((s = connect_to(host, port, rp_http_read_seconds(req->method, req->body != NULL), resp)) < 0) goto done;
 
     if (tls) {
         if (!(sctx = SSL_CTX_new(TLS_client_method()))) { ssl_reason(resp, "TLS context", NULL); goto done; }
@@ -298,7 +302,7 @@ static int tcp_open(void *ctx, const char *host, int port, char *err, size_t err
     if (!SocketBase && !(SocketBase = OpenLibrary((STRPTR)"bsdsocket.library", 4))) {
         snprintf(err, errcap, "no TCP/IP stack (bsdsocket.library)"); return -1;
     }
-    if ((s = connect_to(host, port, &r)) < 0) {
+    if ((s = connect_to(host, port, RP_HTTP_LONG_READ_SEC, &r)) < 0) {
         snprintf(err, errcap, "%s", r.error);
         if (!tcp_open_count) { CloseLibrary(SocketBase); SocketBase = NULL; }
         return -1;

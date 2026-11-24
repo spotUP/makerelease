@@ -30,7 +30,7 @@ target_link_libraries(packer-cli PRIVATE packer)
 # host builds run the suites through ctest.
 if(NOT CMAKE_CROSSCOMPILING)
     enable_testing()
-    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview releases_client online_writers online aminet aminet_types credits stale_drafts release_seed aminet_preview text_norm text_rows release_preview build_gate profile_save editor_logic)
+    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview releases_client online_writers online aminet aminet_types credits stale_drafts release_seed aminet_preview text_norm text_rows release_preview build_gate profile_save editor_logic http_timeout)
         add_executable(test_${suite} tests/test_${suite}.c)
         target_link_libraries(test_${suite} PRIVATE packer)
         add_test(NAME ${suite} COMMAND test_${suite} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})
