@@ -52,36 +52,30 @@ describe('stageRelease', () => {
   it('unwraps a selected folder that is already named UP-<CODE>, instead of nesting it again', async () => {
     const src = await tempSource('UP-EVK26', ['dip-ev26.ans', 'music/varin0x-onmymind.mod']);
     const outerDir = await stageRelease(UR, form([src]), generated);
+    expect(path.basename(outerDir)).toBe('UP-EVK26');
     expect((await tree(outerDir)).sort()).toEqual([
-      'UP-EVK26/',
-      'UP-EVK26/UP-EVK26.NFO',
-      'UP-EVK26/dip-ev26.ans',
-      'UP-EVK26/music/',
-      'UP-EVK26/music/varin0x-onmymind.mod',
+      'UP-EVK26.NFO',
+      'dip-ev26.ans',
       'file_id.diz',
+      'music/',
+      'music/varin0x-onmymind.mod',
     ].sort());
   });
 
   it('unwraps regardless of how the folder is cased', async () => {
     const src = await tempSource('up-evk26', ['a.txt']);
     const outerDir = await stageRelease(UR, form([src]), generated);
-    expect(await tree(outerDir)).toContain('UP-EVK26/a.txt');
-    expect(await tree(outerDir)).not.toContain('UP-EVK26/up-evk26/');
+    expect(await tree(outerDir)).toContain('a.txt');
+    expect(await tree(outerDir)).not.toContain('up-evk26/');
   });
 
   it('keeps any other folder as a folder inside the release', async () => {
     const src = await tempSource('gfx', ['dip-fast.png']);
     const outerDir = await stageRelease(UR, form([src]), generated);
-    expect((await tree(outerDir)).sort()).toEqual([
-      'UP-EVK26/',
-      'UP-EVK26/UP-EVK26.NFO',
-      'UP-EVK26/gfx/',
-      'UP-EVK26/gfx/dip-fast.png',
-      'file_id.diz',
-    ].sort());
+    expect((await tree(outerDir)).sort()).toEqual(['UP-EVK26.NFO', 'file_id.diz', 'gfx/', 'gfx/dip-fast.png'].sort());
   });
 
-  it('puts file_id.diz beside the release dir, not inside it', async () => {
+  it('puts file_id.diz in the one release dir, beside the NFO (no second UP-<CODE> level)', async () => {
     const src = await tempSource('gfx', ['dip-fast.png']);
     const outerDir = await stageRelease(UR, form([src]), generated);
     expect(await fs.readFile(path.join(outerDir, 'file_id.diz'), 'latin1')).toBe('diz text');
@@ -90,14 +84,13 @@ describe('stageRelease', () => {
   it('writes no NFO when the profile has no NFO template', async () => {
     const src = await tempSource('gfx', ['dip-fast.png']);
     const outerDir = await stageRelease(UR, form([src]), { ...generated, nfoText: null });
-    const releaseDir = path.join(outerDir, path.basename(outerDir));
-    expect((await fs.readdir(releaseDir)).filter((f) => /\.nfo$/i.test(f))).toEqual([]);
+    expect((await fs.readdir(outerDir)).filter((f) => /\.nfo$/i.test(f))).toEqual([]);
     expect(await fs.readFile(path.join(outerDir, 'file_id.diz'), 'latin1')).toBe('diz text');
   });
 
   it('copies a selected file straight into the release dir', async () => {
     const dir = await tempSource('loose', ['dip-ev26.ans']);
     const outerDir = await stageRelease(UR, form([path.join(dir, 'dip-ev26.ans')]), generated);
-    expect(await tree(outerDir)).toContain('UP-EVK26/dip-ev26.ans');
+    expect(await tree(outerDir)).toContain('dip-ev26.ans');
   });
 });

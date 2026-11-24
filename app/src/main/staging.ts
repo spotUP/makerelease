@@ -14,11 +14,12 @@ export async function stageRelease(
 ): Promise<string> {
   const tmpRoot = await fs.mkdtemp(path.join(os.tmpdir(), 'makerelease-'));
   const releaseDir = releaseBaseName(profile, form.code);
-  const outerDir = path.join(tmpRoot, releaseDir);
-  const innerDir = path.join(outerDir, releaseDir);
+  // One release dir holds everything (diz, NFO, files): the archive root is
+  // <BASE>/ and the finished folder is <root>/<BASE>, never <BASE>/<BASE>/.
+  const innerDir = path.join(tmpRoot, releaseDir);
   await fs.mkdir(innerDir, { recursive: true });
 
-  await writeLatin1(path.join(outerDir, 'file_id.diz'), generated.dizText);
+  await writeLatin1(path.join(innerDir, 'file_id.diz'), generated.dizText);
   if (generated.nfoText !== null) {
     await writeLatin1(path.join(innerDir, `${releaseDir}.NFO`), generated.nfoText);
   }
@@ -26,8 +27,8 @@ export async function stageRelease(
   for (const src of form.selectedPaths) {
     // A selected folder that is itself called <PREFIX><CODE> is the release folder
     // the user already assembled by hand, not a subdirectory of the release.
-    // Copying it as-is produced <BASE>/<BASE>/<BASE>/<files> in the
-    // shipped archive; its contents belong directly in the release dir.
+    // Copying it as-is would nest <BASE>/<BASE>/; its contents belong
+    // directly in the release dir.
     if (baseName(src).toUpperCase() === releaseDir.toUpperCase() && (await isDirectory(src))) {
       for (const entry of await fs.readdir(src)) {
         await copyRecursive(path.join(src, entry), path.join(innerDir, entry));
@@ -37,5 +38,5 @@ export async function stageRelease(
     await copyRecursive(src, path.join(innerDir, baseName(src)));
   }
 
-  return outerDir;
+  return innerDir;
 }

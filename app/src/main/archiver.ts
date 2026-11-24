@@ -25,10 +25,12 @@ export async function packArchive(
   const finalArchivePath = path.join(makereleaseRoot, archiveFileName(profile, code, format));
   const releaseDir = releaseBaseName(profile, code);
 
+  // The staged dir is named <BASE> and holds file_id.diz too: packed from its parent, the archive root is <BASE>/.
+  const cwd = path.dirname(outerDir);
   if (format === 'LHA') {
-    await runArchiver('lha', ['a', finalArchivePath, 'file_id.diz', releaseDir], outerDir);
+    await runArchiver('lha', ['a', finalArchivePath, releaseDir], cwd);
   } else {
-    await runArchiver('zip', ['-r', finalArchivePath, 'file_id.diz', releaseDir], outerDir);
+    await runArchiver('zip', ['-r', finalArchivePath, releaseDir], cwd);
   }
   return finalArchivePath;
 }

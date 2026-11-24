@@ -32,7 +32,7 @@ async function innermostSingleChild(src: string): Promise<string> {
 }
 
 export async function previewArchive(releaseDir: string, selectedPaths: readonly string[]): Promise<ArchivePreview> {
-  const entries = ['file_id.diz', `${releaseDir}/`, `${releaseDir}/${releaseDir}.NFO`];
+  const entries = [`${releaseDir}/`, `${releaseDir}/file_id.diz`, `${releaseDir}/${releaseDir}.NFO`];
   const nested: ArchivePreview['nested'] = [];
   const inner = `${releaseDir}/`;
   for (const src of selectedPaths) {
