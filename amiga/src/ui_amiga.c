@@ -2138,7 +2138,7 @@ static int shell_main(void) {
                                      UPA_Text_Ellipsis, (ULONG)TRUE, UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted, TAG_DONE);
     g_system_row = g_system_field && g_x_credits_text ? shell_row(row_label("System"), shell_row(g_system_field, g_x_credits_text)) : NULL;
     g_date_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "2026-09-21", MUIA_String_MaxLen, 15UL, TAG_DONE);
-    g_diz_line_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Banner release line (optional; blank = name at Released at)", MUIA_String_MaxLen, 100UL, TAG_DONE);
+    g_diz_line_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Blank = name at Released at", MUIA_String_MaxLen, 100UL, TAG_DONE);
     g_released_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Mysdata 2026 (optional)", MUIA_String_MaxLen, 100UL, TAG_DONE);
     g_number_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "042", MUIA_String_MaxLen, (ULONG)(sizeof(g_number_text) - 1), TAG_DONE);
     g_number_row = g_number_field ? shell_row(row_label("Release number"), g_number_field) : NULL;
