@@ -18,7 +18,7 @@ thoughts/searchable/
 # <PREFIX><CODE>/ and <PREFIX><CODE>.<FORMAT> into the repo root, and some
 # maintainers still have those leftovers.
 releases-out/
-UP-*/
+/UP-*/
 UP-*.LHA
 UP-*.ZIP
 UP-*.lha

@@ -147,7 +147,8 @@ cmake -S vendor/up-mcc -B build/up-mcc -G Ninja -DSEL_AMIGA=ON \
 ```
 
 Install `build/up-mcc/dist/UP-MCC/Libs/mui/*.mcc` (and `up-mcc.library`) on
-the rig in place of the MusicPlayer set. Verified to build; the rig install
+the rig. This `up_mcc_dist` output is the only MCC set for packer rigs; never
+copy from `MusicPlayer/build/amiga/plugins/shared/mcc` (a different, older set). Verified to build; the rig install
 itself is not scripted.
 
 ## Scope
