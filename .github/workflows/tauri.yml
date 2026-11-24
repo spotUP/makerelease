@@ -76,3 +76,11 @@ jobs:
           name: makerelease-tauri-${{ runner.os }}
           path: tauri/src-tauri/target/release/bundle/
           if-no-files-found: error
+
+      # Portable raw exe for tauri/scripts/release.sh (separate artifact keeps the bundle layout unchanged).
+      - uses: actions/upload-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: makerelease-tauri-Windows-exe
+          path: tauri/src-tauri/target/release/makerelease.exe
+          if-no-files-found: error
