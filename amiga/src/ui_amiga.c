@@ -1155,6 +1155,16 @@ static void shell_code_check(Object *status, const rp_group *groups, Object *gro
     strcpy(g_code_asked, code);
     rp_net_pump = shell_code_pump;
     rc = rp_online_code_check(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
+    if (rc == 1) { /* taken: offer up to 3 free codes nearby, asking at most 8; an error ends the search quietly */
+        char near[8][RP_CODE_NEAR_LEN], other[200], free_list[64] = "";
+        int n = rp_code_near(code, near, 8), i, found = 0, r;
+        for (i = 0; i < n && found < 3 && !g_code_cancel; i++) {
+            r = rp_online_code_check(g, near[i], rp_http_amiga, NULL, other, sizeof(other));
+            if (r < 0) break;
+            if (r == 0) snprintf(free_list + strlen(free_list), sizeof(free_list) - strlen(free_list), "%s%s", found++ ? ", " : "", near[i]);
+        }
+        if (found > 0 && !g_code_cancel) snprintf(msg + strlen(msg), sizeof(msg) - strlen(msg), " Free nearby: %s.", free_list);
+    }
     rp_net_pump = NULL;
     if (g_code_cancel) { /* typed on or clicked: ask again once the field settles */
         g_code_checked[0] = '\0';
