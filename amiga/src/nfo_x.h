@@ -40,6 +40,9 @@ char *rp_render_nfo_x(const rp_nfo_x_form *form);
  * characters. Returns malloc'd banner. */
 char *rp_diz_apply_release_line(const char *banner, int row, const char *text);
 
+/* findReleaseLineSlot(...).width: how many characters fit between the frame characters of row. */
+size_t rp_diz_slot_width(const char *banner, int row);
+
 /* releaseNameInBanner: copies the name into out (cap bytes, NUL-terminated). */
 void rp_x_release_name_in_banner(const char *banner, char *out, size_t cap);
 

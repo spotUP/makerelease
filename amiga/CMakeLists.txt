@@ -7,7 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Pure pack logic, no UI and no OS calls: the host build unit-tests it, the
 # Amiga build compiles the same files for 68020.
 add_library(packer STATIC src/template.c src/naming.c src/json.c src/groups.c src/date.c src/wrap.c src/nfo_uprough.c src/nfo_x.c
-            src/releases_client.c src/online.c src/json_write.c src/multipart.c src/door_repo_client.c src/stage.c src/archive.c src/archive_preview.c src/aminet.c src/credits.c src/aminet_types.c src/stale_drafts.c src/release_seed.c src/aminet_preview.c src/text_norm.c src/text_rows.c src/release_preview.c src/build_gate.c src/profile_save.c src/editor_logic.c src/last_choice.c src/platform_tag.c src/aminet_short.c src/paths_list.c src/phase_progress.c src/sections.c src/creators.c)
+            src/releases_client.c src/online.c src/json_write.c src/multipart.c src/door_repo_client.c src/stage.c src/archive.c src/archive_preview.c src/aminet.c src/credits.c src/aminet_types.c src/stale_drafts.c src/release_seed.c src/aminet_preview.c src/text_norm.c src/text_rows.c src/release_preview.c src/build_gate.c src/profile_save.c src/editor_logic.c src/last_choice.c src/platform_tag.c src/aminet_short.c src/paths_list.c src/phase_progress.c src/sections.c src/creators.c src/diz_count.c)
 target_include_directories(packer PUBLIC src)
 
 # The UI is per platform: the MUI shell on Amiga (release headers only,
@@ -30,7 +30,7 @@ target_link_libraries(packer-cli PRIVATE packer)
 # host builds run the suites through ctest.
 if(NOT CMAKE_CROSSCOMPILING)
     enable_testing()
-    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview releases_client online_writers online aminet aminet_types credits stale_drafts release_seed aminet_preview text_norm text_rows release_preview build_gate profile_save editor_logic http_timeout last_choice platform_tag aminet_short paths_list phase_progress sections creators)
+    foreach(suite template naming json groups date wrap nfo_uprough nfo_x stage archive_preview releases_client online_writers online aminet aminet_types credits stale_drafts release_seed aminet_preview text_norm text_rows release_preview build_gate profile_save editor_logic http_timeout last_choice platform_tag aminet_short paths_list phase_progress sections creators diz_count)
         add_executable(test_${suite} tests/test_${suite}.c)
         target_link_libraries(test_${suite} PRIVATE packer)
         add_test(NAME ${suite} COMMAND test_${suite} WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR})

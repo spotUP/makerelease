@@ -58,12 +58,11 @@ static char *dup_n(const char *s, size_t n) {
     return p;
 }
 
-char *rp_diz_apply_release_line(const char *banner, int row, const char *text) {
-    size_t nlines = 1, i, ls, le, rlen, start, end, tail, width, tlen, left, pad;
+/* Where row's writable span sits: line start ls, trimmed length rlen, span start..end (desktop findReleaseLineSlot). */
+static void diz_slot(const char *banner, int row, size_t *ls_o, size_t *rlen_o, size_t *start_o, size_t *end_o) {
+    size_t nlines = 1, i, ls, le, rlen, start, end, tail;
     const char *p;
     int clamped = row;
-    char *out;
-    strbuf b = { NULL, 0, 0 };
     for (p = banner; *p; p++)
         if (*p == '\n') nlines++;
     if (clamped > (int)nlines - 1) clamped = (int)nlines - 1;
@@ -76,6 +75,21 @@ char *rp_diz_apply_release_line(const char *banner, int row, const char *text) {
     for (start = 0; start < rlen && start < 3 && is_frame_char(banner[ls + start]); start++) {}
     for (tail = 0; tail < rlen && tail < 3 && is_frame_char(banner[ls + rlen - 1 - tail]); tail++) {}
     end = (rlen - tail > start) ? rlen - tail : rlen;
+    *ls_o = ls, *rlen_o = rlen, *start_o = start, *end_o = end;
+}
+
+size_t rp_diz_slot_width(const char *banner, int row) {
+    size_t ls, rlen, start, end;
+    diz_slot(banner, row, &ls, &rlen, &start, &end);
+    return end - start;
+}
+
+char *rp_diz_apply_release_line(const char *banner, int row, const char *text) {
+    size_t i, ls, le, rlen, start, end, width, tlen, left, pad;
+    char *out;
+    strbuf b = { NULL, 0, 0 };
+    diz_slot(banner, row, &ls, &rlen, &start, &end);
+    le = ls + strcspn(banner + ls, "\n");
     width = end - start;
     /* before the row, untouched */
     if (sb_putn(&b, banner, ls) != 0) goto oom;

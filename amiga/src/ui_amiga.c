@@ -35,6 +35,7 @@
 #include "build_gate.h"
 #include "last_choice.h"
 #include "creators.h"
+#include "diz_count.h"
 #include "paths_list.h"
 #include "phase_progress.h"
 #include "sections.h"
@@ -197,6 +198,7 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_REFRESH 21 /* redraw the file lists; ID_PREVIEW (the button) also runs the dry run */
 #define ID_TAB 22      /* tab switched: refresh the NFO or readme preview shown */
 #define ID_AUTHORS 24  /* the Authors line changed: redo the creators preview and the name suggestions */
+#define ID_DIZCOUNT 25 /* Diz line, Released at or the name changed: redo the release line counter */
 #define ID_FOCUS 23    /* another field got the cursor: the one just left may have changed the preview */
 
 #define RP_MAX_FILES_PATH 511
@@ -325,6 +327,7 @@ static Object *g_revoke_field; /* desktop revoke-code: code to revoke, blank = t
 static Object *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[6], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
+static Object *g_diz_count; /* "Release line: N/width characters" under the Diz line */
 static Object *g_template_status; /* desktop template-status: preview notes of a placeholder group, own line on the NFO tab */
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
 static Object *g_number_field, *g_number_row;
@@ -709,6 +712,7 @@ static void shell_apply_sections(const rp_group *g) {
     shell_show_all(g_sec_publish, 6, s.publish);
     shell_show_all(g_sec_door, 1, s.door);
     SetAttrs(g_template_status, MUIA_ShowMe, (ULONG)(g->renderer == R_PLACEHOLDER), TAG_DONE);
+    SetAttrs(g_diz_count, MUIA_ShowMe, (ULONG)(g->renderer != R_PLACEHOLDER), TAG_DONE); /* a placeholder diz has no release line row */
 }
 
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
@@ -1233,6 +1237,14 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
 }
 
 /* The Preview tab: the file_id.diz and NFO Build would write, made by the same shell_render_release. */
+/* The release line counter (desktop renderDizPreview): width of the built-in banner's row, text = typed Diz line, else name at place. */
+static void shell_diz_count(Object *name_field) {
+    char msg[160];
+    rp_diz_line_counter(rp_diz_slot_width(rp_x_banner(), RP_X_RELEASE_ROW), shell_field_text(g_diz_line_field), shell_field_text(name_field),
+                        shell_field_text(g_released_field), msg, sizeof msg);
+    SetAttrs(g_diz_count, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+}
+
 static void shell_preview_nfo(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field, Object *code_field,
                               Object *platform_field, Object *desc_field, Object *format_cycle) {
     shell_rendered r;
@@ -1626,10 +1638,11 @@ static int shell_main(void) {
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
     g_gauge = MUI_NewObject((char *)"UP-Progress.mcc", UPA_Progress_Value, 0UL, UPA_Progress_Max, 100UL, MUIA_ShowMe, (ULONG)FALSE, MUIA_FixWidth, 160UL, TAG_DONE);
     g_template_status = shell_label("", UPV_Text_Tone_Muted);
+    g_diz_count = shell_label("", UPV_Text_Tone_Muted);
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
-        build_btn == NULL || status == NULL || g_template_status == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
+        build_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
@@ -1652,7 +1665,7 @@ static int shell_main(void) {
                                                                                  embeds_lbl, g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Diz line"), g_diz_line_field, area_label("Text"), g_nfo_view,
-                                                                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), g_template_status, NULL, NULL, NULL, NULL);
+                                                                        NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), g_diz_count, g_template_status, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(pick_btn, add_file_btn), files_list,
                                         shell_row(remove_file_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *revoke_row = shell_row(row_label("Revoke code"), g_revoke_field);
@@ -1759,6 +1772,17 @@ static int shell_main(void) {
         }
     }
     {
+        Object *dz[2];
+        size_t di;
+        dz[0] = g_diz_line_field, dz[1] = g_released_field;
+        for (di = 0; di < 2; di++) {
+            ULONG dz_str = 0;
+            GetAttr(UPA_Field_String, dz[di], &dz_str);
+            if (dz_str != 0) DoMethod((Object *)dz_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DIZCOUNT);
+        }
+        shell_diz_count(name_field);
+    }
+    {
         ULONG auth_str = 0;
         GetAttr(UPA_Field_String, g_authors_field, &auth_str);
         if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AUTHORS);
@@ -1859,6 +1883,7 @@ static int shell_main(void) {
         if ((id == ID_GROUP || id == ID_FORMAT) && last_save_failed)
             SetAttrs(status, UPA_Text_Contents, (ULONG) "Could not write PROGDIR:last.prefs (is PROGDIR: read-only?): the group and format are not remembered for the next start.", TAG_DONE);
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
+        if (id == ID_NAME || id == ID_DIZCOUNT) shell_diz_count(name_field);
         if (id == ID_EMBED_PICK) shell_embed_pick();
         if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
