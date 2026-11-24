@@ -19,6 +19,7 @@
 #include <libraries/amissl.h>
 #include <amissl/amissl.h>
 #include <sys/socket.h>
+#include <sys/ioctl.h>
 #include <sys/time.h>
 #include <netdb.h>
 #include <netinet/in.h>
@@ -80,8 +81,11 @@ static int connect_to(const char *host, int port, int read_sec, rp_http_resp *re
     struct hostent *he = gethostbyname((STRPTR)host);
     struct sockaddr_in sa;
     struct timeval tv;
-    long on = 1, one = 1;
-    int s;
+    long nb = 1;
+    LONG soerr = 0;
+    socklen_t soerrlen = sizeof soerr;
+    fd_set wfds;
+    int s, rc;
     if (!he || he->h_addrtype != AF_INET || !he->h_addr_list[0]) {
         fail(resp, "DNS lookup failed for %s", host);
         return -1;
@@ -92,11 +96,20 @@ static int connect_to(const char *host, int port, int read_sec, rp_http_resp *re
     sa.sin_family = AF_INET;
     sa.sin_port = htons((unsigned short)port);
     memcpy(&sa.sin_addr, he->h_addr_list[0], 4);
-    tv.tv_secs = RP_HTTP_CONNECT_SEC; tv.tv_micro = 0;
-    setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
-    setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
-    (void)on; (void)one;
-    if (connect(s, (struct sockaddr *)&sa, sizeof sa) < 0) {
+    /* SO_SNDTIMEO does not bound connect() on a BSD stack (a dropped SYN blocks the UI for about 75 s), so connect
+     * non-blocking and wait at most RP_HTTP_CONNECT_SEC for the socket to turn writable, then read its error. */
+    IoctlSocket(s, FIONBIO, (APTR)&nb);
+    rc = connect(s, (struct sockaddr *)&sa, sizeof sa);
+    if (rc < 0 && Errno() == EINPROGRESS) {
+        FD_ZERO(&wfds);
+        FD_SET(s, &wfds);
+        tv.tv_secs = RP_HTTP_CONNECT_SEC; tv.tv_micro = 0;
+        rc = (WaitSelect(s + 1, NULL, &wfds, NULL, &tv, NULL) > 0 &&
+              getsockopt(s, SOL_SOCKET, SO_ERROR, &soerr, &soerrlen) == 0 && soerr == 0) ? 0 : -1;
+    }
+    nb = 0;
+    IoctlSocket(s, FIONBIO, (APTR)&nb);
+    if (rc < 0) {
         char m[32];
         snprintf(m, sizeof m, "%s:%d", host, port);
         fail(resp, "connect to %s failed or timed out", m);

@@ -735,6 +735,8 @@ static void shell_seed_status(Object *status, const rp_group *g, Object *code_fi
         shell_roster_prefill(g, 0);
         return;
     }
+    /* the fetch blocks the event loop (connect 5 s, read 10 s per request at worst): say so before it starts */
+    SetAttrs(status, UPA_Text_Contents, (ULONG) "Loading current members and release number from the release server...", TAG_DONE);
     if (shell_seed_load(g, msg, sizeof(msg)) != 0) {
         shell_roster_prefill(g, 0);
         SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
