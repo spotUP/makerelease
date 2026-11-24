@@ -1088,12 +1088,12 @@ static void shell_seed_status(Object *status, const rp_group *g, Object *code_fi
         return;
     }
     /* runs under shell_net_busy like Publish: the transport pumps the window (gauge, Cancel, Quit) between socket waits */
-    SetAttrs(status, UPA_Text_Contents, (ULONG) "Loading current members and release number from the release server...", TAG_DONE);
+    SetAttrs(status, UPA_Text_Contents, (ULONG) "Loading members and release number...", TAG_DONE);
     shell_net_busy(1);
     rc = shell_seed_load(g, msg, sizeof(msg));
     shell_net_busy(0);
     if (rc != 0) {
-        if (g_net_cancel) snprintf(msg, sizeof msg, "Loading from the release server was cancelled: no member list or release number check.");
+        if (g_net_cancel) snprintf(msg, sizeof msg, "Server load cancelled: no member list or number check.");
         shell_roster_prefill(g, 0);
         SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
         return;
@@ -1777,7 +1777,7 @@ static void shell_net_busy(int on) {
     SetAttrs(g_net_cancel_btn, MUIA_ShowMe, (ULONG)on, TAG_DONE);
     if (!on) SetAttrs(g_gauge, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
     if (!on && g_net_cancel)
-        SetAttrs(g_net_status, UPA_Text_Contents, (ULONG) "Cancelled. If the whole archive was already sent, the server may still have it - check before trying again.", TAG_DONE);
+        SetAttrs(g_net_status, UPA_Text_Contents, (ULONG) "Cancelled. The server may already have the archive: check first.", TAG_DONE);
 }
 
 /* Publish / Revoke / Door repository. Runs inside the main loop's shell_net_busy: the transport pumps
