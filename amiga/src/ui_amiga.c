@@ -321,7 +321,8 @@ static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
 static Object *g_also_aminet_chk;
 static Object *g_sec_system[1];
-static Object *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[5], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
+static Object *g_revoke_field; /* desktop revoke-code: code to revoke, blank = the Code field */
+static Object *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[6], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
@@ -704,7 +705,7 @@ static void shell_apply_sections(const rp_group *g) {
     shell_show_all(g_sec_boards, 2, s.boards);
     shell_show_all(g_sec_system, 1, s.system);
     shell_show_all(g_sec_media, 3, s.media);
-    shell_show_all(g_sec_publish, 5, s.publish);
+    shell_show_all(g_sec_publish, 6, s.publish);
     shell_show_all(g_sec_door, 1, s.door);
 }
 
@@ -1271,6 +1272,11 @@ static int shell_online(Object *app, Object *status, int action, const rp_group 
     snprintf(diz, sizeof(diz), "PROGDIR:releases/%s/file_id.diz", base);
     DateStamp(&ds);
     seed = (unsigned long)ds.ds_Days * 4321UL + (unsigned long)ds.ds_Minute * 3000UL + (unsigned long)ds.ds_Tick;
+    if (action == ID_REVOKE) {
+        char rc_txt[40];
+        rp_upper(shell_field_text(g_revoke_field), rc_txt, sizeof(rc_txt));
+        if (rc_txt[0] != '\0') strcpy(code, rc_txt); /* the Revoke code field wins over the Code field */
+    }
     if (action == ID_REVOKE && (code[0] == '\0' || !shell_confirm_revoke(code))) {
         SetAttrs(status, UPA_Text_Contents, (ULONG)(code[0] ? "Revoke cancelled." : "Enter the code of the release to revoke."), TAG_DONE);
         return -1;
@@ -1572,6 +1578,7 @@ static int shell_main(void) {
     embed_pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick image...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     publish_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Publish", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
                                 (ULONG)UPV_Button_Role_Accent, TAG_DONE);
+    g_revoke_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Blank = the Code above", MUIA_String_MaxLen, 32UL, TAG_DONE);
     revoke_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Revoke", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     door_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Door repo", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     g_also_aminet_chk = MUI_NewObject((char *)"UP-Checkmark.mcc", UPA_Checkmark_Label, (ULONG) "Also upload to Aminet", TAG_DONE);
@@ -1616,7 +1623,7 @@ static int shell_main(void) {
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
-        cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
+        cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
@@ -1641,9 +1648,10 @@ static int shell_main(void) {
                                                                         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(pick_btn, add_file_btn), files_list,
                                         shell_row(remove_file_btn, preview_btn), warn_row, preview_list, NULL, NULL);
+        Object *revoke_row = shell_row(row_label("Revoke code"), g_revoke_field);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
                                           cover_row,
-                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, g_also_aminet_chk), NULL, NULL);
+                                          shell_row(cover_btn, publish_btn), revoke_row, shell_row(revoke_btn, door_btn), shell_row(aminet_btn, g_also_aminet_chk), NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
                                                                      row_label("Short"), g_short_field,
@@ -1652,7 +1660,7 @@ static int shell_main(void) {
         g_sec_system[0] = g_system_row;
         g_sec_boards[0] = boards_lbl, g_sec_boards[1] = g_boards_field;
         g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds_field, g_sec_media[2] = embed_pick_btn;
-        g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk;
+        g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk, g_sec_publish[5] = revoke_row;
         g_sec_door[0] = door_btn;
         static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
         Object *content;
