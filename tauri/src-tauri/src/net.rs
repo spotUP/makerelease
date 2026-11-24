@@ -1035,7 +1035,8 @@ mod tests {
         assert!(body.contains("name=\"image\"; filename=\"i.png\""));
         assert_eq!(body.matches("name=\"embedImage\"").count(), 2);
         let missing = publish_to_web_request(&c, "ok", "/no/such/file", &files[1], &[]).unwrap_err();
-        assert!(missing.message.contains("No such file"), "{}", missing.message);
+        let os_text = std::fs::File::open("/no/such/file").unwrap_err().to_string();
+        assert!(missing.message.contains(&os_text), "{}", missing.message);
     }
 
     #[test]

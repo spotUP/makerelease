@@ -1,0 +1,2 @@
+# Templates are compiled in with include_str! and Amiga files need LF; keep LF on every checkout (Windows CI saw CRLF).
+* text=auto eol=lf
