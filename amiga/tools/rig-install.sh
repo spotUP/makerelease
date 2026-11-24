@@ -13,6 +13,9 @@ G="${RIG_GROUPS:-$(cd "$A/scratch-rig/groups" && ls -d */ | tr -d /)}"  # RIG_GR
 for d in DH0:Packer DH0:Packer/groups $(for g in $G; do echo DH0:Packer/groups/$g; done) ENVARC:UP-MCC ENV:UP-MCC; do $P exec "makedir $d" >/dev/null 2>&1; done
 # AmiSSL: for the packer's TLS (same line as RIG_LIBS in UP-Term vtcon rig.py); a fresh rig has none after go
 $P exec "Assign >NIL: AmiSSL: DH0:AmiSSL" >/dev/null 2>&1
+# quit every running packer and flush: MUI keeps the old .mcc in memory, so a new instance would reuse it
+for i in 1 2 3 4; do timeout 20 $P rexx "address 'RLSPACK.1'; 'QUIT'" 2>&1 | grep -q '^rc 10' && break; sleep 2; done
+$P exec "avail flush >NIL:" >/dev/null 2>&1
 for f in "$U"/UP-*.mcc; do $P put "$f" "MUI:Libs/mui/$(basename "$f")" >/dev/null || echo "put fail $f"; done
 $P put "$U/up-mcc.library" VTCX:ixp6/up-mcc.library >/dev/null
 for t in Dark Light; do for d in ENVARC:UP-MCC ENV:UP-MCC; do $P put "$U/dist/UP-MCC/Themes/$t.theme" "$d/$t.theme" >/dev/null; done; done
