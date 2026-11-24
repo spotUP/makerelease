@@ -247,7 +247,8 @@ int rp_http_amiga(void *ctx, const rp_http_req *req, rp_http_resp *resp)
 {
     char host[128];
     const char *path;
-    int tls, port, s = -1, rc = -1, ssl_open = 0;
+    int tls, port, s = -1, rc = -1, ssl_open = 0, hs;
+    LONG nb;
     rbuf head = {0}, raw = {0};
     SSL_CTX *sctx = NULL;
     SSL *ssl = NULL;
@@ -302,7 +303,16 @@ int rp_http_amiga(void *ctx, const rp_http_req *req, rp_http_resp *resp)
         SSL_set_fd(ssl, s);
         SSL_set_tlsext_host_name(ssl, host);
         X509_VERIFY_PARAM_set1_host(SSL_get0_param(ssl), host, 0);
-        if (SSL_connect(ssl) != 1) { ssl_reason(resp, "TLS handshake failed", ssl); goto done; }
+        /* With a pump the handshake runs non-blocking and waits through wait_sock, so the window stays live
+         * (and Cancel works) while the server answers; without one SSL_connect blocks as before. */
+        if (rp_net_pump) { nb = 1; IoctlSocket(s, FIONBIO, (APTR)&nb); }
+        while ((hs = SSL_connect(ssl)) != 1) {
+            int e = SSL_get_error(ssl, hs);
+            if ((e != SSL_ERROR_WANT_READ && e != SSL_ERROR_WANT_WRITE) || wait_sock(s, e == SSL_ERROR_WANT_WRITE, 0, 0) <= 0) break;
+        }
+        nb = 0;
+        IoctlSocket(s, FIONBIO, (APTR)&nb);
+        if (hs != 1) { ssl_reason(resp, "TLS handshake failed", ssl); goto done; }
     }
 
     if (send_all(s, ssl, head.p, head.len) ||

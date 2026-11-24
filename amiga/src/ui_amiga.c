@@ -354,6 +354,7 @@ static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
  * stays live, the form (g_net_pages) is disabled and the Cancel button shows. */
 static Object *g_net_app, *g_net_status, *g_net_pages, *g_net_cancel_btn;
 static int g_net_cancel, g_net_quit;
+static void shell_net_busy(int on);
 static unsigned long g_net_shown; /* last percent drawn, ~0UL = the waiting line */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
 static Object *g_diz_count; /* "Release line: N/width characters" under the Diz line */
@@ -1050,15 +1051,20 @@ static void shell_apply_sections(const rp_group *g) {
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
 static void shell_seed_status(Object *status, const rp_group *g, Object *code_field, Object *format_cycle) {
     char msg[400];
+    int rc;
     g_seed_ok = 0;
     shell_apply_sections(g);
     if (!RP_ONLINE_HAS_SERVER(g)) {
         shell_roster_prefill(g, 0);
         return;
     }
-    /* the fetch blocks the event loop (connect 5 s, read 10 s per request at worst): say so before it starts */
+    /* runs under shell_net_busy like Publish: the transport pumps the window (gauge, Cancel, Quit) between socket waits */
     SetAttrs(status, UPA_Text_Contents, (ULONG) "Loading current members and release number from the release server...", TAG_DONE);
-    if (shell_seed_load(g, msg, sizeof(msg)) != 0) {
+    shell_net_busy(1);
+    rc = shell_seed_load(g, msg, sizeof(msg));
+    shell_net_busy(0);
+    if (rc != 0) {
+        if (g_net_cancel) snprintf(msg, sizeof msg, "Loading from the release server was cancelled: no member list or release number check.");
         shell_roster_prefill(g, 0);
         SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
         return;
@@ -2391,7 +2397,7 @@ static int shell_main(void) {
         int last_save_failed = 0;
         if (g_code_deferred != 0) id = g_code_deferred, g_code_deferred = 0, sigs = 0;
         else id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
-        if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
+        if (g_net_quit || id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break; /* g_net_quit: Quit during a seed load */
         if (id == ID_BUILD) {
             shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 0);
         }
