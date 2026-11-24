@@ -11,4 +11,8 @@ typedef struct {
 
 rp_sections rp_sections_for(const rp_group *g);
 
+/* Back/Next page step (desktop wizard nextAvailable): the nearest page from cur in direction dir (+1 or -1) among n pages whose shown[i] is
+ * non-zero (shown NULL: all pages), or -1 when there is none, which disables that button. */
+int rp_page_step(int cur, int dir, const int *shown, int n);
+
 #endif

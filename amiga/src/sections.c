@@ -12,3 +12,10 @@ rp_sections rp_sections_for(const rp_group *g) {
     s.door = server && s.boards;
     return s;
 }
+
+int rp_page_step(int cur, int dir, const int *shown, int n) {
+    int i;
+    for (i = cur + dir; i >= 0 && i < n; i += dir)
+        if (shown == NULL || shown[i]) return i;
+    return -1;
+}

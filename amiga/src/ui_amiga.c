@@ -198,6 +198,8 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_REFRESH 21 /* redraw the file lists; ID_PREVIEW (the button) also runs the dry run */
 #define ID_TAB 22      /* tab switched: refresh the NFO or readme preview shown */
 #define ID_AUTHORS 24  /* the Authors line changed: redo the creators preview and the name suggestions */
+#define ID_BACK 26     /* Back button: previous tab page */
+#define ID_NEXT 27     /* Next button: next tab page */
 #define ID_DIZCOUNT 25 /* Diz line, Released at or the name changed: redo the release line counter */
 #define ID_FOCUS 23    /* another field got the cursor: the one just left may have changed the preview */
 
@@ -394,6 +396,7 @@ static size_t g_nrows_members, g_nrows_boards, g_nrows_embeds;
 #define SHELL_TAB_FILES 4
 #define SHELL_TAB_NFO 3
 #define SHELL_TAB_AMINET 6
+#define SHELL_TAB_COUNT 7 /* pages in the tab group, in tab_captions order */
 static Object *g_err_obj;
 static ULONG g_err_tab = (ULONG)-1; /* -1: no failed field to show */
 
@@ -1537,7 +1540,7 @@ static int shell_main(void) {
     Object *files_list, *add_file_btn, *remove_file_btn, *pick_btn, *build_btn, *status;
     Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
-    Object *tabs, *pages, *preview_btn, *quit_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
+    Object *tabs, *pages, *preview_btn, *quit_btn, *back_btn, *next_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
     static const char *const formats[] = { "LHA", "ZIP", NULL };
     char broken[1024];
@@ -1589,6 +1592,8 @@ static int shell_main(void) {
     quit_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Role, (ULONG)UPV_Button_Role_Ghost, UPA_Button_Icon, (ULONG) "x",
                              UPA_Button_IconOnly, (ULONG)TRUE, UPA_Button_Flat, (ULONG)TRUE, UPA_Button_FixedWidth, 24UL,
                              UPA_Button_FixedHeight, 24UL, TAG_DONE);
+    back_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Back", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, MUIA_Disabled, (ULONG)TRUE, TAG_DONE);
+    next_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Next", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     cover_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick cover...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     embed_pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick image...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     publish_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Publish", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
@@ -1639,7 +1644,7 @@ static int shell_main(void) {
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
-        build_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
+        build_btn == NULL || back_btn == NULL || next_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
@@ -1689,7 +1694,7 @@ static int shell_main(void) {
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
                                                                           MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status,
-                                                                          MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), TAG_DONE),
+                                                                          MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)back_btn, MUIA_Group_Child, (ULONG)next_btn, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), TAG_DONE),
                                                   TAG_DONE)
                                   : NULL;
         /* Window padding: MUI adds 4 px (3 px top and bottom) itself, these bands bring every edge to 8. KeepSpacing stops UP-Panel
@@ -1733,6 +1738,8 @@ static int shell_main(void) {
     DoMethod(quit_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID,
              (ULONG)MUIV_Application_ReturnID_Quit);
     DoMethod(build_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BUILD);
+    DoMethod(back_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BACK);
+    DoMethod(next_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NEXT);
     DoMethod(add_file_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_ADDFILE);
     DoMethod(remove_file_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REMOVEFILE);
     DoMethod(pick_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PICK);
@@ -1897,9 +1904,18 @@ static int shell_main(void) {
         if (id == ID_NFO_PREVIEW) {
             shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
+        if (id == ID_BACK || id == ID_NEXT) {
+            ULONG cur = 0;
+            int to;
+            GetAttr(UPA_Tabs_Active, tabs, &cur);
+            to = rp_page_step((int)cur, id == ID_NEXT ? 1 : -1, NULL, SHELL_TAB_COUNT);
+            if (to >= 0) SetAttrs(tabs, UPA_Tabs_Active, (ULONG)to, TAG_DONE);
+        }
         if (id == ID_TAB || id == ID_FOCUS) {
             ULONG tab = (ULONG)-1;
             GetAttr(UPA_Tabs_Active, tabs, &tab);
+            SetAttrs(back_btn, MUIA_Disabled, (ULONG)(rp_page_step((int)tab, -1, NULL, SHELL_TAB_COUNT) < 0), TAG_DONE);
+            SetAttrs(next_btn, MUIA_Disabled, (ULONG)(rp_page_step((int)tab, 1, NULL, SHELL_TAB_COUNT) < 0), TAG_DONE);
             if (tab == SHELL_TAB_NFO) shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
             else if (tab == SHELL_TAB_AMINET) {
                 shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,

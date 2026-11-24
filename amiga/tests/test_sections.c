@@ -27,6 +27,13 @@ int main(void) {
     g.backend_doorserver = 1;
     s = rp_sections_for(&g);
     CHECK(!s.boards && !s.system && !s.media && !s.publish && !s.door);
+    {
+        const int shown[4] = { 1, 0, 0, 1 };
+        CHECK(rp_page_step(0, -1, NULL, 7) == -1 && rp_page_step(0, 1, NULL, 7) == 1);
+        CHECK(rp_page_step(6, 1, NULL, 7) == -1 && rp_page_step(6, -1, NULL, 7) == 5);
+        CHECK(rp_page_step(0, 1, shown, 4) == 3 && rp_page_step(3, -1, shown, 4) == 0);
+        CHECK(rp_page_step(3, 1, shown, 4) == -1 && rp_page_step(0, -1, shown, 4) == -1);
+    }
     if (failures) { printf("%d failure(s)\n", failures); return 1; }
     printf("test_sections: ok\n");
     return 0;
