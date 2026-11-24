@@ -1,6 +1,7 @@
 #include "build_gate.h"
 
 #include <stdio.h>
+#include <string.h>
 
 static int failures;
 
@@ -29,6 +30,19 @@ int main(void) {
     CHECK(rp_gate_open(&gate, state("Name2", "ABCDE")));
     rp_gate_clear(&gate);
     CHECK(!rp_gate_open(&gate, state("Name2", "ABCDE")));
+    {   /* Build needs a Description and Notes, like the desktop's required fields */
+        char err[128];
+        CHECK(rp_build_required("A demo.", "Notes line", err, sizeof err) == 0);
+        CHECK(rp_build_required("", "Notes line", err, sizeof err) == RP_REQUIRED_DESCRIPTION);
+        CHECK(strstr(err, "Description") != NULL);
+        CHECK(rp_build_required("A demo.", "", err, sizeof err) == RP_REQUIRED_NOTES);
+        CHECK(strstr(err, "Notes") != NULL);
+        /* whitespace only is blank; NULL is blank; Description is reported first when both are missing */
+        CHECK(rp_build_required("  \t", "Notes line", err, sizeof err) == RP_REQUIRED_DESCRIPTION);
+        CHECK(rp_build_required("A demo.", " \n \n", err, sizeof err) == RP_REQUIRED_NOTES);
+        CHECK(rp_build_required(NULL, NULL, err, sizeof err) == RP_REQUIRED_DESCRIPTION);
+        CHECK(rp_build_required(" x ", "\n y", err, sizeof err) == 0);
+    }
     if (failures == 0) printf("build_gate: ok\n");
     return failures != 0;
 }

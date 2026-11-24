@@ -329,6 +329,7 @@ static size_t g_nrows_members, g_nrows_boards, g_nrows_embeds;
 /* The field a failed check names (desktop field-errors.ts marks it): its tab and object, focused by the main loop.
  * NULL when the failure belongs to no single field. */
 #define SHELL_TAB_RELEASE 0
+#define SHELL_TAB_NOTES 1
 #define SHELL_TAB_ROSTER 2
 #define SHELL_TAB_FILES 4
 static Object *g_err_obj;
@@ -861,6 +862,19 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         shell_err_at(SHELL_TAB_RELEASE, name_field);
         SetAttrs(status, UPA_Text_Contents, (ULONG) "Name: enter the release name on the Release tab first.", TAG_DONE);
         return;
+    }
+    /* desktop: the Description input and the NFO text area are required */
+    switch (rp_build_required(shell_field_text(desc_field), shell_area_raw(g_notes_field), errmsg, sizeof(errmsg))) {
+    case RP_REQUIRED_DESCRIPTION:
+        shell_err_at(SHELL_TAB_RELEASE, desc_field);
+        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        return;
+    case RP_REQUIRED_NOTES:
+        shell_err_at(SHELL_TAB_NOTES, g_notes_field);
+        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        return;
+    default:
+        break;
     }
     if (g_files[0] == '\0') {
         shell_err_at(SHELL_TAB_FILES, NULL);
