@@ -32,6 +32,33 @@ struct Library *AmiSSLBase = NULL;
 struct Library *AmiSSLExtBase = NULL;
 
 #define MAX_RESPONSE (8 * 1024 * 1024)
+#define SEND_CHUNK 4096        /* bytes per send between pump calls */
+#define PUMP_SLICE_MICRO 200000 /* WaitSelect slice between pump calls */
+
+int (*rp_net_pump)(unsigned long done, unsigned long total) = NULL;
+static int io_sec = RP_HTTP_LONG_READ_SEC; /* read/write limit of the socket in use, set by connect_to */
+
+/* With a pump set: waits until s is readable (or writable) in short slices, calling the pump
+ * before each. Returns 1 ready, 0 timed out after io_sec, -1 cancelled by the pump. Without a
+ * pump returns 1 at once and the blocking call relies on SO_RCVTIMEO/SO_SNDTIMEO. */
+static int wait_sock(int s, int for_write, unsigned long done, unsigned long total)
+{
+    long waited = 0;
+    if (!rp_net_pump) return 1;
+    for (;;) {
+        fd_set fds;
+        struct timeval tv;
+        LONG r;
+        if (rp_net_pump(done, total)) return -1;
+        FD_ZERO(&fds);
+        FD_SET(s, &fds);
+        tv.tv_secs = 0; tv.tv_micro = PUMP_SLICE_MICRO;
+        r = WaitSelect(s + 1, for_write ? NULL : &fds, for_write ? &fds : NULL, NULL, &tv, NULL);
+        if (r != 0) return 1; /* ready, or a socket error the real call then reports */
+        waited += PUMP_SLICE_MICRO;
+        if (waited >= (long)io_sec * 1000000L) return 0;
+    }
+}
 
 typedef struct { char *p; size_t len, cap; } rbuf;
 
@@ -74,7 +101,9 @@ static int split_url(const char *url, int *tls, char *host, size_t hcap, int *po
     return 0;
 }
 
-/* read_sec: the read and write limit once connected; the connect itself gets RP_HTTP_CONNECT_SEC. */
+/* read_sec: the read and write limit once connected; the connect itself gets RP_HTTP_CONNECT_SEC.
+ * shortcut: DNS and connect still block the caller (up to RP_HTTP_CONNECT_SEC plus the resolver);
+ * make the connect non-blocking with WaitSelect if that freeze proves too long. */
 static int connect_to(const char *host, int port, int read_sec, rp_http_resp *resp)
 {
     struct hostent *he = gethostbyname((STRPTR)host);
@@ -104,15 +133,21 @@ static int connect_to(const char *host, int port, int read_sec, rp_http_resp *re
         return -1;
     }
     tv.tv_secs = read_sec;
+    io_sec = read_sec;
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof tv);
     setsockopt(s, SOL_SOCKET, SO_SNDTIMEO, &tv, sizeof tv);
     return s;
 }
 
+/* Sends in SEND_CHUNK pieces, pumping the UI between them (progress = bytes of this call). */
 static int send_all(int s, SSL *ssl, const char *d, size_t n)
 {
+    size_t total = n;
     while (n) {
-        int k = ssl ? SSL_write(ssl, d, (int)n) : (int)send(s, (APTR)d, (long)n, 0);
+        size_t c = n > SEND_CHUNK ? SEND_CHUNK : n;
+        int k;
+        if (wait_sock(s, 1, (unsigned long)(total - n), (unsigned long)total) <= 0) return -1;
+        k = ssl ? SSL_write(ssl, d, (int)c) : (int)send(s, (APTR)d, (long)c, 0);
         if (k <= 0) return -1;
         d += k; n -= (size_t)k;
     }
@@ -262,7 +297,13 @@ int rp_http_amiga(void *ctx, const rp_http_req *req, rp_http_resp *resp)
         fail(resp, "send failed%s", ""); goto done;
     }
     for (;;) {
-        int k = ssl ? SSL_read(ssl, tmp, sizeof tmp) : (int)recv(s, tmp, sizeof tmp, 0);
+        int k, w = (ssl && SSL_pending(ssl) > 0) ? 1 : wait_sock(s, 0, 0, 0);
+        if (w < 0) { fail(resp, "cancelled%s", ""); goto done; }
+        if (w == 0) {
+            if (!raw.len) { fail(resp, "receive timed out%s", ""); goto done; }
+            break;
+        }
+        k = ssl ? SSL_read(ssl, tmp, sizeof tmp) : (int)recv(s, tmp, sizeof tmp, 0);
         if (k <= 0) {
             if (ssl && k < 0) { /* timeout or reset; a missing close_notify at EOF is tolerated below */
                 if (!raw.len) { ssl_reason(resp, "TLS read failed", ssl); goto done; }
@@ -311,7 +352,12 @@ static int tcp_open(void *ctx, const char *host, int port, char *err, size_t err
     return s;
 }
 static int tcp_send(void *ctx, int h, const char *d, size_t n) { (void)ctx; return send_all(h, NULL, d, n); }
-static int tcp_recv(void *ctx, int h, char *b, size_t cap) { (void)ctx; return (int)recv(h, (APTR)b, (long)cap, 0); }
+static int tcp_recv(void *ctx, int h, char *b, size_t cap)
+{
+    (void)ctx;
+    if (wait_sock(h, 0, 0, 0) <= 0) return -1;
+    return (int)recv(h, (APTR)b, (long)cap, 0);
+}
 static void tcp_close(void *ctx, int h)
 {
     (void)ctx;
