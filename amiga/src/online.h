@@ -12,6 +12,10 @@
 #include "http.h"
 #include "json.h"
 #include "release_seed.h"
+#include "text_rows.h"
+
+#define RP_ONLINE_BOARDS_MAX RP_SEED_BOARDS_MAX
+#define RP_ONLINE_EMBEDS_MAX 16
 
 /* Latin-1 -> UTF-8. Returns 0, or -1 when cap is too small (out is then cut). */
 int rp_latin1_to_utf8(const char *in, char *out, size_t cap);
@@ -24,6 +28,14 @@ typedef struct {
     const char *category;      /* history entry category (rp_release_categories); required */
     const rp_credit *credits;  /* role/name rows from the Authors field; n_credits may be 0 */
     size_t n_credits;
+    /* Members, boards and media embeds from the Roster tab (Latin-1 text rows, text_rows.h). members NULL = the
+     * group's own list; boards NULL or n_boards 0 = the key is omitted so the stored list carries forward. */
+    const rp_member *members;
+    size_t n_members;
+    const rp_board_row *boards;
+    size_t n_boards;                   /* at most RP_ONLINE_BOARDS_MAX */
+    const rp_embed_row *embeds;        /* image rows are uploaded from their path, in order (embedImage) */
+    size_t n_embeds;                   /* at most RP_ONLINE_EMBEDS_MAX */
     const char *format;        /* "LHA" or "ZIP" */
     const char *diz_path;      /* the built file_id.diz */
     const char *archive_path;  /* the built archive; its base name is the upload name */

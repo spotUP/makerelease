@@ -72,12 +72,18 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     const rp_group *g = a->group;
     rp_rel_cfg cfg;
     const char *division;
-    char *s[9 + 2 * RP_MEMBERS_MAX + 2 * RP_CREDITS_MAX] = {0}, *archive = NULL, *image = NULL, *json = NULL;
-    size_t i, ns = 0, alen = 0, ilen = 0;
+    char *s[9 + 2 * RP_MEMBERS_MAX + 2 * RP_CREDITS_MAX + 4 * RP_ONLINE_BOARDS_MAX + 2 * RP_ONLINE_EMBEDS_MAX] = {0}, *archive = NULL, *image = NULL, *json = NULL;
+    size_t i, ns = 0, alen = 0, ilen = 0, elen = 0;
     rp_rel_member mem[RP_MEMBERS_MAX];
     rp_rel_credit cr[RP_CREDITS_MAX];
     rp_rel_form f;
     rp_rel_file af, imf;
+    rp_rel_board brd[RP_ONLINE_BOARDS_MAX];
+    rp_rel_embed emb[RP_ONLINE_EMBEDS_MAX];
+    rp_rel_file eimg[RP_ONLINE_EMBEDS_MAX];
+    char *eimg_data[RP_ONLINE_EMBEDS_MAX] = {0};
+    size_t nimg = 0, nmem;
+    const rp_member *members;
     rp_rel_err err;
     jnode *out = NULL;
     int rc = -1;
@@ -107,12 +113,40 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     f.entry_creators = s[ns++] = u8dup(a->creators ? a->creators : "");
     f.division = division;
     f.description = s[ns++] = u8dup(a->description);
-    for (i = 0; i < g->nmembers; i++) {
-        mem[i].nickname = s[ns++] = u8dup(g->members[i].nickname);
-        mem[i].role = s[ns++] = u8dup(g->members[i].role);
+    members = a->members ? a->members : g->members;
+    nmem = a->members ? a->n_members : g->nmembers;
+    if (nmem > RP_MEMBERS_MAX || a->n_boards > RP_ONLINE_BOARDS_MAX || a->n_embeds > RP_ONLINE_EMBEDS_MAX) {
+        snprintf(msg, cap, "Not published - too many members, boards or media embeds");
+        goto done;
+    }
+    for (i = 0; i < nmem; i++) {
+        mem[i].nickname = s[ns++] = u8dup(members[i].nickname);
+        mem[i].role = s[ns++] = u8dup(members[i].role);
     }
     f.members = mem;
-    f.n_members = g->nmembers;
+    f.n_members = nmem;
+    /* No boards: leave the key out so the stored list carries forward (desktop: boards.length > 0 ? { boards } : {}). */
+    for (i = 0; i < a->n_boards; i++) {
+        brd[i].name = s[ns++] = u8dup(a->boards[i].name);
+        brd[i].sysop = s[ns++] = u8dup(a->boards[i].sysop);
+        brd[i].hq = s[ns++] = u8dup(a->boards[i].hq);
+        brd[i].status = s[ns++] = u8dup(a->boards[i].status);
+    }
+    if (a->n_boards) { f.boards = brd; f.n_boards = a->n_boards; }
+    for (i = 0; i < a->n_embeds; i++) {
+        const rp_embed_row *e = &a->embeds[i];
+        emb[i].type = e->is_image ? "image" : "youtube";
+        emb[i].caption = s[ns++] = u8dup(e->caption);
+        emb[i].youtube_url = e->is_image ? "" : (s[ns++] = u8dup(e->url));
+        if (e->is_image) {
+            eimg_data[nimg] = read_all(e->path, &elen);
+            if (!eimg_data[nimg]) { snprintf(msg, cap, "Not published - media embed image %s could not be read", e->path); goto done; }
+            eimg[nimg].filename = base_of(e->path); eimg[nimg].data = eimg_data[nimg]; eimg[nimg].len = elen;
+            nimg++;
+        }
+    }
+    f.embeds = emb;
+    f.n_embeds = a->n_embeds;
     for (i = 0; i < a->n_credits && i < RP_CREDITS_MAX; i++) {
         cr[i].role = s[ns++] = u8dup(a->credits[i].role);
         cr[i].name = s[ns++] = u8dup(a->credits[i].name);
@@ -128,7 +162,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     out = NULL;
     af.filename = base_of(a->archive_path); af.data = archive; af.len = alen;
     imf.filename = base_of(a->image_path); imf.data = image; imf.len = ilen;
-    if (rp_rel_publish_files(&cfg, a->code, a->seed, &af, &imf, NULL, 0, &out, &err) != 0) {
+    if (rp_rel_publish_files(&cfg, a->code, a->seed, &af, &imf, eimg, nimg, &out, &err) != 0) {
         if (err.status == 409 && err.wordpress_url[0]) snprintf(msg, cap, "Already published: %s", err.wordpress_url);
         else snprintf(msg, cap, "Not published - %s", err.message);
         goto done;
@@ -142,6 +176,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
 done:
     json_free(out);
     for (i = 0; i < ns; i++) free(s[i]);
+    for (i = 0; i < nimg; i++) free(eimg_data[i]);
     free(archive); free(image); free(dizraw); free(json);
     return rc;
 }

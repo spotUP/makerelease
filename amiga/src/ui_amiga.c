@@ -300,6 +300,42 @@ static const char *shell_area_text(Object *area, char *buf, size_t cap) {
 static const char *shell_notes_text(void) { return shell_area_text(g_notes_field, g_notes_buf, sizeof g_notes_buf); }
 static const char *shell_news_text(void) { return shell_area_text(g_news_field, g_news_buf, sizeof g_news_buf); }
 
+/* The Roster tab: members ("Nickname | role"), boards (X Innovations only) and media embeds, one row per line. */
+#define SHELL_ROWS_MAX 3000
+static Object *g_members_field, *g_boards_field, *g_embeds_field;
+static rp_member g_rows_members[RP_MEMBERS_MAX];
+static rp_board_row g_rows_boards[RP_ONLINE_BOARDS_MAX];
+static rp_embed_row g_rows_embeds[RP_ONLINE_EMBEDS_MAX];
+static size_t g_nrows_members, g_nrows_boards, g_nrows_embeds;
+
+static const char *shell_area_raw(Object *area) {
+    ULONG ptr = 0;
+    GetAttr(UPA_TextArea_Text, area, &ptr);
+    return ptr ? (const char *)ptr : "";
+}
+
+/* Parse the Roster tab for group g into the g_rows_* arrays. -1 with "<Field>: Line N: msg" in msg on a bad row. Boards
+ * are read for X Innovations, embeds for door-server groups (as on the desktop); the others stay empty. */
+static int shell_roster_read(const rp_group *g, char *msg, size_t cap) {
+    rp_row_err err;
+    int n;
+    g_nrows_members = g_nrows_boards = g_nrows_embeds = 0;
+    n = rp_parse_member_rows(shell_area_raw(g_members_field), g_rows_members, RP_MEMBERS_MAX, &err);
+    if (n < 0) { snprintf(msg, cap, "Members: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+    g_nrows_members = (size_t)n;
+    if (g->renderer == R_XINNOVATIONS) {
+        n = rp_parse_board_rows(shell_area_raw(g_boards_field), g_rows_boards, RP_ONLINE_BOARDS_MAX, &err);
+        if (n < 0) { snprintf(msg, cap, "Boards: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+        g_nrows_boards = (size_t)n;
+    }
+    if (RP_ONLINE_HAS_SERVER(g)) {
+        n = rp_parse_embed_rows(shell_area_raw(g_embeds_field), g_rows_embeds, RP_ONLINE_EMBEDS_MAX, &err);
+        if (n < 0) { snprintf(msg, cap, "Media embeds: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+        g_nrows_embeds = (size_t)n;
+    }
+    return 0;
+}
+
 static rp_credit g_credits[RP_CREDITS_MAX];
 
 /* The parsed authors, in g_credits; returns how many. */
@@ -383,14 +419,30 @@ static int shell_seed_load(const rp_group *g, char *msg, size_t cap) {
     return rp_online_seed(g, rp_http_amiga, NULL, shell_unix_now(), &g_seed, &g_seed_tree, msg, cap);
 }
 
-/* On open and on a group change: load the seed and show its warnings (or the failure) in the status line. */
+/* Fill the Roster tab for group g: the seed's merged members and boards when seeded, else the group file's members. */
+static void shell_roster_prefill(const rp_group *g, int seeded) {
+    char *m = seeded ? rp_format_member_rows(g_seed.members, g_seed.nmembers) : rp_format_member_rows(g->members, g->nmembers);
+    char *b = (seeded && g->renderer == R_XINNOVATIONS) ? rp_format_board_rows(g_seed.boards, g_seed.nboards) : NULL;
+    SetAttrs(g_members_field, UPA_TextArea_Text, (ULONG)(m ? m : ""), TAG_DONE);
+    SetAttrs(g_boards_field, UPA_TextArea_Text, (ULONG)(b ? b : ""), TAG_DONE);
+    SetAttrs(g_embeds_field, UPA_TextArea_Text, (ULONG) "", TAG_DONE);
+    free(m);
+    free(b);
+}
+
+/* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
 static void shell_seed_status(Object *status, const rp_group *g) {
     char msg[400], ok[48];
-    if (!RP_ONLINE_HAS_SERVER(g)) return;
+    if (!RP_ONLINE_HAS_SERVER(g)) {
+        shell_roster_prefill(g, 0);
+        return;
+    }
     if (shell_seed_load(g, msg, sizeof(msg)) != 0) {
+        shell_roster_prefill(g, 0);
         SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
         return;
     }
+    shell_roster_prefill(g, 1);
     snprintf(ok, sizeof(ok), "Next release number: %s", g_seed.number_text[0] ? g_seed.number_text : "unknown");
     SetAttrs(status, UPA_Text_Contents, (ULONG)(g_seed.warnings[0] ? g_seed.warnings : ok), TAG_DONE);
 }
@@ -456,6 +508,9 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     ULONG name_ptr = 0, code_ptr = 0, desc_ptr = 0, gactive = 0, active = 0;
     STRPTR name_txt, code_txt, plat_txt, desc_txt;
     const rp_group *g;
+    const rp_member *members;
+    size_t nmembers;
+    rp_x_board xboards[RP_ONLINE_BOARDS_MAX];
     char path[256], *diz = NULL, *nfo = NULL, code[40], base[64], packed[72], date[16];
     char membuf[RP_MEMBERS_MAX][RP_NICK_MAX + RP_ROLE_MAX + 4];
     const char *memberlines[RP_MEMBERS_MAX];
@@ -502,6 +557,17 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         return;
     }
+    if (shell_roster_read(g, errmsg, sizeof(errmsg)) != 0) {
+        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        return;
+    }
+    if (g_nrows_members > 0) {
+        members = g_rows_members;
+        nmembers = g_nrows_members;
+    } else {
+        members = g->members;
+        nmembers = g->nmembers;
+    }
     if (RP_ONLINE_HAS_SERVER(g)) {
         /* the history entry needs the server's next number and a category */
         category = shell_category();
@@ -523,13 +589,13 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         return;
     }
     width = 0;
-    for (i = 0; i < g->nmembers; i++) {
-        size_t nl = strlen(g->members[i].nickname);
+    for (i = 0; i < nmembers; i++) {
+        size_t nl = strlen(members[i].nickname);
         if (nl > width) width = nl;
     }
-    for (i = 0; i < g->nmembers; i++) {
-        snprintf(membuf[i], sizeof(membuf[i]), "%-*s  %s", (int)(width + 2), g->members[i].nickname,
-                 g->members[i].role);
+    for (i = 0; i < nmembers; i++) {
+        snprintf(membuf[i], sizeof(membuf[i]), "%-*s  %s", (int)(width + 2), members[i].nickname,
+                 members[i].role);
         memberlines[i] = membuf[i];
     }
     ncredits = shell_credits();
@@ -570,7 +636,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     blocks[1].nlines = 0;
     blocks[2].name = "members";
     blocks[2].lines = memberlines;
-    blocks[2].nlines = g->nmembers;
+    blocks[2].nlines = nmembers;
     blocks[3].name = "credits";
     blocks[3].lines = creditlines;
     blocks[3].nlines = ncredits;
@@ -614,8 +680,8 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         nf.release_date = date;
         nf.notes = shell_notes_text();
         nf.news = shell_news_text();
-        nf.members = g->members;
-        nf.nmembers = g->nmembers;
+        nf.members = members;
+        nf.nmembers = nmembers;
         nfo = rp_render_nfo_uprough(g->file_prefix, &hist, 1, &nf, errmsg, sizeof(errmsg));
         if (nfo == NULL) {
             SetAttrs(status, UPA_Text_Contents, (ULONG)(errmsg[0] ? errmsg : "out of memory"), TAG_DONE);
@@ -623,8 +689,8 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
             return;
         }
     } else {
-        /* /X: the framed drawing. The boards and release list come from the
-         * catalog (phase 2), so they are empty here; the rest is the form. */
+        /* /X: the framed drawing. The release list comes from the catalog
+         * (phase 2), so it is empty here; the boards are the Roster tab's. */
         rp_nfo_x_form xf;
         memset(&xf, 0, sizeof xf);
         xf.release_name = name_txt;
@@ -634,8 +700,16 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         xf.design = design;
         xf.notes = shell_notes_text();
         xf.news = shell_news_text();
-        xf.members = g->members;
-        xf.nmembers = g->nmembers;
+        xf.members = members;
+        xf.nmembers = nmembers;
+        for (i = 0; i < g_nrows_boards; i++) {
+            xboards[i].name = g_rows_boards[i].name;
+            xboards[i].sysop = g_rows_boards[i].sysop;
+            xboards[i].hq = g_rows_boards[i].hq;
+            xboards[i].status = g_rows_boards[i].status;
+        }
+        xf.boards = xboards;
+        xf.nboards = g_nrows_boards;
         nfo = rp_render_nfo_x(&xf);
         if (nfo == NULL) {
             SetAttrs(status, UPA_Text_Contents, (ULONG) "out of memory", TAG_DONE);
@@ -786,7 +860,17 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
     DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
     if (action == ID_PUBLISH) {
         rp_online_publish_args a;
+        if (shell_roster_read(g, msg, sizeof(msg)) != 0) {
+            SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+            return;
+        }
         memset(&a, 0, sizeof a);
+        a.members = g_rows_members; /* n_members 0 = the group's own list */
+        a.n_members = g_nrows_members;
+        a.boards = g_rows_boards;
+        a.n_boards = g_nrows_boards;
+        a.embeds = g_rows_embeds;
+        a.n_embeds = g_nrows_embeds;
         GetAttr(UPA_Cycle_Active, platform_field, &pa);
         a.group = g;
         a.code = code;
@@ -1025,6 +1109,9 @@ static int shell_main(void) {
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
     g_notes_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NOTES_MAX, UPA_TextArea_Placeholder, (ULONG) "Release notes, one paragraph per line", TAG_DONE);
     g_news_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NEWS_MAX, UPA_TextArea_Placeholder, (ULONG) "News", TAG_DONE);
+    g_members_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "Nickname | role, one member per line", TAG_DONE);
+    g_boards_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "Name | Sysop | HQ | Status (X Innovations only)", TAG_DONE);
+    g_embeds_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "youtube | caption | url   or   image | caption | path", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
@@ -1039,7 +1126,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_authors_field == NULL || g_category_cycle == NULL) {
+        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1053,6 +1140,9 @@ static int shell_main(void) {
                                                                   NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(row_label("Notes"), g_notes_field, row_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
+        Object *page_roster = shell_card("Members, boards and media", shell_form(row_label("Members"), g_members_field, row_label("Boards"), g_boards_field,
+                                                                                 row_label("Media embeds"), g_embeds_field,
+                                                                                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
@@ -1061,11 +1151,11 @@ static int shell_main(void) {
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
-        static const char *const tab_captions[] = { "Release", "Notes", "Files", "Publish", "Aminet", NULL };
+        static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
-                              MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_files),
+                              MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_roster), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),

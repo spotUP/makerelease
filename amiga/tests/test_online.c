@@ -11,6 +11,7 @@ static int failures;
 /* Scripted transport: the reply is chosen by method, calls are logged. */
 static char log_[2048];
 static char create_body[1024];
+static char publish_body[2048];
 static int create_key_seen;
 static int reply_status[4];
 static const char *reply_body[4];
@@ -25,12 +26,14 @@ static int fake_http(void *ctx, const rp_http_req *r, rp_http_resp *resp) {
         snprintf(create_body, sizeof create_body, "%.*s", (int)r->body_len, r->body);
         for (i = 0; i < r->nheaders; i++) if (!strcmp(r->headers[i].name, "X-Release-Key") && !strcmp(r->headers[i].value, "sekrit")) create_key_seen = 1;
     }
+    if (!strcmp(r->method, "POST") && strstr(r->url, "/publish"))
+        snprintf(publish_body, sizeof publish_body, "%.*s", (int)r->body_len, r->body);
     resp->status = reply_status[k];
     resp->body = strdup(reply_body[k]);
     return 0;
 }
 
-static void reset(void) { memset(log_, 0, sizeof log_); ncalls = 0; create_key_seen = 0; create_body[0] = 0; }
+static void reset(void) { memset(log_, 0, sizeof log_); ncalls = 0; create_key_seen = 0; create_body[0] = 0; publish_body[0] = 0; }
 
 static void writef(const char *p, const char *s) { FILE *f = fopen(p, "wb"); fputs(s, f); fclose(f); }
 
@@ -67,6 +70,43 @@ int main(void) {
         CHECK(strstr(create_body, "\"entryCreators\":\"R\xC3\xA9my\"") != NULL);
         CHECK(strstr(create_body, "\"news\":\"line one\\nline two\"") != NULL);
         a.credits = NULL; a.n_credits = 0; a.creators = NULL; a.news = NULL;
+    }
+    /* Roster tab rows: members replace the group's, boards and embeds reach the body, the image embed is uploaded */
+    {
+        rp_member mem[1];
+        rp_board_row brd[1];
+        rp_embed_row emb[2];
+        memset(mem, 0, sizeof mem); memset(brd, 0, sizeof brd); memset(emb, 0, sizeof emb);
+        strcpy(mem[0].nickname, "Zed"); strcpy(mem[0].role, "Music");
+        strcpy(brd[0].name, "Caf\xE9 BBS"); strcpy(brd[0].sysop, "Sys"); strcpy(brd[0].hq, "Oslo"); strcpy(brd[0].status, "Online");
+        strcpy(emb[0].caption, "Intro"); strcpy(emb[0].url, "https://y/t");
+        emb[1].is_image = 1; strcpy(emb[1].caption, "Shot"); strcpy(emb[1].path, "online_t_e.png");
+        writef("online_t_e.png", "EMBPNG");
+        a.members = mem; a.n_members = 1; a.boards = brd; a.n_boards = 1; a.embeds = emb; a.n_embeds = 2;
+        reply_status[0] = 201; reply_body[0] = "{\"releaseNumber\":5}";
+        reply_status[1] = 200; reply_body[1] = "{\"wordpressPostUrl\":\"https://wp/p\",\"archiveUrl\":\"https://a/x.lha\"}";
+        reset();
+        CHECK(rp_online_publish(&a, msg, sizeof msg) == 0);
+        CHECK(strstr(create_body, "\"members\":[{\"nickname\":\"Zed\",\"role\":\"Music\"}]") != NULL);
+        CHECK(strstr(create_body, "R\xC3\xA9my") == NULL);
+        CHECK(strstr(create_body, "\"boards\":[{\"name\":\"Caf\xC3\xA9 BBS\"") != NULL);
+        CHECK(strstr(create_body, "{\"type\":\"youtube\",\"caption\":\"Intro\",\"youtubeUrl\":\"https://y/t\"}") != NULL);
+        CHECK(strstr(create_body, "{\"type\":\"image\",\"caption\":\"Shot\"}") != NULL);
+        CHECK(strstr(publish_body, "name=\"embedImage\"") != NULL);
+        CHECK(strstr(publish_body, "filename=\"online_t_e.png\"") != NULL);
+        CHECK(strstr(publish_body, "EMBPNG") != NULL);
+        /* no boards: the key is left out; an unreadable embed image stops before any request */
+        a.n_boards = 0;
+        reset();
+        CHECK(rp_online_publish(&a, msg, sizeof msg) == 0);
+        CHECK(strstr(create_body, "\"boards\"") == NULL);
+        strcpy(emb[1].path, "online_t_missing.png");
+        reset();
+        CHECK(rp_online_publish(&a, msg, sizeof msg) == -1);
+        CHECK(strstr(msg, "online_t_missing.png") != NULL);
+        CHECK(log_[0] == 0);
+        remove("online_t_e.png");
+        a.members = NULL; a.n_members = 0; a.boards = NULL; a.embeds = NULL; a.n_embeds = 0;
     }
     reply_status[0] = 201; reply_body[0] = "{\"releaseNumber\":5}";
     reply_status[1] = 200; reply_body[1] = "{\"wordpressPostUrl\":\"https://wp/p\",\"archiveUrl\":\"https://a/x.lha\"}";
