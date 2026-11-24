@@ -522,17 +522,17 @@ static void shell_today(char *out, size_t cap) {
 #define RP_LAST_CHOICE_PATH "PROGDIR:last.prefs"
 
 /* Remember the open group and format for the next start, and the format for that group (desktop main.ts keeps both in localStorage). */
-static void shell_last_save(const rp_group *groups, int ngroups, Object *group_cycle, Object *format_cycle) {
+static int shell_last_save(const rp_group *groups, int ngroups, Object *group_cycle, Object *format_cycle) {
     ULONG ga = 0, fa = 0;
     rp_last_choice c;
     GetAttr(UPA_Cycle_Active, group_cycle, &ga);
     GetAttr(UPA_Cycle_Active, format_cycle, &fa);
-    if (ga >= (ULONG)ngroups) return;
+    if (ga >= (ULONG)ngroups) return 0;
     rp_last_choice_load(RP_LAST_CHOICE_PATH, &c); /* keeps the other groups' formats; a missing file is empty */
     snprintf(c.group, sizeof c.group, "%s", groups[ga].id);
     c.zip = fa != 0;
     rp_last_format_set(&c, groups[ga].id, c.zip);
-    rp_last_choice_save(RP_LAST_CHOICE_PATH, &c);
+    return rp_last_choice_save(RP_LAST_CHOICE_PATH, &c);
 }
 
 /* Select the remembered group and format; a group that no longer exists leaves the first one. Returns the open group's index. */
@@ -1210,7 +1210,12 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         SetAttrs(status, UPA_Text_Contents, (ULONG)done, TAG_DONE);
         goto build_end;
     build_fail:
-        SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+        if (dry) {
+            /* a read-only PROGDIR: or a missing drawer names itself in errmsg; the prefix says it was the preview's archive */
+            char shown[sizeof(errmsg) + 40];
+            snprintf(shown, sizeof(shown), "Preview failed: %s", errmsg);
+            SetAttrs(status, UPA_Text_Contents, (ULONG)shown, TAG_DONE);
+        } else SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
     build_end:
         SetAttrs(g_gauge, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
         {
@@ -1777,6 +1782,7 @@ static int shell_main(void) {
     shell_system_prefill(platform_field);
     for (;;) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
+        int last_save_failed = 0;
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
         if (id == ID_BUILD) {
             shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 0);
@@ -1820,7 +1826,7 @@ static int shell_main(void) {
             shell_guess_type(type_field, platform_field);
         }
         if (id == ID_GROUP) shell_last_format_apply(g_groups, g_ngroups, group_cycle, format_cycle);
-        if (id == ID_GROUP || id == ID_FORMAT) shell_last_save(g_groups, g_ngroups, group_cycle, format_cycle);
+        if (id == ID_GROUP || id == ID_FORMAT) last_save_failed = shell_last_save(g_groups, g_ngroups, group_cycle, format_cycle) != 0;
         if (id == ID_GROUP) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
@@ -1834,6 +1840,9 @@ static int shell_main(void) {
             if (g_seed_ok && ga < (ULONG)g_ngroups) shell_number_status(status, &g_groups[ga], code_field, format_cycle);
         }
         if (id == ID_CODE) shell_code_check(status, g_groups, group_cycle, code_field);
+        /* last, so the seed and number lines above do not hide it: a read-only PROGDIR: loses the remembered group and format */
+        if ((id == ID_GROUP || id == ID_FORMAT) && last_save_failed)
+            SetAttrs(status, UPA_Text_Contents, (ULONG) "Could not write PROGDIR:last.prefs (is PROGDIR: read-only?): the group and format are not remembered for the next start.", TAG_DONE);
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
         if (id == ID_EMBED_PICK) shell_embed_pick();
         if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
@@ -1874,7 +1883,7 @@ static int shell_main(void) {
             if ((LONG)row >= 0 && row < g_paths.n) {
                 rp_paths_remove(&g_paths, row);
                 id = ID_REFRESH;
-            }
+            } else SetAttrs(status, UPA_Text_Contents, (ULONG) "Remove selected: click an entry in the Files list first.", TAG_DONE);
         }
         if (id == ID_FLATTEN && g_prev.nnested > 0) {
             int at = rp_paths_find(&g_paths, g_prev.nested[0].path);
@@ -1886,7 +1895,12 @@ static int shell_main(void) {
             shell_refresh_preview(preview_list, warn_row, warn_text, g_groups, group_cycle, code_field, status);
         }
         /* the Preview button also writes the real archive to PROGDIR:dry-run, once the lists show the files */
-        if (id == ID_PREVIEW) shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 1);
+        if (id == ID_PREVIEW) {
+            shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 1);
+            /* the dry run only reports: a missing Name or note must not pull the user off the Files tab they are previewing */
+            g_err_tab = (ULONG)-1;
+            g_err_obj = NULL;
+        }
         if (g_err_tab != (ULONG)-1) {
             /* the failed check names a field: show its tab and put the cursor there (inner string gadget for UP-Field) */
             ULONG inner = 0;
