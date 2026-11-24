@@ -326,7 +326,8 @@ static Object *g_authors_field;
 static Object *g_also_aminet_chk;
 static Object *g_sec_system[1];
 static Object *g_revoke_field; /* desktop revoke-code: code to revoke, blank = the Code field */
-static Object *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[6], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
+static rp_sections g_sections; /* of the open group, set by shell_apply_sections */
+static Object *g_sec_history[2], *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[6], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
 static Object *g_diz_count; /* "Release line: N/width characters" under the Diz line */
@@ -474,7 +475,7 @@ static void shell_creators_refresh(int x_group) {
     rp_creators_token(shell_field_text(g_authors_field), tok, sizeof tok);
     rp_creators_preview(g_credits, n, x_group, g_creators_buf, sizeof g_creators_buf);
     k = rp_creators_matches(tok, g_creators_members, nm, hit, RP_CREATORS_SUGGEST_MAX);
-    for (i = 0; i < k; i++) {
+    for (i = 0; i < k && g_sections.creators; i++) { /* member hits need a release server (desktop creatorsAutocomplete) */
         len = strlen(g_creators_buf);
         snprintf(g_creators_buf + len, sizeof g_creators_buf - len, "%s%s", i == 0 ? " | Members: " : ", ", hit[i]);
     }
@@ -484,7 +485,7 @@ static void shell_creators_refresh(int x_group) {
 /* The Authors field was left: a name that is the start of exactly one member becomes that member (desktop picks with Enter). */
 static void shell_creators_complete(void) {
     char out[256];
-    if (rp_creators_complete(shell_field_text(g_authors_field), g_creators_members, shell_creators_members(), out, sizeof out)) shell_set_field(g_authors_field, out);
+    if (g_sections.creators && rp_creators_complete(shell_field_text(g_authors_field), g_creators_members, shell_creators_members(), out, sizeof out)) shell_set_field(g_authors_field, out);
 }
 
 /* The /X System field (desktop x-system), prefilled from the Platform tag while the user has not typed their own. */
@@ -594,7 +595,7 @@ static void shell_set_type(Object *cycle, const char *dir) {
 
 /* Category cycle: index 0 is "(choose)", index i+1 is rp_release_categories[i]. */
 static const char *g_category_labels[RP_RELEASE_CATEGORY_COUNT + 2];
-static Object *g_category_cycle;
+static Object *g_category_cycle, *g_category_lbl;
 
 static void shell_category_labels_init(void) {
     int i;
@@ -606,6 +607,7 @@ static void shell_category_labels_init(void) {
 /* The chosen history category, "" when none. */
 static const char *shell_category(void) {
     ULONG a = 0;
+    if (!g_sections.history) return ""; /* hidden, so not sent (desktop entryCategory is empty without historyEntry) */
     GetAttr(UPA_Cycle_Active, g_category_cycle, &a);
     return a > 0 && a <= (ULONG)RP_RELEASE_CATEGORY_COUNT ? rp_release_categories[a - 1] : "";
 }
@@ -708,14 +710,16 @@ static void shell_show_all(Object **objs, size_t n, int show) {
 
 /* Hides the boards, media, Publish and Door parts the group does not have (desktop visibleSections); a label hides with its field. */
 static void shell_apply_sections(const rp_group *g) {
-    rp_sections s = rp_sections_for(g);
+    rp_sections s = g_sections = rp_sections_for(g);
+    shell_show_all(g_sec_history, 2, s.history);
     shell_show_all(g_sec_boards, 2, s.boards);
     shell_show_all(g_sec_system, 1, s.system);
     shell_show_all(g_sec_media, 3, s.media);
     shell_show_all(g_sec_publish, 6, s.publish);
     shell_show_all(g_sec_door, 1, s.door);
-    SetAttrs(g_template_status, MUIA_ShowMe, (ULONG)(g->renderer == R_PLACEHOLDER), TAG_DONE);
-    SetAttrs(g_diz_count, MUIA_ShowMe, (ULONG)(g->renderer != R_PLACEHOLDER), TAG_DONE); /* a placeholder diz has no release line row */
+    SetAttrs(g_template_status, MUIA_ShowMe, (ULONG)s.diz_preview, TAG_DONE);
+    SetAttrs(g_diz_count, MUIA_ShowMe, (ULONG)s.diz_line, TAG_DONE); /* a placeholder diz has no release line row */
+    SetAttrs(g_number_row, MUIA_ShowMe, (ULONG)s.number, TAG_DONE);
 }
 
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
@@ -723,7 +727,6 @@ static void shell_seed_status(Object *status, const rp_group *g, Object *code_fi
     char msg[400];
     g_seed_ok = 0;
     shell_apply_sections(g);
-    SetAttrs(g_number_row, MUIA_ShowMe, (ULONG)!RP_ONLINE_HAS_SERVER(g), TAG_DONE);
     if (!RP_ONLINE_HAS_SERVER(g)) {
         shell_roster_prefill(g, 0);
         return;
@@ -1605,6 +1608,7 @@ static int shell_main(void) {
     aminet_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Aminet", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     shell_type_labels_init();
     shell_category_labels_init();
+    g_category_lbl = row_label("Category");
     g_category_cycle = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_category_labels, TAG_DONE);
     type_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_type_labels, TAG_DONE);
     arch_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)rp_aminet_architectures, TAG_DONE);
@@ -1646,7 +1650,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
+        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
@@ -1657,7 +1661,7 @@ static int shell_main(void) {
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), name_field,
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
-                                                                  row_label("Authors"), g_authors_field, row_label("Category"), g_category_cycle,
+                                                                  row_label("Authors"), g_authors_field, g_category_lbl, g_category_cycle,
                                                                   row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_creators_row, g_system_row, g_number_row, g_platform_row, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
@@ -1680,6 +1684,7 @@ static int shell_main(void) {
                                                                      area_label("Readme"), g_readme_view,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         g_sec_system[0] = g_system_row;
+        g_sec_history[0] = g_category_lbl, g_sec_history[1] = g_category_cycle;
         g_sec_boards[0] = boards_lbl, g_sec_boards[1] = g_boards_field;
         g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds_field, g_sec_media[2] = embed_pick_btn;
         g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk, g_sec_publish[5] = revoke_row;

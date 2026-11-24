@@ -7,6 +7,11 @@
  * website Publish and Revoke need a release server; the Door repo button needs both. Aminet and Build are always shown. */
 typedef struct {
     int boards, system, media, publish, door;
+    int history;      /* historyEntry: the Category row (the server's history entry needs one) */
+    int number;       /* releaseNumberText: the typed Release number row (a server counts releases itself) */
+    int creators;     /* creatorsAutocomplete: member hits in the Creators line */
+    int diz_line;     /* dizReleaseLine: the Diz line field and its counter (every renderer but placeholder) */
+    int diz_preview;  /* dizPreviewOnly: the template status line (placeholder renderer) */
 } rp_sections;
 
 rp_sections rp_sections_for(const rp_group *g);

@@ -10,6 +10,11 @@ rp_sections rp_sections_for(const rp_group *g) {
     s.media = server;
     s.publish = server;
     s.door = server && s.boards;
+    s.history = server;
+    s.number = !server;
+    s.creators = server;
+    s.diz_line = g->renderer != R_PLACEHOLDER;
+    s.diz_preview = g->renderer == R_PLACEHOLDER;
     return s;
 }
 

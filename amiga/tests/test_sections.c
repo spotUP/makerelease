@@ -17,16 +17,19 @@ int main(void) {
     g.backend_doorserver = 1;
     s = rp_sections_for(&g);
     CHECK(!s.boards && !s.system && s.media && s.publish && !s.door);
+    CHECK(s.history && !s.number && s.creators && s.diz_line && !s.diz_preview);
     g.renderer = R_XINNOVATIONS;
     s = rp_sections_for(&g);
     CHECK(s.boards && s.system && s.media && s.publish && s.door);
     g.backend_doorserver = 0;
     s = rp_sections_for(&g);
     CHECK(s.boards && s.system && !s.media && !s.publish && !s.door);
+    CHECK(!s.history && s.number && !s.creators && s.diz_line && !s.diz_preview);
     g.renderer = R_PLACEHOLDER;
     g.backend_doorserver = 1;
     s = rp_sections_for(&g);
     CHECK(!s.boards && !s.system && !s.media && !s.publish && !s.door);
+    CHECK(!s.history && s.number && !s.creators && !s.diz_line && s.diz_preview); /* a placeholder group has no known division, so no server */
     {
         const int shown[4] = { 1, 0, 0, 1 };
         CHECK(rp_page_step(0, -1, NULL, 7) == -1 && rp_page_step(0, 1, NULL, 7) == 1);
