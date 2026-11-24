@@ -8,11 +8,16 @@ whatever had last been uploaded to the web server.
 Packing a release zip:
 
     <platform dir>/INSTALL.txt   <- INSTALL-<platform>.txt from here
-    <platform dir>/<artifacts>   <- from app/release/ after `npm run dist`
+    <platform dir>/<artifacts>   <- what tauri/scripts/release.sh stages:
+                                    macOS   makerelease.app (universal, built locally)
+                                    Windows makerelease.exe (portable, from CI)
+                                    Linux   makerelease_<version>_amd64.AppImage (from CI)
 
 Keep them in sync with what the builds actually produce: the file names in
-section "INSTALL" are the artifact names electron-builder writes, and the
-output path in the last section is the one `output-root.ts` resolves.
+section "INSTALL"/"RUN" are the Tauri artifact names above, and the output
+path in the last section is the one `output_root_for` in
+tauri/src-tauri/src/profiles.rs resolves (Documents/<group label> Releases,
+home folder if there is no Documents folder).
 
 Windows section 2 exists because a member hit SmartScreen and reported
 "Windows blocked the execution ... I did not even see the application".

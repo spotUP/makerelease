@@ -1880,4 +1880,77 @@ mod tests {
         assert_eq!(n[0]["flattenTo"], wrap.display().to_string());
         fs::remove_dir_all(root).unwrap();
     }
+
+    // ---- archiver.spec.ts, ipc-handlers.spec.ts (ported after the Electron shell was removed)
+
+    #[test]
+    fn run_tool_missing_binary_gets_install_hint() {
+        let e = run_tool("makerelease-no-such-tool", &[], None, "install it somehow").unwrap_err();
+        assert_eq!(e, "\"makerelease-no-such-tool\" was not found on your PATH — install it somehow.");
+    }
+
+    #[test]
+    fn run_tool_path_appends_install_dirs() {
+        let inherited = std::env::var_os("PATH").unwrap_or_default().to_string_lossy().into_owned();
+        let passed = path_with_extras().to_string_lossy().into_owned();
+        assert!(passed.starts_with(&inherited), "{passed}");
+        if cfg!(target_os = "macos") {
+            assert!(passed.contains("/opt/homebrew/bin"), "{passed}");
+        }
+        if cfg!(target_os = "linux") {
+            assert!(passed.contains("/usr/local/bin"), "{passed}");
+        }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn run_tool_passes_real_failure_through() {
+        let args = vec!["-c".to_string(), "echo 'lha: cannot write archive: No space left on device' >&2; exit 1".to_string()];
+        let e = run_tool("sh", &args, None, "unused hint").unwrap_err();
+        assert!(e.contains("No space left on device"), "{e}");
+        assert!(!e.contains("not found on your PATH"), "{e}");
+    }
+
+    #[test]
+    fn real_build_refuses_leftover_archives() {
+        let root = scratch("leftover");
+        let p = ex_profile();
+        assert!(assert_local_code_available(&p, &root, "test1").is_ok());
+        for leftover in ["EX-TEST1.LHA", "EX-TEST1.ZIP", "EX-TEST1"] {
+            let f = root.join(leftover);
+            if leftover.contains('.') { fs::write(&f, "old").unwrap() } else { fs::create_dir_all(&f).unwrap() }
+            let e = assert_local_code_available(&p, &root, "test1").unwrap_err();
+            assert!(e.starts_with("EX-TEST1 already exists locally at "), "{e}");
+            assert!(e.contains(leftover), "{e}");
+            remove_path(&f).unwrap();
+        }
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn real_build_publishes_before_render() {
+        // The server numbers the release; a failed publish must stop the build before anything is rendered or packed.
+        let root = scratch("pub");
+        let ur = root.join("profiles/uprough");
+        fs::create_dir_all(&ur).unwrap();
+        fs::write(ur.join("profile.json"), "{\"id\":\"uprough\",\"label\":\"Up Rough\",\"url\":\"u\",\"filePrefix\":\"UP-\",\"renderer\":\"uprough\",\"backend\":\"releases-doorserver\",\"server\":{\"baseUrl\":\"http://127.0.0.1:1\"}}").unwrap();
+        let profiles = root.join("profiles");
+        let out = root.join("out");
+        let outf = |_: &Profile| out.clone();
+        let stages = RefCell::new(Vec::new());
+        let prog = |s: &str| stages.borrow_mut().push(s.to_string());
+        let ran = RefCell::new(0);
+        let run = |_: &str, _: &[String], _: &Path| -> Result<(), String> {
+            *ran.borrow_mut() += 1;
+            Ok(())
+        };
+        let env = Env { profiles_dir: &profiles, output_root: &outf, run: &run, progress: &prog };
+        let e = build_release_core(&env, &json!({"profileId": "uprough", "code": "t", "format": "LHA"}), false).unwrap_err();
+        assert!(e.starts_with("could not reach releases.uprough.net: "), "{e}");
+        assert!(stages.borrow().contains(&"Contacting the release server".to_string()));
+        assert!(!stages.borrow().contains(&"Writing NFO and diz".to_string()));
+        assert_eq!(*ran.borrow(), 0);
+        assert!(!out.join("UP-T").exists());
+        fs::remove_dir_all(root).unwrap();
+    }
 }

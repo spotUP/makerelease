@@ -14,16 +14,12 @@ Up Rough Release Maker - Linux
 
    AppImage - no install, just make it executable:
 
-       chmod +x "Up Rough Release Maker-0.1.0.AppImage"
-       ./"Up Rough Release Maker-0.1.0.AppImage"
+       chmod +x makerelease_*.AppImage
+       ./makerelease_*.AppImage
 
    If it refuses to start, your distro is probably missing FUSE 2:
 
        sudo apt install libfuse2
-
-   Debian/Ubuntu package:
-
-       sudo apt install ./makerelease_0.1.0_amd64.deb
 
 3. WHERE YOUR BUILDS GO
 

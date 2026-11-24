@@ -30,9 +30,12 @@ Up Rough Release Maker - Windows
 
 3. RUN
 
-       makerelease 0.1.0.exe
+       makerelease.exe
 
    Portable: nothing to install. Keep the .exe anywhere and run it.
+   It uses the Microsoft Edge WebView2 runtime, which Windows 10 and 11
+   already include. If the app does not start on an older system, install
+   the WebView2 Runtime from Microsoft.
 
 4. FIRST LAUNCH
 
