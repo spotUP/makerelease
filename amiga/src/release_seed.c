@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "credits.h"
+#include "naming.h"
 #include "stale_drafts.h"
 
 const char *const rp_release_categories[RP_RELEASE_CATEGORY_COUNT + 1] = {
@@ -97,4 +98,20 @@ int rp_code_check(const rp_rel_cfg *c, const char *code, const char *base_name, 
     }
     if (exists) snprintf(msg, cap, "%s already exists - building will fail unless you change the code.", base_name);
     return exists ? 1 : 0;
+}
+
+int rp_release_number_preview(const char *number_text, const char *file_prefix, const char *code, int code_length, int lha,
+                              char *out, size_t cap) {
+    char xs[40], name[96], lower[96];
+    size_t i;
+    int n;
+    if (code[0] == '\0') {
+        for (i = 0; i < sizeof xs - 1 && (int)i < code_length; i++) xs[i] = 'X';
+        xs[i] = '\0';
+        code = xs;
+    }
+    rp_archive_name(file_prefix, code, lha, name, sizeof name);
+    for (i = 0; (lower[i] = (char)((name[i] >= 'A' && name[i] <= 'Z') ? name[i] + 32 : name[i])) != '\0'; i++) {}
+    n = snprintf(out, cap, "release %s %s", number_text[0] ? number_text : "?", lower);
+    return n >= 0 && (size_t)n < cap ? 0 : -1;
 }

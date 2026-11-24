@@ -48,4 +48,9 @@ int rp_seed_parse(const jnode *seed, const jnode *numbering, long now_seconds,
  * (msg = the error). The caller only asks once the code has full length. */
 int rp_code_check(const rp_rel_cfg *c, const char *code, const char *base_name, char *msg, size_t cap);
 
+/* The Release tab's number preview (desktop updateReleaseNumberPreview): "release 217 up-hypoc.lha". number_text "" prints
+ * "?"; an empty code prints code_length X so the name shows its shape. Returns 0, or -1 when cap is too small. */
+int rp_release_number_preview(const char *number_text, const char *file_prefix, const char *code, int code_length, int lha,
+                              char *out, size_t cap);
+
 #endif

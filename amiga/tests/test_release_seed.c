@@ -80,6 +80,11 @@ int main(void) {
     f.reply = NULL;
     CHECK(rp_code_check(&cfg, "NEW", "up-new", msg, sizeof msg) == -1 && msg[0] != 0);
 
+    /* number preview */
+    CHECK(rp_release_number_preview("218", "up-", "hypoc", 5, 1, msg, sizeof msg) == 0 && !strcmp(msg, "release 218 up-hypoc.lha"));
+    CHECK(rp_release_number_preview("", "up-", "", 5, 0, msg, sizeof msg) == 0 && !strcmp(msg, "release ? up-xxxxx.zip"));
+    CHECK(rp_release_number_preview("1", "up-", "ab", 5, 1, msg, 8) == -1);
+
     if (failures) { printf("%d failure(s)\n", failures); return 1; }
     printf("test_release_seed ok\n");
     return 0;

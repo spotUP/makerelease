@@ -442,8 +442,9 @@ static void shell_roster_prefill(const rp_group *g, int seeded) {
 }
 
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
-static void shell_seed_status(Object *status, const rp_group *g) {
-    char msg[400], ok[48];
+static void shell_seed_status(Object *status, const rp_group *g, Object *code_field, Object *format_cycle) {
+    char msg[400], ok[2200], pv[96], code[40];
+    ULONG fa = 0;
     if (!RP_ONLINE_HAS_SERVER(g)) {
         shell_roster_prefill(g, 0);
         return;
@@ -454,8 +455,11 @@ static void shell_seed_status(Object *status, const rp_group *g) {
         return;
     }
     shell_roster_prefill(g, 1);
-    snprintf(ok, sizeof(ok), "Next release number: %s", g_seed.number_text[0] ? g_seed.number_text : "unknown");
-    SetAttrs(status, UPA_Text_Contents, (ULONG)(g_seed.warnings[0] ? g_seed.warnings : ok), TAG_DONE);
+    GetAttr(UPA_Cycle_Active, format_cycle, &fa);
+    rp_upper(shell_field_text(code_field), code, sizeof(code));
+    if (rp_release_number_preview(g_seed.number_text, g->file_prefix, code, g->code_length, fa == 0, pv, sizeof(pv)) != 0) pv[0] = '\0';
+    snprintf(ok, sizeof(ok), "%s%s%s", pv, pv[0] && g_seed.warnings[0] ? " - " : "", g_seed.warnings);
+    SetAttrs(status, UPA_Text_Contents, (ULONG)ok, TAG_DONE);
 }
 
 /* Once the typed code has the group's length, ask the server whether it is taken. */
@@ -513,7 +517,14 @@ static void shell_guess_type(Object *type_cycle, Object *platform_field) {
     if (guess[0]) shell_set_type(type_cycle, guess);
 }
 
-static void shell_build(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
+/* One phase of a long step in the status line, drawn at once (the step blocks MUI until it returns). */
+static void shell_phase(Object *app, Object *status, const char *text) {
+    ULONG sigs = 0;
+    SetAttrs(status, UPA_Text_Contents, (ULONG)text, TAG_DONE);
+    DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
+}
+
+static void shell_build(Object *app, Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
                         Object *code_field, Object *platform_field, Object *desc_field, Object *format_cycle) {
     /* The inner string gadgets hold the text; UPA_Field_String gives them. */
     ULONG name_ptr = 0, code_ptr = 0, desc_ptr = 0, gactive = 0, active = 0;
@@ -754,6 +765,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     {
         char outer[288], inner[352], work[416], nfo_name[384], archive[384], *cmd, done[448];
         struct stat st;
+        shell_phase(app, status, "Staging the release drawer...");
         snprintf(outer, sizeof(outer), "T:rp-%s", base);
         snprintf(inner, sizeof(inner), "%s/%s", outer, base);
         if (rp_make_dirs(inner, errmsg, sizeof(errmsg)) != 0) goto build_fail;
@@ -762,6 +774,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         free(rendered);
         rendered = NULL;
         if (nfo != NULL) {
+            shell_phase(app, status, "Writing the NFO...");
             snprintf(nfo_name, sizeof(nfo_name), "%s/%s.NFO", inner, base);
             if (rp_write_file(nfo_name, nfo, strlen(nfo), errmsg, sizeof(errmsg)) != 0) goto build_fail;
             free(nfo);
@@ -771,6 +784,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
          * itself called BASE is the release the user already assembled by
          * hand: its contents belong directly in the release drawer. */
         if (g_files[0] != '\0') {
+            shell_phase(app, status, "Copying the files...");
             if (same_name_fold(base_name_of(g_files), base)) {
                 DIR *scan = opendir(g_files);
                 struct dirent *e;
@@ -826,6 +840,11 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
             snprintf(errmsg, sizeof(errmsg), "out of memory");
             goto build_fail;
         }
+        {
+            char packing[96];
+            snprintf(packing, sizeof(packing), "Packing %s...", packed);
+            shell_phase(app, status, packing);
+        }
         if (rp_run_command(outer, cmd, errmsg, sizeof(errmsg)) != 0) {
             free(cmd);
             goto build_fail;
@@ -838,7 +857,8 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
             snprintf(finaldir, sizeof(finaldir), "PROGDIR:releases/%s", base);
             if (rp_move_dir(outer, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
         }
-        snprintf(done, sizeof(done), "Built %s", archive);
+        if (RP_ONLINE_HAS_SERVER(g)) snprintf(done, sizeof(done), "Built %s (release %s)", archive, number);
+        else snprintf(done, sizeof(done), "Built %s", archive);
         SetAttrs(status, UPA_Text_Contents, (ULONG)done, TAG_DONE);
         goto build_end;
     build_fail:
@@ -931,6 +951,7 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     ULONG gactive = 0, active = 0, sigs = 0;
     const rp_group *g;
     char code[40], base[64], packed[72], archive[160], creators[256], msg[400];
+    ULONG arch_active = 0;
     rp_aminet_credit credits[RP_MEMBERS_MAX > RP_CREDITS_MAX ? RP_MEMBERS_MAX : RP_CREDITS_MAX];
     size_t ncredits;
     rp_aminet_readme_in in;
@@ -983,7 +1004,8 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     memset(&in, 0, sizeof in);
     in.short_text = shell_field_text(desc_field);
     in.type = shell_type_dir(type_field);
-    in.architecture = shell_field_text(arch_field);
+    GetAttr(UPA_Cycle_Active, arch_field, &arch_active);
+    in.architecture = rp_aminet_architectures[arch_active <= 7 ? arch_active : 0];
     in.uploader_email = shell_field_text(email_field);
     in.uploader_name = shell_field_text(uname_field);
     in.group_label = g->label;
@@ -1144,7 +1166,7 @@ static int shell_main(void) {
     shell_category_labels_init();
     g_category_cycle = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_category_labels, TAG_DONE);
     type_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_type_labels, TAG_DONE);
-    arch_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. m68k-amigaos", TAG_DONE);
+    arch_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)rp_aminet_architectures, TAG_DONE);
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
@@ -1282,7 +1304,7 @@ static int shell_main(void) {
         rp_aminet_prefs pr;
         if (rp_aminet_prefs_load(RP_AMINET_PREFS_PATH, &pr) == 0) {
             shell_set_type(type_field, pr.directory);
-            shell_set_field(arch_field, pr.architecture);
+            SetAttrs(arch_field, UPA_Cycle_Active, (ULONG)(rp_aminet_architecture_index(pr.architecture) > 0 ? rp_aminet_architecture_index(pr.architecture) : 0), TAG_DONE);
             shell_set_field(uname_field, pr.uploader);
             shell_set_field(email_field, pr.email);
         }
@@ -1302,18 +1324,18 @@ static int shell_main(void) {
         return 20;
     }
     SetAttrs(preview_list, UPA_List_Count, 0UL, TAG_DONE);
-    shell_seed_status(status, &g_groups[0]);
+    shell_seed_status(status, &g_groups[0], code_field, format_cycle);
     for (;;) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
         if (id == ID_BUILD) {
-            shell_build(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+            shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
         if (id == ID_PLATFORM) shell_guess_type(type_field, platform_field);
         if (id == ID_GROUP) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
-            if (ga < (ULONG)g_ngroups) shell_seed_status(status, &g_groups[ga]);
+            if (ga < (ULONG)g_ngroups) shell_seed_status(status, &g_groups[ga], code_field, format_cycle);
         }
         if (id == ID_CODE) shell_code_check(status, g_groups, group_cycle, code_field);
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);

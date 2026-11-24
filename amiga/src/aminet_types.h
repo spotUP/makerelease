@@ -14,4 +14,9 @@ int rp_aminet_type_index(const char *type);
 /* guessAminetType: best directory for a release category and platform tag ("A500", "A1200", ...), or "" when none fits. */
 const char *rp_aminet_guess_type(const char *category, const char *platform_tag);
 
+/* Aminet Architecture header values (AMINET_ARCHITECTURES in app/src/shared/aminet-readme.ts), NULL-terminated; the first is the default. */
+extern const char *const rp_aminet_architectures[];
+/* Index of an exact architecture string, or -1. */
+int rp_aminet_architecture_index(const char *arch);
+
 #endif

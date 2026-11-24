@@ -44,6 +44,10 @@ int main(void) {
         for (c = 0; cats[c]; c++) CHECK(rp_aminet_guess_type(cats[c], "")[0] != '\0');
     }
 
+    CHECK(!strcmp(rp_aminet_architectures[0], "m68k-amigaos") && rp_aminet_architectures[8] == NULL);
+    CHECK(rp_aminet_architecture_index("generic") == 7 && rp_aminet_architecture_index("ppc-morphos") == 2);
+    CHECK(rp_aminet_architecture_index("") == -1 && rp_aminet_architecture_index("m68k") == -1);
+
     if (failures) { printf("%d failure(s)\n", failures); return 1; }
     printf("aminet_types: ok (%d directories)\n", n);
     return 0;

@@ -773,3 +773,13 @@ const char *rp_aminet_guess_type(const char *category, const char *platform_tag)
     if (ieq(category, "demo")) guess = ieq(platform_tag, "A1200") ? "demo/aga" : ieq(platform_tag, "A500") ? "demo/ecs" : "demo/misc";
     return rp_aminet_type_index(guess) >= 0 ? guess : "";
 }
+
+const char *const rp_aminet_architectures[] = {
+    "m68k-amigaos", "ppc-amigaos", "ppc-morphos", "ppc-powerup", "ppc-warpup", "i386-aros", "i386-amithlon", "generic", NULL
+};
+
+int rp_aminet_architecture_index(const char *arch) {
+    int i;
+    for (i = 0; rp_aminet_architectures[i]; i++) if (strcmp(rp_aminet_architectures[i], arch) == 0) return i;
+    return -1;
+}
