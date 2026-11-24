@@ -84,8 +84,11 @@ static int copy_file(const char *src, const char *dst, char *err, size_t errcap)
 }
 
 int rp_copy_tree(const char *src, const char *dst, char *err, size_t errcap) {
-    DIR *d = opendir(src);
+    DIR *d;
     struct dirent *e;
+    /* A picked path is a file or a drawer: a file is a plain copy. */
+    if (!is_dir(src)) return copy_file(src, dst, err, errcap);
+    d = opendir(src);
     if (!d) {
         snprintf(err, errcap, "%s: could not be read", src);
         return -1;

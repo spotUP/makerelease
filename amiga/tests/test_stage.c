@@ -88,11 +88,66 @@ static void test_move_fail(void) {
     chmod(p, 0600);
 }
 
+static int has_text(const char *path, const char *want) {
+    char buf[64] = "";
+    FILE *f = fopen(path, "rb");
+    if (!f) return 0;
+    fread(buf, 1, sizeof(buf) - 1, f);
+    fclose(f);
+    return strcmp(buf, want) == 0;
+}
+
+/* A picked path may be a file or a drawer; both must copy. */
+static void test_copy_file_or_drawer(void) {
+    char err[256], p[512], q[512];
+    snprintf(p, sizeof(p), "%s/pick/TP-TESTR/inner", g_dir);
+    CHECK(rp_make_dirs(p, err, sizeof(err)) == 0);
+    snprintf(p, sizeof(p), "%s/pick/solo.txt", g_dir);
+    CHECK(rp_write_file(p, "solo", 4, err, sizeof(err)) == 0);
+    snprintf(p, sizeof(p), "%s/pick/TP-TESTR/top.txt", g_dir);
+    CHECK(rp_write_file(p, "top", 3, err, sizeof(err)) == 0);
+    snprintf(p, sizeof(p), "%s/pick/TP-TESTR/inner/deep.txt", g_dir);
+    CHECK(rp_write_file(p, "deep", 4, err, sizeof(err)) == 0);
+    snprintf(q, sizeof(q), "%s/rel", g_dir);
+    CHECK(rp_make_dirs(q, err, sizeof(err)) == 0);
+
+    /* single file */
+    snprintf(p, sizeof(p), "%s/pick/solo.txt", g_dir);
+    snprintf(q, sizeof(q), "%s/rel/solo.txt", g_dir);
+    CHECK(rp_copy_tree(p, q, err, sizeof(err)) == 0);
+    CHECK(has_text(q, "solo"));
+
+    /* drawer named like the release: its entries (loose file and nested drawer) land in the release drawer */
+    snprintf(p, sizeof(p), "%s/pick/TP-TESTR/top.txt", g_dir);
+    snprintf(q, sizeof(q), "%s/rel/top.txt", g_dir);
+    CHECK(rp_copy_tree(p, q, err, sizeof(err)) == 0);
+    CHECK(has_text(q, "top"));
+    snprintf(p, sizeof(p), "%s/pick/TP-TESTR/inner", g_dir);
+    snprintf(q, sizeof(q), "%s/rel/inner", g_dir);
+    CHECK(rp_copy_tree(p, q, err, sizeof(err)) == 0);
+    snprintf(q, sizeof(q), "%s/rel/inner/deep.txt", g_dir);
+    CHECK(has_text(q, "deep"));
+
+    /* whole drawer */
+    snprintf(p, sizeof(p), "%s/pick/TP-TESTR", g_dir);
+    snprintf(q, sizeof(q), "%s/rel/TP-TESTR", g_dir);
+    CHECK(rp_copy_tree(p, q, err, sizeof(err)) == 0);
+    snprintf(q, sizeof(q), "%s/rel/TP-TESTR/inner/deep.txt", g_dir);
+    CHECK(has_text(q, "deep"));
+
+    /* a missing source still fails with the read error */
+    snprintf(p, sizeof(p), "%s/pick/missing.txt", g_dir);
+    snprintf(q, sizeof(q), "%s/rel/missing.txt", g_dir);
+    CHECK(rp_copy_tree(p, q, err, sizeof(err)) != 0);
+    CHECK(strstr(err, "could not be read") != NULL);
+}
+
 int main(void) {
     setup();
     test_cmd();
     test_files();
     test_move_fail();
+    test_copy_file_or_drawer();
     if (failures == 0) puts("stage: all passed");
     return failures != 0;
 }

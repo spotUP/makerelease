@@ -1125,13 +1125,10 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             shell_phase(app, status, 3, "Copying the files...");
             for (pi = 0; pi < g_paths.n; pi++) {
                 const char *src = g_paths.path[pi];
-                if (same_name_fold(base_name_of(src), base)) {
-                    DIR *scan = opendir(src);
+                DIR *scan = same_name_fold(base_name_of(src), base) ? opendir(src) : NULL;
+                /* Only a drawer named like the release is merged; a file of that name is copied as a file. */
+                if (scan != NULL) {
                     struct dirent *e;
-                    if (scan == NULL) {
-                        snprintf(errmsg, sizeof(errmsg), "%s: could not be read", src);
-                        goto build_fail;
-                    }
                     while ((e = readdir(scan)) != NULL) {
                         char s[576], t[576];
                         if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
