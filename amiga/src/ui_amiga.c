@@ -384,9 +384,7 @@ static const char *shell_area_text(Object *area, char *buf, size_t cap) {
 static const char *shell_notes_text(void) { return shell_area_text(g_notes_field, g_notes_buf, sizeof g_notes_buf); }
 static const char *shell_news_text(void) { return shell_area_text(g_news_field, g_news_buf, sizeof g_news_buf); }
 
-/* The Roster tab: members ("Nickname | role"), boards (X Innovations only) and media embeds, one row per line. */
-#define SHELL_ROWS_MAX 3000
-static Object *g_boards_field, *g_embeds_field;
+/* The Roster tab: members ("Nickname | role"), boards (X Innovations only) and media embeds, one table row per entry. */
 static rp_member g_rows_members[RP_MEMBERS_MAX];
 static rp_board_row g_rows_boards[RP_ONLINE_BOARDS_MAX];
 static rp_embed_row g_rows_embeds[RP_ONLINE_EMBEDS_MAX];
@@ -437,9 +435,13 @@ typedef struct {
     struct Hook hook;
 } shell_table;
 #define SHELL_TABLE_MEMBERS 0
-#define SHELL_TABLE_COUNT 1
+#define SHELL_TABLE_BOARDS 1
+#define SHELL_TABLE_EMBEDS 2
+#define SHELL_TABLE_COUNT 3
 static shell_table g_tables[SHELL_TABLE_COUNT];
 #define g_members (&g_tables[SHELL_TABLE_MEMBERS])
+#define g_boards (&g_tables[SHELL_TABLE_BOARDS])
+#define g_embeds (&g_tables[SHELL_TABLE_EMBEDS])
 
 ULONG rp_table_cell_c(struct Hook *h, UP_ListCell *cell);
 ULONG rp_table_cell_c(struct Hook *h, UP_ListCell *cell) {
@@ -589,12 +591,12 @@ static void shell_embed_pick(void) {
     char path[RP_MAX_FILES_PATH + 1];
     char *text;
     if (!shell_pick_image("Pick the embed image", path, sizeof(path))) return;
-    text = rp_embed_append_image(shell_area_raw(g_embeds_field), path);
+    text = rp_embed_append_image(shell_table_text(g_embeds), path);
     if (text == NULL) {
         shell_requester("That file cannot be added as a media embed.\nIts path is too long or contains a vertical bar.");
         return;
     }
-    SetAttrs(g_embeds_field, UPA_TextArea_Text, (ULONG)text, TAG_DONE);
+    shell_table_set_text(g_embeds, text);
     free(text);
 }
 
@@ -608,13 +610,13 @@ static int shell_roster_read(const rp_group *g, char *msg, size_t cap) {
     if (n < 0) { shell_table_err(g_members, err.line); snprintf(msg, cap, "Members: Row %lu: %s", (unsigned long)err.line, err.msg); return -1; }
     g_nrows_members = (size_t)n;
     if (g->renderer == R_XINNOVATIONS) {
-        n = rp_parse_board_rows(shell_area_raw(g_boards_field), g_rows_boards, RP_ONLINE_BOARDS_MAX, &err);
-        if (n < 0) { shell_err_at(SHELL_TAB_ROSTER, g_boards_field); snprintf(msg, cap, "Boards: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+        n = rp_parse_board_rows(shell_table_text(g_boards), g_rows_boards, RP_ONLINE_BOARDS_MAX, &err);
+        if (n < 0) { shell_table_err(g_boards, err.line); snprintf(msg, cap, "Boards: Row %lu: %s", (unsigned long)err.line, err.msg); return -1; }
         g_nrows_boards = (size_t)n;
     }
     if (RP_ONLINE_HAS_SERVER(g)) {
-        n = rp_parse_embed_rows(shell_area_raw(g_embeds_field), g_rows_embeds, RP_ONLINE_EMBEDS_MAX, &err);
-        if (n < 0) { shell_err_at(SHELL_TAB_ROSTER, g_embeds_field); snprintf(msg, cap, "Media embeds: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+        n = rp_parse_embed_rows(shell_table_text(g_embeds), g_rows_embeds, RP_ONLINE_EMBEDS_MAX, &err);
+        if (n < 0) { shell_table_err(g_embeds, err.line); snprintf(msg, cap, "Media embeds: Row %lu: %s", (unsigned long)err.line, err.msg); return -1; }
         g_nrows_embeds = (size_t)n;
     }
     return 0;
@@ -816,8 +818,8 @@ static unsigned long shell_form_state(Object *group_cycle, Object *name_field, O
     h = rp_gate_add(h, shell_area_raw(g_notes_field));
     h = rp_gate_add(h, shell_area_raw(g_news_field));
     h = rp_gate_add(h, shell_table_text(g_members));
-    h = rp_gate_add(h, shell_area_raw(g_boards_field));
-    return rp_gate_add(h, shell_area_raw(g_embeds_field));
+    h = rp_gate_add(h, shell_table_text(g_boards));
+    return rp_gate_add(h, shell_table_text(g_embeds));
 }
 
 /* AmigaOS clock (days since 1978-01-01) as Unix seconds, for the seed's stale-draft ages. */
@@ -843,15 +845,7 @@ static int shell_seed_load(const rp_group *g, char *msg, size_t cap) {
 /* What the last prefill left in each Roster area (read back from the field), so a later prefill can tell untouched text from user edits. */
 static char *g_prefilled_members, *g_prefilled_boards;
 
-/* Put text in an area only when the user has not edited it (empty, or still the last prefill). */
-static void shell_prefill_area(Object *area, char **last, const char *text) {
-    if (!rp_prefill_replaceable(shell_area_raw(area), *last ? *last : "")) return;
-    SetAttrs(area, UPA_TextArea_Text, (ULONG)text, TAG_DONE);
-    free(*last);
-    *last = strdup(shell_area_raw(area));
-}
-
-/* The same for a Roster table. */
+/* Put text in a Roster table only when the user has not edited it (empty, or still the last prefill). */
 static void shell_prefill_table(shell_table *t, char **last, const char *text) {
     if (!rp_prefill_replaceable(shell_table_text(t), *last ? *last : "")) return;
     shell_table_set_text(t, text);
@@ -865,7 +859,7 @@ static void shell_roster_prefill(const rp_group *g, int seeded) {
     char *m = seeded ? rp_format_member_rows(g_seed.members, g_seed.nmembers) : rp_format_member_rows(g->members, g->nmembers);
     char *b = (seeded && g->renderer == R_XINNOVATIONS) ? rp_format_board_rows(g_seed.boards, g_seed.nboards) : NULL;
     shell_prefill_table(g_members, &g_prefilled_members, m ? m : "");
-    shell_prefill_area(g_boards_field, &g_prefilled_boards, b ? b : "");
+    shell_prefill_table(g_boards, &g_prefilled_boards, b ? b : "");
     free(m);
     free(b);
 }
@@ -1819,8 +1813,18 @@ static int shell_main(void) {
         static const int weights[] = {1, 2};
         shell_table_new(g_members, 2, titles, weights, NULL, NULL);
     }
-    g_boards_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "Name | Sysop | HQ | Status (X Innovations only)", TAG_DONE);
-    g_embeds_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "youtube | caption | url   or   image | caption | path", TAG_DONE);
+    {
+        static const char *const titles[] = {"Name", "Sysop", "HQ", "Status"};
+        static const int weights[] = {2, 2, 2, 1};
+        shell_table_new(g_boards, 4, titles, weights, NULL, NULL);
+    }
+    {
+        /* Type takes "youtube" or "image"; Pick image adds an image row from a file requester */
+        static const char *const titles[] = {"Type", "Caption", "Address or path"};
+        static const int weights[] = {0, 2, 3};
+        static const char *const samples[] = {"youtube", NULL, NULL};
+        shell_table_new(g_embeds, 3, titles, weights, samples, embed_pick_btn);
+    }
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
@@ -1838,7 +1842,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || !shell_table_ok(g_members) || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
+        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || !shell_table_ok(g_members) || !shell_table_ok(g_boards) || !shell_table_ok(g_embeds) || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
@@ -1855,9 +1859,9 @@ static int shell_main(void) {
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
         Object *cover_row = shell_row(cover_lbl, cover_text);
-        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members->group, boards_lbl, g_boards_field,
-                                                                                 embeds_lbl, g_embeds_field,
-                                                                                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
+        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members->group, boards_lbl, g_boards->group,
+                                                                                 embeds_lbl, g_embeds->group,
+                                                                                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Diz line"), g_diz_line_field, area_label("Text"), g_nfo_view,
                                                                         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), g_diz_count, g_template_status, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(pick_btn, add_file_btn), files_list,
@@ -1873,8 +1877,8 @@ static int shell_main(void) {
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         g_sec_system[0] = g_system_row;
         g_sec_history[0] = g_category_lbl, g_sec_history[1] = g_category_cycle;
-        g_sec_boards[0] = boards_lbl, g_sec_boards[1] = g_boards_field;
-        g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds_field, g_sec_media[2] = embed_pick_btn;
+        g_sec_boards[0] = boards_lbl, g_sec_boards[1] = g_boards->group;
+        g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds->group, g_sec_media[2] = embed_pick_btn;
         g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk, g_sec_publish[5] = revoke_row;
         g_sec_door[0] = door_btn;
         static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
