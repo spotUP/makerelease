@@ -54,6 +54,7 @@ extern struct IntuitionBase *IntuitionBase;
 #define EID_OK 109
 #define EID_CANCEL 110
 #define EID_DIRTY 111
+#define EID_SHOWKEY 112
 
 static const char *const ed_renderer_labels[] = {"Up Rough", "X Innovations", "Placeholder", NULL};
 static const char *const ed_backend_labels[] = {"none", "doorserver", NULL};
@@ -73,7 +74,8 @@ static Object *g_app;
 static char g_asl_drawer[512], g_asl_file[128]; /* the template requester remembers where it was */
 
 static Object *g_win, *g_list, *g_status, *g_tabs, *g_pages;
-static Object *g_f_label, *g_f_id, *g_f_url, *g_f_prefix, *g_f_code, *g_c_renderer, *g_c_backend, *g_f_base, *g_f_key;
+static Object *g_f_label, *g_f_id, *g_f_url, *g_f_prefix, *g_f_code, *g_c_renderer, *g_c_backend, *g_f_base, *g_f_key, *g_f_key_plain;
+static Object *g_k_showkey; /* the key shows as dots in g_f_key; ticking Show swaps in g_f_key_plain (MUIA_String_Secret is creation-only in MUI) */
 static Object *g_a_members, *g_a_diz, *g_a_nfo, *g_k_nfo_remove;
 static struct Hook g_row_hook;
 
@@ -161,6 +163,22 @@ static int ed_load_template(Object *area, const char *id, const char *file, size
     return locked;
 }
 
+/* The server key text of whichever key field is showing. */
+static const char *ed_key_text(void) {
+    ULONG on = 0;
+    GetAttr(MUIA_Selected, g_k_showkey, &on);
+    return shell_field_text(on ? g_f_key_plain : g_f_key);
+}
+
+/* Show ticked: the plain field takes over (and the masked one hides), carrying the text across. */
+static void ed_apply_showkey(void) {
+    ULONG on = 0;
+    GetAttr(MUIA_Selected, g_k_showkey, &on);
+    shell_set_field(on ? g_f_key_plain : g_f_key, shell_field_text(on ? g_f_key : g_f_key_plain));
+    SetAttrs(g_f_key, MUIA_ShowMe, (ULONG)!on, TAG_DONE);
+    SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)on, TAG_DONE);
+}
+
 static void ed_fill_form(const rp_group *g) {
     char num[16];
     shell_set_field(g_f_label, g->label);
@@ -173,6 +191,10 @@ static void ed_fill_form(const rp_group *g) {
     SetAttrs(g_c_backend, UPA_Cycle_Active, (ULONG)(g->backend_doorserver ? 1 : 0), TAG_DONE);
     shell_set_field(g_f_base, g->server_base);
     shell_set_field(g_f_key, g->server_key);
+    shell_set_field(g_f_key_plain, g->server_key);
+    SetAttrs(g_k_showkey, MUIA_Selected, (ULONG)FALSE, TAG_DONE);
+    SetAttrs(g_f_key, MUIA_ShowMe, (ULONG)TRUE, TAG_DONE);
+    SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
     g_members_buf[0] = '\0';
     rp_editor_members_format(g->members, g->nmembers, g_members_buf, sizeof g_members_buf);
     SetAttrs(g_a_members, UPA_TextArea_Text, (ULONG)g_members_buf, TAG_DONE);
@@ -269,7 +291,7 @@ static int ed_collect(char *err, size_t errcap) {
     GetAttr(UPA_Cycle_Active, g_c_backend, &a);
     g->backend_doorserver = a == 1;
     if (rp_editor_set_field(g->server_base, sizeof g->server_base, shell_field_text(g_f_base), "Server base", err, errcap) != 0) return -1;
-    if (rp_editor_set_field(g->server_key, sizeof g->server_key, shell_field_text(g_f_key), "Server key", err, errcap) != 0) return -1;
+    if (rp_editor_set_field(g->server_key, sizeof g->server_key, ed_key_text(), "Server key", err, errcap) != 0) return -1;
     if (rp_editor_members_parse(ed_area_text(g_a_members), g->members, RP_MEMBERS_MAX, &n, err, errcap) != 0) return -1;
     g->nmembers = n;
     return 0;
@@ -471,7 +493,10 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     g_c_renderer = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)ed_renderer_labels, TAG_DONE);
     g_c_backend = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)ed_backend_labels, TAG_DONE);
     g_f_base = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Door server base address", MUIA_String_MaxLen, (ULONG)RP_BASE_MAX + 1, TAG_DONE);
-    g_f_key = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Door server key", MUIA_String_MaxLen, (ULONG)RP_KEY_MAX + 1, TAG_DONE);
+    g_f_key = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Door server key", MUIA_String_MaxLen, (ULONG)RP_KEY_MAX + 1,
+                            MUIA_String_Secret, (ULONG)TRUE, TAG_DONE);
+    g_f_key_plain = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Door server key", MUIA_String_MaxLen, (ULONG)RP_KEY_MAX + 1, TAG_DONE);
+    g_k_showkey = MUI_NewObject((char *)"UP-Checkmark.mcc", UPA_Checkmark_Label, (ULONG) "Show", TAG_DONE);
     g_a_members = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)ED_MEMBERS_MAX, UPA_TextArea_Placeholder, (ULONG) "Nickname | role, one member per line", TAG_DONE);
     g_a_diz = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)ED_DIZ_MAX, UPA_TextArea_Placeholder, (ULONG) "file_id.diz template", TAG_DONE);
     g_a_nfo = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)ED_NFO_MAX, UPA_TextArea_Placeholder, (ULONG) "release.nfo template (optional)", TAG_DONE);
@@ -485,16 +510,19 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     close_btn = ed_button("Close", UPV_Button_Role_Normal);
     g_tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)ed_tab_captions, TAG_DONE);
     if (g_list == NULL || g_status == NULL || g_f_label == NULL || g_f_id == NULL || g_f_url == NULL || g_f_prefix == NULL || g_f_code == NULL ||
-        g_c_renderer == NULL || g_c_backend == NULL || g_f_base == NULL || g_f_key == NULL || g_a_members == NULL || g_a_diz == NULL || g_a_nfo == NULL ||
+        g_c_renderer == NULL || g_c_backend == NULL || g_f_base == NULL || g_f_key == NULL || g_f_key_plain == NULL || g_k_showkey == NULL || g_a_members == NULL || g_a_diz == NULL || g_a_nfo == NULL ||
         g_k_nfo_remove == NULL || new_btn == NULL || dup_btn == NULL || del_btn == NULL || reload_btn == NULL || import_btn == NULL || save_btn == NULL ||
         close_btn == NULL || g_tabs == NULL) {
         shell_requester("The group editor objects could not be created.\nFree some memory and check the UP-MCC install.");
         return 0;
     }
+    SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
     page_group = shell_card("Group", shell_form(row_label("Label"), g_f_label, row_label("Id"), g_f_id, row_label("Url"), g_f_url,
                                                 row_label("File prefix"), g_f_prefix, row_label("Code length"), g_f_code,
                                                 row_label("Renderer"), g_c_renderer, row_label("Backend"), g_c_backend,
-                                                row_label("Server base"), g_f_base, row_label("Server key"), g_f_key,
+                                                row_label("Server base"), g_f_base, row_label("Server key"),
+                                                MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Child, (ULONG)g_f_key,
+                                                              MUIA_Group_Child, (ULONG)g_f_key_plain, MUIA_Group_Child, (ULONG)g_k_showkey, TAG_DONE),
                                                 area_label("Members"), g_a_members),
                             NULL, NULL, NULL, NULL, NULL, NULL);
     page_tpl = shell_card("Templates", shell_form(area_label("file_id.diz"), g_a_diz, area_label("release.nfo"), g_a_nfo, row_label("NFO template"), g_k_nfo_remove,
@@ -528,7 +556,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     DoMethod(g_tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)g_pages, 3UL, MUIM_Set, MUIA_Group_ActivePage, MUIV_TriggerValue);
     DoMethod(g_list, MUIM_Notify, UPA_List_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_SELECT);
     {
-        Object *fields[] = {g_f_label, g_f_id, g_f_url, g_f_prefix, g_f_code, g_f_base, g_f_key};
+        Object *fields[] = {g_f_label, g_f_id, g_f_url, g_f_prefix, g_f_code, g_f_base, g_f_key, g_f_key_plain};
         Object *areas[] = {g_a_members, g_a_diz, g_a_nfo};
         size_t i;
         for (i = 0; i < sizeof fields / sizeof fields[0]; i++) {
@@ -540,6 +568,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
             DoMethod(areas[i], MUIM_Notify, UPA_TextArea_Text, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
         DoMethod(g_c_renderer, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
         DoMethod(g_c_backend, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
+        DoMethod(g_k_showkey, MUIM_Notify, MUIA_Selected, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_SHOWKEY);
         DoMethod(g_k_nfo_remove, MUIM_Notify, MUIA_Selected, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
     }
     ed_notify(app, new_btn, EID_NEW);
@@ -578,6 +607,12 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
             else if (id == EID_RELOAD) ed_reload();
             else if (id == EID_IMPORT) ed_import();
             else if (id == EID_DIRTY) g_dirty = 1;
+            else if (id == EID_SHOWKEY) {
+                int was_dirty = g_dirty; /* the text copy fires the edit notifications, but Show is not an edit */
+                ed_apply_showkey();
+                ed_clean();
+                g_dirty = was_dirty;
+            }
         }
         SetAttrs(g_win, MUIA_Window_Open, FALSE, TAG_DONE);
     }
