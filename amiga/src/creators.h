@@ -24,6 +24,10 @@ size_t rp_creators_matches(const char *token, const rp_member *members, size_t n
  * it, writes text with that name replaced by the nickname to out and returns 1; otherwise returns 0 and out is untouched. */
 int rp_creators_complete(const char *text, const rp_member *members, size_t n, char *out, size_t cap);
 
+/* A member picked from the suggestion list: writes text with the current token (after the last , ; : or newline, leading
+ * spaces kept) replaced by name to out and returns 1; returns 0 when it does not fit cap. */
+int rp_creators_pick(const char *text, const char *name, char *out, size_t cap);
+
 /* The preview under the credits: "Release history creator line: a, b" (or the add-a-credit hint), the desktop's creatorsPreview. */
 void rp_creators_preview(const rp_credit *credits, size_t n, char *out, size_t cap);
 /* The /X NFO header fields the same credits fill (coder / design roles), the desktop's xCreditsPreview. */
