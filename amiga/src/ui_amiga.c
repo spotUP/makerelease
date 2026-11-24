@@ -1601,8 +1601,8 @@ static int shell_main(void) {
     quit_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Role, (ULONG)UPV_Button_Role_Ghost, UPA_Button_Icon, (ULONG) "x",
                              UPA_Button_IconOnly, (ULONG)TRUE, UPA_Button_Flat, (ULONG)TRUE, UPA_Button_FixedWidth, 24UL,
                              UPA_Button_FixedHeight, 24UL, TAG_DONE);
-    back_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Back", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, MUIA_Disabled, (ULONG)TRUE, TAG_DONE);
-    next_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Next", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    back_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Back", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_FixedHeight, 24UL, MUIA_Disabled, (ULONG)TRUE, TAG_DONE);
+    next_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Next", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_FixedHeight, 24UL, TAG_DONE);
     cover_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick cover...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     embed_pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick image...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     publish_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Publish", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
@@ -1664,11 +1664,13 @@ static int shell_main(void) {
     }
     {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
+        /* Paired rows (Platform with its detail, date with place, System with number) keep the page inside an 800x600 screen with every row shown */
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), name_field,
-                                                                  row_label("Code"), code_field, row_label("Platform"), platform_field,
+                                                                  row_label("Code"), code_field, row_label("Platform"), shell_row(platform_field, g_platform_row),
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, g_category_lbl, g_category_cycle,
-                                                                  row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_creators_row, g_system_row, g_number_row, g_platform_row, NULL, NULL);
+                                                                  row_label("Release date"), shell_row(g_date_field, shell_row(row_label("Released at"), g_released_field)),
+                                                                  NULL, NULL), g_creators_row, shell_row(g_system_row, g_number_row), NULL, NULL, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
@@ -1821,6 +1823,7 @@ static int shell_main(void) {
     }
     if (shell_type_dir(type_field)[0] == '\0') shell_guess_type(type_field, platform_field);
     shell_platform_row(platform_field);
+    shell_apply_sections(&g_groups[open_group]); /* hidden rows count nothing: the open size fits the screen for this group */
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
     if (!is_open) {
