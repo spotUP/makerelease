@@ -14,6 +14,7 @@
 #include <clib/alib_protos.h>
 #include <clib/muimaster_protos.h>
 #include <dos/dos.h>
+#include <devices/timer.h>
 #include <exec/memory.h>
 #include <exec/types.h>
 #include <intuition/intuition.h>
@@ -1073,6 +1074,64 @@ static void shell_code_filter(Object *code_field, const rp_group *g) {
     if (cp != 0) SetAttrs((Object *)cp, MUIA_String_Contents, (ULONG)want, TAG_DONE); /* notifies again, then stable */
 }
 
+/* Debounce for the code check: it runs 300 ms after the last keystroke, as renderer/main.ts checkCode(). */
+static struct MsgPort *g_code_port;
+static struct timerequest *g_code_tr;
+static int g_code_armed, g_code_cancel;
+static ULONG g_code_deferred; /* an id the check's pump took from MUI; the main loop handles it next */
+static char g_code_asked[40];
+static Object *g_code_field;
+
+static void shell_code_timer_open(void) {
+    g_code_port = CreateMsgPort();
+    if (g_code_port != NULL) g_code_tr = (struct timerequest *)CreateIORequest(g_code_port, sizeof(struct timerequest));
+    if (g_code_tr != NULL && OpenDevice((CONST_STRPTR)TIMERNAME, UNIT_VBLANK, (struct IORequest *)g_code_tr, 0) != 0) {
+        DeleteIORequest((struct IORequest *)g_code_tr);
+        g_code_tr = NULL;
+    }
+}
+
+static void shell_code_timer_close(void) {
+    if (g_code_tr != NULL) {
+        if (g_code_armed) AbortIO((struct IORequest *)g_code_tr), WaitIO((struct IORequest *)g_code_tr);
+        CloseDevice((struct IORequest *)g_code_tr);
+        DeleteIORequest((struct IORequest *)g_code_tr);
+    }
+    if (g_code_port != NULL) DeleteMsgPort(g_code_port);
+}
+
+/* (Re)starts the 300 ms wait. Returns 0 without a timer: the caller then checks at once. */
+static int shell_code_arm(void) {
+    if (g_code_tr == NULL) return 0;
+    if (g_code_armed) AbortIO((struct IORequest *)g_code_tr), WaitIO((struct IORequest *)g_code_tr);
+    g_code_tr->tr_node.io_Command = TR_ADDREQUEST;
+    g_code_tr->tr_time.tv_secs = 0;
+    g_code_tr->tr_time.tv_micro = 300000;
+    SendIO((struct IORequest *)g_code_tr);
+    g_code_armed = 1;
+    return 1;
+}
+
+static int shell_code_due(void) {
+    if (!g_code_armed || !CheckIO((struct IORequest *)g_code_tr)) return 0;
+    WaitIO((struct IORequest *)g_code_tr);
+    g_code_armed = 0;
+    return 1;
+}
+
+/* rp_net_pump during the code check: the window stays live; any input, or a changed code, cancels the check
+ * and the main loop takes the id (a cancelled check re-arms the timer). */
+static int shell_code_pump(unsigned long done, unsigned long total) {
+    ULONG sigs = 0, id = DoMethod(g_net_app, MUIM_Application_NewInput, (ULONG)&sigs);
+    char now[40];
+    (void)done, (void)total;
+    if ((SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) id = (ULONG)MUIV_Application_ReturnID_Quit;
+    if (id != 0 && g_code_deferred == 0) g_code_deferred = id;
+    rp_upper(shell_field_text(g_code_field), now, sizeof(now));
+    if (id != 0 || strcmp(now, g_code_asked) != 0) g_code_cancel = 1;
+    return g_code_cancel;
+}
+
 /* Once the typed code has the group's length, ask the server whether it is taken. */
 static void shell_code_check(Object *status, const rp_group *groups, Object *group_cycle, Object *code_field) {
     ULONG ga = 0;
@@ -1090,7 +1149,19 @@ static void shell_code_check(Object *status, const rp_group *groups, Object *gro
     snprintf(key, sizeof(key), "%s:%s", g->id, code);
     if (strcmp(key, g_code_checked) == 0) return;
     strcpy(g_code_checked, key);
+    snprintf(msg, sizeof(msg), "Checking code %s...", code);
+    SetAttrs(g_code_status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+    g_code_field = code_field, g_code_cancel = 0;
+    strcpy(g_code_asked, code);
+    rp_net_pump = shell_code_pump;
     rc = rp_online_code_check(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
+    rp_net_pump = NULL;
+    if (g_code_cancel) { /* typed on or clicked: ask again once the field settles */
+        g_code_checked[0] = '\0';
+        SetAttrs(g_code_status, UPA_Text_Contents, (ULONG)"", TAG_DONE);
+        if (!shell_code_arm()) g_code_deferred = g_code_deferred ? g_code_deferred : ID_CODE;
+        return;
+    }
     if (rc == 0) snprintf(msg, sizeof(msg), "Code %s is free.", code);
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
     SetAttrs(g_code_status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
@@ -2289,9 +2360,12 @@ static int shell_main(void) {
     shell_seed_status(status, &g_groups[open_group], code_field, format_cycle);
     shell_creators_refresh(g_groups[open_group].renderer == R_XINNOVATIONS);
     shell_system_prefill(platform_field);
+    shell_code_timer_open();
     for (;;) {
-        ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
+        ULONG id;
         int last_save_failed = 0;
+        if (g_code_deferred != 0) id = g_code_deferred, g_code_deferred = 0, sigs = 0;
+        else id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
         if (id == ID_BUILD) {
             shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 0);
@@ -2371,7 +2445,8 @@ static int shell_main(void) {
             /* the number preview first; a code check that fires then replaces it with its verdict */
             if (g_seed_ok && ga < (ULONG)g_ngroups) shell_number_status(status, &g_groups[ga], code_field, format_cycle);
         }
-        if (id == ID_CODE) shell_code_check(status, g_groups, group_cycle, code_field);
+        if (id == ID_CODE && !shell_code_arm()) shell_code_check(status, g_groups, group_cycle, code_field);
+        if (shell_code_due()) shell_code_check(status, g_groups, group_cycle, code_field);
         /* last, so the seed and number lines above do not hide it: a read-only PROGDIR: loses the remembered group and format */
         if ((id == ID_GROUP || id == ID_FORMAT) && last_save_failed)
             SetAttrs(status, UPA_Text_Contents, (ULONG) "Could not write PROGDIR:last.prefs (is PROGDIR: read-only?): the group and format are not remembered for the next start.", TAG_DONE);
@@ -2483,8 +2558,9 @@ static int shell_main(void) {
             g_err_tab = (ULONG)-1;
             g_err_obj = NULL;
         }
-        if (sigs != 0) Wait(sigs | SIGBREAKF_CTRL_C);
+        if (sigs != 0) Wait(sigs | SIGBREAKF_CTRL_C | (g_code_port != NULL ? 1UL << g_code_port->mp_SigBit : 0UL));
     }
+    shell_code_timer_close();
     MUI_DisposeObject(app);
     json_free(g_seed_tree);
     rp_preview_free(&g_prev);
