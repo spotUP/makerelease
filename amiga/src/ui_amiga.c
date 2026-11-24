@@ -1062,6 +1062,17 @@ static void shell_seed_status(Object *status, const rp_group *g, Object *code_fi
 
 static Object *g_code_status; /* the availability answer beside the Code field */
 
+/* Keeps the Code field to the group's rules as typed: upper case, A-Z and 0-9 only, at most code_length (pasted text too). */
+static void shell_code_filter(Object *code_field, const rp_group *g) {
+    ULONG cp = 0;
+    char want[40];
+    const char *cur = shell_field_text(code_field);
+    rp_code_filter(cur, g->code_length, want, sizeof(want));
+    if (strcmp(cur, want) == 0) return;
+    GetAttr(UPA_Field_String, code_field, &cp);
+    if (cp != 0) SetAttrs((Object *)cp, MUIA_String_Contents, (ULONG)want, TAG_DONE); /* notifies again, then stable */
+}
+
 /* Once the typed code has the group's length, ask the server whether it is taken. */
 static void shell_code_check(Object *status, const rp_group *groups, Object *group_cycle, Object *code_field) {
     ULONG ga = 0;
@@ -2219,6 +2230,7 @@ static int shell_main(void) {
         ULONG code_str = 0;
         GetAttr(UPA_Field_String, code_field, &code_str);
         if (code_str != 0) DoMethod((Object *)code_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CODE);
+        if (code_str != 0) SetAttrs((Object *)code_str, MUIA_String_Accept, (ULONG) "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789", TAG_DONE);
     }
     {
         ULONG name_str = 0;
@@ -2355,6 +2367,7 @@ static int shell_main(void) {
         if (id == ID_CODE || id == ID_FORMAT) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+            if (id == ID_CODE && ga < (ULONG)g_ngroups) shell_code_filter(code_field, &g_groups[ga]);
             /* the number preview first; a code check that fires then replaces it with its verdict */
             if (g_seed_ok && ga < (ULONG)g_ngroups) shell_number_status(status, &g_groups[ga], code_field, format_cycle);
         }
