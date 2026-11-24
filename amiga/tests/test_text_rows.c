@@ -138,7 +138,14 @@ int main(void) {
         rp_rtab_remove(&t, 1);
         CHECK(rp_rtab_add(&t) == 3);
         CHECK_STR(rp_rtab_text(&t), "Cy\nBob\nCy | gfx/extra\n\n");
+        /* Move Up and Move Down swap with the neighbour; the ends and a bad row do nothing */
+        CHECK(rp_rtab_move(&t, 2, 0) == 1);
+        CHECK(rp_rtab_move(&t, 0, 1) == 1);
+        CHECK_STR(rp_rtab_text(&t), "Cy | gfx/extra\nCy\nBob\n\n");
+        CHECK(rp_rtab_move(&t, 0, 0) == -1 && rp_rtab_move(&t, 3, 1) == -1 && rp_rtab_move(&t, 9, 0) == -1);
+        CHECK_STR(rp_rtab_text(&t), "Cy | gfx/extra\nCy\nBob\n\n");
         CHECK(rp_rtab_set_text(&t, "") == 0 && t.n == 0);
+        CHECK(rp_rtab_move(&t, 0, 1) == -1);
         CHECK_STR(rp_rtab_text(&t), "");
         rp_rtab_free(&t);
     }

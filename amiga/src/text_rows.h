@@ -91,6 +91,9 @@ int rp_rtab_set_row(rp_rtab *t, size_t row, const char *const *v);
 /* Appends an empty row; its index, or -1 out of memory. */
 int rp_rtab_add(rp_rtab *t);
 void rp_rtab_remove(rp_rtab *t, size_t row);
+/* Swaps row with the one above (down 0) or below (down 1); the row's new index, or -1 when it is
+ * already first or last, or no row. */
+long rp_rtab_move(rp_rtab *t, size_t row, int down);
 void rp_rtab_free(rp_rtab *t);
 
 #endif

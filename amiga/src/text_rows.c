@@ -385,3 +385,13 @@ void rp_rtab_remove(rp_rtab *t, size_t row) {
     memmove(t->row + row, t->row + row + 1, (t->n - row - 1) * sizeof *t->row);
     t->n--;
 }
+
+long rp_rtab_move(rp_rtab *t, size_t row, int down) {
+    size_t to = down ? row + 1 : row - 1;
+    char *s;
+    if (row >= t->n || (down ? to >= t->n : row == 0)) return -1;
+    s = t->row[row];
+    t->row[row] = t->row[to];
+    t->row[to] = s;
+    return (long)to;
+}
