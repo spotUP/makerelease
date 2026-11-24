@@ -4,7 +4,7 @@ name: Tauri build
 # so the render can be checked on real machines before the release switch.
 on:
   push:
-    branches: [main]
+    branches: [main, tauri-ci]
     paths: ['tauri/**', 'app/src/**', 'app/package*.json', '.github/workflows/tauri.yml']
   workflow_dispatch:
 
