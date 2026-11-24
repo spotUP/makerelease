@@ -2238,7 +2238,7 @@ static int shell_main(void) {
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
                                                                           MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status, MUIA_Group_Child, (ULONG)g_toast,
-                                                                          MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)g_net_cancel_btn, MUIA_Group_Child, (ULONG)back_btn, MUIA_Group_Child, (ULONG)next_btn, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), TAG_DONE),
+                                                                          MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)g_net_cancel_btn, MUIA_Group_Child, (ULONG)back_btn, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)next_btn, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), TAG_DONE),
                                                   TAG_DONE)
                                   : NULL;
         /* Window padding: MUI adds 4 px (3 px top and bottom) itself, these bands bring every edge to 8. KeepSpacing stops UP-Panel
