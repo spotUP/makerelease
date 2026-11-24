@@ -20,6 +20,11 @@
 #include <proto/muimaster.h>
 #include <proto/asl.h>
 
+/* workbench.library is opened here on demand, not kept: the inline stubs take this variable instead of the global WorkbenchBase. */
+static struct Library *ed_wb_base;
+#define WB_BASE_NAME ed_wb_base
+#include <proto/wb.h>
+
 #include <mcc/up.h>
 
 #include "editor_logic.h"
@@ -55,6 +60,7 @@ extern struct IntuitionBase *IntuitionBase;
 #define EID_CANCEL 110
 #define EID_DIRTY 111
 #define EID_SHOWKEY 112
+#define EID_OPENDIR 113
 
 static const char *const ed_renderer_labels[] = {"Up Rough", "X Innovations", "Placeholder", NULL};
 static const char *const ed_backend_labels[] = {"none", "doorserver", NULL};
@@ -482,8 +488,23 @@ static void ed_reload(void) {
     if (id[0] == '\0') ed_status("Reloaded the list.");
 }
 
+/* Desktop open-profiles-btn: the drawer opens on Workbench; without it the status line names the path. */
+static void ed_open_folder(void) {
+    char msg[200];
+    int ok = 0;
+    ed_wb_base = OpenLibrary((CONST_STRPTR) "workbench.library", 44);
+    if (ed_wb_base != NULL) {
+        ok = OpenWorkbenchObject((CONST_STRPTR)g_dir, TAG_DONE) ? 1 : 0;
+        CloseLibrary(ed_wb_base);
+        ed_wb_base = NULL;
+    }
+    if (ok) snprintf(msg, sizeof msg, "Opened %s on Workbench.", g_dir);
+    else snprintf(msg, sizeof msg, "Workbench could not open the folder. The groups are in %s", g_dir);
+    ed_status(msg);
+}
+
 int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
-    Object *new_btn, *dup_btn, *del_btn, *reload_btn, *save_btn, *close_btn, *import_btn;
+    Object *new_btn, *dup_btn, *del_btn, *reload_btn, *save_btn, *close_btn, *import_btn, *folder_btn;
     Object *page_group, *page_tpl, *left, *right, *bottom, *content;
     ULONG opened = 0, id;
     g_dir = dir;
@@ -517,13 +538,14 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     dup_btn = ed_button("Duplicate", UPV_Button_Role_Normal);
     del_btn = ed_button("Delete", UPV_Button_Role_Normal);
     reload_btn = ed_button("Reload", UPV_Button_Role_Normal);
+    folder_btn = ed_button("Open folder", UPV_Button_Role_Normal);
     import_btn = ed_button("Import template", UPV_Button_Role_Normal);
     save_btn = ed_button("Save", UPV_Button_Role_Accent);
     close_btn = ed_button("Close", UPV_Button_Role_Normal);
     g_tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)ed_tab_captions, TAG_DONE);
     if (g_list == NULL || g_status == NULL || g_f_label == NULL || g_f_id == NULL || g_f_url == NULL || g_f_prefix == NULL || g_f_code == NULL ||
         g_c_renderer == NULL || g_c_backend == NULL || g_f_base == NULL || g_f_key == NULL || g_f_key_plain == NULL || g_k_showkey == NULL || g_a_members == NULL || g_a_diz == NULL || g_a_nfo == NULL ||
-        g_k_nfo_remove == NULL || new_btn == NULL || dup_btn == NULL || del_btn == NULL || reload_btn == NULL || import_btn == NULL || save_btn == NULL ||
+        g_k_nfo_remove == NULL || new_btn == NULL || dup_btn == NULL || del_btn == NULL || reload_btn == NULL || folder_btn == NULL || import_btn == NULL || save_btn == NULL ||
         close_btn == NULL || g_tabs == NULL) {
         shell_requester("The group editor objects could not be created.\nFree some memory and check the UP-MCC install.");
         return 0;
@@ -550,7 +572,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
                           shell_row(import_btn, NULL), NULL, NULL, NULL, NULL, NULL);
     g_pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                             MUIA_Group_Child, (ULONG)top_page(page_group), MUIA_Group_Child, (ULONG)top_page(page_tpl), TAG_DONE);
-    left = shell_card("Groups", g_list, shell_row(new_btn, dup_btn), shell_row(del_btn, reload_btn), NULL, NULL, NULL, NULL);
+    left = shell_card("Groups", g_list, shell_row(new_btn, dup_btn), shell_row(del_btn, reload_btn), shell_row(folder_btn, NULL), NULL, NULL, NULL);
     right = MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Spacing, 0UL, MUIA_Weight, 200UL,
                           MUIA_Group_Child, (ULONG)g_tabs, MUIA_Group_Child, (ULONG)g_pages, TAG_DONE);
     bottom = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
@@ -596,6 +618,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     ed_notify(app, del_btn, EID_DELETE);
     ed_notify(app, reload_btn, EID_RELOAD);
     ed_notify(app, import_btn, EID_IMPORT);
+    ed_notify(app, folder_btn, EID_OPENDIR);
     ed_notify(app, save_btn, EID_SAVE);
     ed_notify(app, close_btn, EID_CLOSE);
     SetAttrs(parent_win, MUIA_Window_Sleep, TRUE, TAG_DONE);
@@ -626,6 +649,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
             else if (id == EID_SAVE) ed_save();
             else if (id == EID_RELOAD) ed_reload();
             else if (id == EID_IMPORT) ed_import();
+            else if (id == EID_OPENDIR) ed_open_folder();
             else if (id == EID_DIRTY) {
                 g_dirty = 1;
                 ed_apply_server();
