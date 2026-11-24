@@ -3,8 +3,9 @@
 
 #include <stddef.h>
 
-/* The archiver command line, run with the staged outer drawer current:
- * lha a "<archive>" "file_id.diz" "<base>", or zip -r for ZIP.
+/* The archiver command line, run in the drawer that holds the staged <base>
+ * drawer (which holds file_id.diz, the NFO and the files, so the archive root
+ * is <base>/): lha -r a "<archive>" "<base>", or zip -r for ZIP.
  * Caller frees. NULL on OOM. */
 char *rp_archive_cmd(const char *bin, const char *archive, const char *base);
 

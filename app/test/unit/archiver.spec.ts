@@ -30,22 +30,22 @@ describe('packArchive', () => {
   });
 
   it('invokes lha by name so it resolves from PATH, not a hardcoded macOS path', async () => {
-    await packArchive(UR, '/staging/outer', 'evk26', 'LHA', '/out');
+    await packArchive(UR, '/staging/tmp/UP-EVK26', 'evk26', 'LHA', '/out');
     expect(calls[0].file).toBe('lha');
     expect(calls[0].file).not.toContain('/opt/homebrew');
-    expect(calls[0].args).toEqual(['a', '/out/UP-EVK26.LHA', 'file_id.diz', 'UP-EVK26']);
-    expect(calls[0].opts.cwd).toBe('/staging/outer');
+    expect(calls[0].args).toEqual(['a', '/out/UP-EVK26.LHA', 'UP-EVK26']);
+    expect(calls[0].opts.cwd).toBe('/staging/tmp');
   });
 
   it('invokes zip by name so it resolves from PATH, not a hardcoded absolute path', async () => {
-    await packArchive(UR, '/staging/outer', 'evk26', 'ZIP', '/out');
+    await packArchive(UR, '/staging/tmp/UP-EVK26', 'evk26', 'ZIP', '/out');
     expect(calls[0].file).toBe('zip');
     expect(calls[0].file).not.toContain('/usr/bin');
-    expect(calls[0].args).toEqual(['-r', '/out/UP-EVK26.ZIP', 'file_id.diz', 'UP-EVK26']);
+    expect(calls[0].args).toEqual(['-r', '/out/UP-EVK26.ZIP', 'UP-EVK26']);
   });
 
   it('appends the platform install dirs to PATH, because GUI launches inherit a minimal PATH', async () => {
-    await packArchive(UR, '/staging/outer', 'evk26', 'LHA', '/out');
+    await packArchive(UR, '/staging/tmp/UP-EVK26', 'evk26', 'LHA', '/out');
     const inheritedPath = process.env.PATH ?? '';
     const passedPath = calls[0].opts.env?.PATH ?? '';
     expect(passedPath.startsWith(inheritedPath)).toBe(true);
@@ -55,14 +55,14 @@ describe('packArchive', () => {
 
   it('reports a missing archiver with an install hint instead of a raw spawn ENOENT', async () => {
     nextError = enoent('lha');
-    await expect(packArchive(UR, '/staging/outer', 'evk26', 'LHA', '/out')).rejects.toThrow(
+    await expect(packArchive(UR, '/staging/tmp/UP-EVK26', 'evk26', 'LHA', '/out')).rejects.toThrow(
       /"lha" was not found on your PATH/,
     );
   });
 
   it('names the missing binary that actually failed', async () => {
     nextError = enoent('zip');
-    await expect(packArchive(UR, '/staging/outer', 'evk26', 'ZIP', '/out')).rejects.toThrow(
+    await expect(packArchive(UR, '/staging/tmp/UP-EVK26', 'evk26', 'ZIP', '/out')).rejects.toThrow(
       /"zip" was not found on your PATH/,
     );
   });
@@ -71,6 +71,6 @@ describe('packArchive', () => {
     const failed: NodeJS.ErrnoException = new Error('lha: cannot write archive: No space left on device');
     failed.code = 1 as unknown as string;
     nextError = failed;
-    await expect(packArchive(UR, '/staging/outer', 'evk26', 'LHA', '/out')).rejects.toThrow(/No space left on device/);
+    await expect(packArchive(UR, '/staging/tmp/UP-EVK26', 'evk26', 'LHA', '/out')).rejects.toThrow(/No space left on device/);
   });
 });

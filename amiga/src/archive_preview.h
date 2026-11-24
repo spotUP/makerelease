@@ -10,7 +10,7 @@ typedef struct {
 } rp_nested;
 
 typedef struct {
-    char **entries; /* archive listing: file_id.diz, REL/, REL/REL.NFO, then the files */
+    char **entries; /* archive listing: REL/, REL/file_id.diz, REL/REL.NFO, then the files */
     size_t nentries;
     rp_nested *nested;
     size_t nnested;

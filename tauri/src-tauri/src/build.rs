@@ -957,10 +957,12 @@ fn pack_archive(prefix: &str, outer_dir: &Path, code: &str, format: &str, root: 
     let final_archive = root.join(archive_file_name(prefix, code, format));
     let release_dir = release_base_name(prefix, code);
     let archive = final_archive.to_string_lossy().to_string();
+    // The staged dir is named <BASE> and holds file_id.diz too: packed from its parent, the archive root is <BASE>/.
+    let cwd = outer_dir.parent().ok_or_else(|| format!("{}: no parent folder", outer_dir.display()))?;
     if format == "LHA" {
-        run("lha", &["a".into(), archive, "file_id.diz".into(), release_dir], outer_dir)?;
+        run("lha", &["a".into(), archive, release_dir], cwd)?;
     } else {
-        run("zip", &["-r".into(), archive, "file_id.diz".into(), release_dir], outer_dir)?;
+        run("zip", &["-r".into(), archive, release_dir], cwd)?;
     }
     Ok(final_archive)
 }
@@ -1030,11 +1032,11 @@ fn make_temp_dir() -> Result<PathBuf, String> {
 fn stage_release(prefix: &str, form: &Form, generated: &Generated) -> Result<PathBuf, String> {
     let tmp_root = make_temp_dir()?;
     let release_dir = release_base_name(prefix, &form.code);
-    let outer_dir = tmp_root.join(&release_dir);
-    let inner_dir = outer_dir.join(&release_dir);
+    // One release dir holds everything (diz, NFO, files): never <BASE>/<BASE>/.
+    let inner_dir = tmp_root.join(&release_dir);
     fs::create_dir_all(&inner_dir).map_err(|e| format!("{}: {e}", inner_dir.display()))?;
 
-    write_latin1(&outer_dir.join("file_id.diz"), &generated.diz_text)?;
+    write_latin1(&inner_dir.join("file_id.diz"), &generated.diz_text)?;
     if let Some(nfo) = &generated.nfo_text {
         write_latin1(&inner_dir.join(format!("{release_dir}.NFO")), nfo)?;
     }
@@ -1051,7 +1053,7 @@ fn stage_release(prefix: &str, form: &Form, generated: &Generated) -> Result<Pat
         }
         copy_recursive(src, &inner_dir.join(base))?;
     }
-    Ok(outer_dir)
+    Ok(inner_dir)
 }
 
 // ---------------------------------------------------------------- profiles
@@ -1283,7 +1285,7 @@ fn innermost_single_child(src: &Path) -> Result<PathBuf, String> {
 
 pub fn preview_archive_core(release_dir: &str, selected: &[String]) -> Result<Value, String> {
     let inner = format!("{release_dir}/");
-    let mut entries = vec!["file_id.diz".to_string(), inner.clone(), format!("{inner}{release_dir}.NFO")];
+    let mut entries = vec![inner.clone(), format!("{inner}file_id.diz"), format!("{inner}{release_dir}.NFO")];
     let mut nested: Vec<Value> = vec![];
     for src in selected {
         let p = Path::new(src);
@@ -1720,10 +1722,11 @@ mod tests {
             d.to_string_lossy().to_string()
         };
         let outer = stage(vec![make("UP-EVK26")], Some("nfo text"));
-        let t = tree(&outer);
-        for want in ["UP-EVK26/", "UP-EVK26/UP-EVK26.NFO", "UP-EVK26/dip-ev26.ans", "UP-EVK26/music/", "UP-EVK26/music/varin0x-onmymind.mod", "file_id.diz"] {
-            assert!(t.contains(&want.to_string()), "{want} in {t:?}");
-        }
+        // One release dir holds everything: no second UP-EVK26 level, no diz beside it.
+        assert_eq!(outer.file_name().unwrap(), "UP-EVK26");
+        let t = tree(outer.parent().unwrap());
+        let want = ["UP-EVK26/", "UP-EVK26/UP-EVK26.NFO", "UP-EVK26/dip-ev26.ans", "UP-EVK26/file_id.diz", "UP-EVK26/music/", "UP-EVK26/music/varin0x-onmymind.mod"];
+        assert_eq!(t, want.iter().map(|s| s.to_string()).collect::<Vec<_>>());
         assert_eq!(fs::read_to_string(outer.join("file_id.diz")).unwrap(), "diz text");
         fs::remove_dir_all(outer.parent().unwrap()).unwrap();
 
@@ -1731,7 +1734,7 @@ mod tests {
         fs::create_dir_all(lower.join("up-evk26")).unwrap();
         fs::write(lower.join("up-evk26/a.txt"), "a").unwrap();
         let outer = stage(vec![lower.join("up-evk26").to_string_lossy().to_string()], None);
-        let t = tree(&outer);
+        let t = tree(outer.parent().unwrap());
         assert!(t.contains(&"UP-EVK26/a.txt".to_string()) && !t.contains(&"UP-EVK26/up-evk26/".to_string()));
         assert!(!t.contains(&"UP-EVK26/UP-EVK26.NFO".to_string()));
         fs::remove_dir_all(outer.parent().unwrap()).unwrap();
@@ -1742,7 +1745,7 @@ mod tests {
         let loose = src.join("dip-ev26.ans");
         fs::write(&loose, "a").unwrap();
         let outer = stage(vec![gfx.to_string_lossy().to_string(), loose.to_string_lossy().to_string()], None);
-        let t = tree(&outer);
+        let t = tree(outer.parent().unwrap());
         assert!(t.contains(&"UP-EVK26/gfx/dip-fast.png".to_string()) && t.contains(&"UP-EVK26/dip-ev26.ans".to_string()));
         fs::remove_dir_all(outer.parent().unwrap()).unwrap();
         fs::remove_dir_all(src).unwrap();
@@ -1789,7 +1792,10 @@ mod tests {
         let ran = RefCell::new(Vec::new());
         // Stub runner: record the call and create the archive file.
         let run = |bin: &str, args: &[String], cwd: &Path| -> Result<(), String> {
-            assert!(cwd.join("file_id.diz").exists());
+            // Packed from the staged dir's parent: the only member is the release dir, which holds the diz.
+            assert_eq!(args.last().map(String::as_str), Some("EX-TEST1"));
+            assert!(!args.iter().any(|a| a == "file_id.diz"));
+            assert!(cwd.join("EX-TEST1").join("file_id.diz").exists());
             fs::write(&args[1], bin).unwrap();
             ran.borrow_mut().push(bin.to_string());
             Ok(())
@@ -1866,7 +1872,7 @@ mod tests {
         let sel: Vec<String> = [&file, &rel, &root.join("wrap")].iter().map(|p| p.display().to_string()).collect();
         let v = preview_archive_core("EVK26", &sel).unwrap();
         let e: Vec<&str> = v["entries"].as_array().unwrap().iter().map(|x| x.as_str().unwrap()).collect();
-        assert_eq!(&e[..3], ["file_id.diz", "EVK26/", "EVK26/EVK26.NFO"]);
+        assert_eq!(&e[..3], ["EVK26/", "EVK26/file_id.diz", "EVK26/EVK26.NFO"]);
         assert!(e.contains(&"EVK26/f.txt") && e.contains(&"EVK26/a.txt") && e.contains(&"EVK26/sub/"));
         assert!(e.contains(&"EVK26/wrap/only/real/x.bin"));
         let n = v["nested"].as_array().unwrap();

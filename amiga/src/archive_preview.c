@@ -134,8 +134,9 @@ int rp_preview_archive(const char *release, const char *const *paths, size_t npa
     char head[PATH_MAX_RP], inner[PATH_MAX_RP], rel_up[128];
     memset(out, 0, sizeof *out);
     snprintf(inner, sizeof(inner), "%s/", release);
-    if (add(&out->entries, &out->nentries, &cap, "file_id.diz") != 0 ||
-        add(&out->entries, &out->nentries, &cap, inner) != 0) goto oom;
+    if (add(&out->entries, &out->nentries, &cap, inner) != 0) goto oom;
+    snprintf(head, sizeof(head), "%sfile_id.diz", inner);
+    if (add(&out->entries, &out->nentries, &cap, head) != 0) goto oom;
     snprintf(head, sizeof(head), "%s/%s.NFO", release, release);
     if (add(&out->entries, &out->nentries, &cap, head) != 0) goto oom;
     for (i = 0; i < npaths; i++) {

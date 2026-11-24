@@ -19,6 +19,8 @@ describe('previewArchive', () => {
     const result = await previewArchive('REL', [path.join(root, 'wrap')]);
     expect(result.nested).toEqual([{ path: path.join(root, 'wrap'), flattenTo: path.join(root, 'wrap', 'inner') }]);
     expect(result.entries).toContain('REL/wrap/inner/a.txt');
+    expect(result.entries.slice(0, 3)).toEqual(['REL/', 'REL/file_id.diz', 'REL/REL.NFO']);
+    expect(result.entries).not.toContain('file_id.diz');
   });
 
   it('does not flag a folder with real content beside its subfolder', async () => {
