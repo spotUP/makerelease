@@ -145,9 +145,12 @@ Object *shell_gap(ULONG w, ULONG h) {
                          h ? MUIA_FixHeight : TAG_IGNORE, h, TAG_DONE);
 }
 
+/* Each page scrolls vertically inside an UP-Scrollgroup, so the window's minimum height is the tabs and bottom bar only and it opens on a
+ * 640x256 PAL screen; on a taller screen the window takes the page's full height and the bar stays hidden. */
 Object *top_page(Object *card) {
-    return MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_VertSpacing, 0UL, MUIA_Group_Child, (ULONG)card,
+    Object *inner = MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_VertSpacing, 0UL, MUIA_Group_Child, (ULONG)card,
                          MUIA_Group_Child, (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Surface, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Weight, 1UL, TAG_DONE), TAG_DONE); /* the filler erases what a taller page left below this card */
+    return inner == NULL ? NULL : MUI_NewObject((char *)"UP-Scrollgroup.mcc", MUIA_Group_Child, (ULONG)inner, TAG_DONE);
 }
 
 Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f, Object *g) {
@@ -384,6 +387,32 @@ static const char *shell_platform_tag(Object *platform_field) {
 }
 
 /* Show the detail row for Console and Other only. */
+/* With env var RPFIT set, prints the minimum sizes that decide whether the window fits a screen (640x256 PAL needs about 245 px):
+ * per page the scrollgroup and its contents, the page group, the root and the open window. Text proof for the rig, no screenshot. */
+static void shell_fit_report(Object *win, Object *pages) {
+    char v[4];
+    ULONG root = 0, iw = 0, lst = 0;
+    Object *pg, *kid, *state, *st2;
+    struct Window *w;
+    int i = 0;
+    if (GetVar((STRPTR) "RPFIT", (STRPTR)v, sizeof v, 0) < 0) return;
+    GetAttr(MUIA_Window_RootObject, win, &root);
+    GetAttr(MUIA_Window_Window, win, &iw);
+    GetAttr(MUIA_Group_ChildList, pages, &lst);
+    w = (struct Window *)iw;
+    Printf("RPFIT root min %ld x %ld, pages min %ld x %ld\n", (LONG)_minwidth((Object *)root), (LONG)_minheight((Object *)root), (LONG)_minwidth(pages), (LONG)_minheight(pages));
+    if (w != NULL) Printf("RPFIT window %ld x %ld on screen %ld x %ld (bar %ld)\n", (LONG)w->Width, (LONG)w->Height, (LONG)w->WScreen->Width, (LONG)w->WScreen->Height, (LONG)w->WScreen->BarHeight);
+    state = lst ? (Object *)((struct List *)lst)->lh_Head : NULL;
+    while (state != NULL && (pg = NextObject(&state)) != NULL) {
+        ULONG cw = 0, ch = 0, l2 = 0;
+        GetAttr(MUIA_Group_ChildList, pg, &l2);
+        st2 = l2 ? (Object *)((struct List *)l2)->lh_Head : NULL;
+        kid = st2 ? NextObject(&st2) : NULL; /* the UP-Virtgroup holding the page contents */
+        if (kid != NULL) GetAttr(UPA_Virtgroup_Width, kid, &cw), GetAttr(UPA_Virtgroup_Height, kid, &ch);
+        Printf("RPFIT page %ld scroll min %ld x %ld, contents min %ld x %ld\n", (LONG)i++, (LONG)_minwidth(pg), (LONG)_minheight(pg), (LONG)cw, (LONG)ch);
+    }
+}
+
 static void shell_platform_row(Object *platform_field) {
     ULONG pa = 0;
     GetAttr(UPA_Cycle_Active, platform_field, &pa);
@@ -2380,6 +2409,7 @@ static int shell_main(void) {
         CloseLibrary(MUIMasterBase);
         return 20;
     }
+    shell_fit_report(win, pages);
     SetAttrs(preview_list, UPA_List_Count, 0UL, TAG_DONE);
     SetAttrs(files_list, UPA_List_Count, 0UL, TAG_DONE);
     shell_seed_status(status, &g_groups[open_group], code_field, format_cycle);
