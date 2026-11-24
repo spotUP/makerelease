@@ -1523,9 +1523,9 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
     number = r.number;
     nfo = r.nfo;
     rendered = r.diz;
-    /* Staged like the desktop: outer/ holds file_id.diz next to BASE/,
-     * which holds BASE.NFO and the files. Then the archive, then the whole
-     * outer drawer moves into PROGDIR:releases/BASE. */
+    /* Staged like the desktop: one release drawer BASE/ (in a T: parent)
+     * holds file_id.diz, BASE.NFO and the files. Then the archive, then BASE/
+     * moves into PROGDIR:releases/BASE. */
     {
         char outer[288], inner[352], work[416], nfo_name[384], archive[384], *cmd, done[448];
         struct stat st;
@@ -1533,7 +1533,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         snprintf(outer, sizeof(outer), "T:rp-%s", base);
         snprintf(inner, sizeof(inner), "%s/%s", outer, base);
         if (rp_make_dirs(inner, errmsg, sizeof(errmsg)) != 0) goto build_fail;
-        snprintf(work, sizeof(work), "%s/file_id.diz", outer);
+        snprintf(work, sizeof(work), "%s/file_id.diz", inner);
         if (rp_write_file(work, rendered, strlen(rendered), errmsg, sizeof(errmsg)) != 0) goto build_fail;
         free(rendered);
         rendered = NULL;
@@ -1623,13 +1623,13 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             goto build_fail;
         }
         free(cmd);
-        /* The whole outer drawer (DIZ next to BASE/) becomes
+        /* The release drawer BASE/ becomes
          * PROGDIR:releases/BASE (PROGDIR:dry-run/BASE for a dry run), exactly like the desktop finalize. */
         {
             char finaldir[384];
             snprintf(finaldir, sizeof(finaldir), "%s/%s", root, base);
             shell_phase(app, status, 5, "Moving the release drawer...");
-            if (rp_move_dir(outer, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
+            if (rp_move_dir(inner, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
         }
         if (dry) {
             snprintf(done, sizeof(done), "Dry run: %s written, nothing published", archive);
