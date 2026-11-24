@@ -41,6 +41,7 @@
 #include "credits.h"
 #include "date.h"
 #include "groups.h"
+#include "ui_editor.h"
 #include "naming.h"
 #include "text_norm.h"
 #include "nfo_uprough.h"
@@ -56,7 +57,7 @@ struct Library *MUIMasterBase;
 #define IntuitionBase shell_IntuitionBase
 struct IntuitionBase *IntuitionBase;
 
-static void shell_requester(const char *text) {
+void shell_requester(const char *text) {
     struct EasyStruct es;
     struct IntuitionBase *prev = IntuitionBase;
     struct IntuitionBase *ib = (struct IntuitionBase *)OpenLibrary((CONST_STRPTR) "intuition.library", 36);
@@ -72,23 +73,23 @@ static void shell_requester(const char *text) {
     IntuitionBase = prev;
 }
 
-static Object *shell_label(const char *text, ULONG tone) {
+Object *shell_label(const char *text, ULONG tone) {
     return MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)text, UPA_Text_Tone, tone, TAG_DONE);
 }
 
 /* A row label: fixed to its text width so the field beside it gets the rest of the row (an unbounded label took half and cut the placeholder). */
-static Object *row_label(const char *text) {
+Object *row_label(const char *text) {
     return MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)text, UPA_Text_Tone, (ULONG)UPV_Text_Tone_Normal, UPA_Text_Fixed,
                          (ULONG)TRUE, TAG_DONE);
 }
 
 /* A label for a multi-line row: a column group sizes a row by its least stretchy cell, so the label sits above a spacer that stretches. */
-static Object *area_label(const char *text) {
+Object *area_label(const char *text) {
     return MUI_NewObject((char *)MUIC_Group, MUIA_Group_Child, (ULONG)row_label(text), MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Rectangle, TAG_DONE), TAG_DONE);
 }
 
 /* A row of one or two widgets; a NULL second half leaves a full-width row. */
-static Object *shell_row(Object *a, Object *b) {
+Object *shell_row(Object *a, Object *b) {
     if (b == NULL) {
         return MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                              MUIA_Group_Child, (ULONG)a, TAG_DONE);
@@ -98,7 +99,7 @@ static Object *shell_row(Object *a, Object *b) {
 }
 
 /* A two-column form: labels in one column (as wide as the widest), fields in the other, so every input shares a left edge. */
-static Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object *l3, Object *f3, Object *l4, Object *f4,
+Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object *l3, Object *f3, Object *l4, Object *f4,
                           Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7, Object *l8, Object *f8, Object *l9, Object *f9, Object *l10, Object *f10) {
     Object *kids[20];
     struct TagItem t[24];
@@ -123,17 +124,17 @@ static Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object
 /* A page card sits at the top of its page: a PageMode group is as tall as its tallest page and centres the shorter cards. */
 #define SHELL_PAD 4
 /* A fixed blank gap (w x h px) for window padding and the space above the bottom row. */
-static Object *shell_gap(ULONG w, ULONG h) {
+Object *shell_gap(ULONG w, ULONG h) {
     return MUI_NewObject((char *)MUIC_Rectangle, MUIA_FillArea, (ULONG)FALSE, w ? MUIA_FixWidth : TAG_IGNORE, w,
                          h ? MUIA_FixHeight : TAG_IGNORE, h, TAG_DONE);
 }
 
-static Object *top_page(Object *card) {
+Object *top_page(Object *card) {
     return MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_VertSpacing, 0UL, MUIA_Group_Child, (ULONG)card,
                          MUIA_Group_Child, (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Surface, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Weight, 1UL, TAG_DONE), TAG_DONE); /* the filler erases what a taller page left below this card */
 }
 
-static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f, Object *g) {
+Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d, Object *e, Object *f, Object *g) {
     struct TagItem t[16];
     Object *kids[8];
     int i, n = 0;
@@ -181,6 +182,7 @@ static Object *shell_card(const char *title, Object *a, Object *b, Object *c, Ob
 #define ID_CODE 13
 #define ID_AMINET_PREVIEW 14
 #define ID_NFO_PREVIEW 15
+#define ID_EDIT_GROUPS 16
 
 #define RP_MAX_FILES_PATH 511
 
@@ -290,7 +292,7 @@ static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
 static Object *g_date_field, *g_released_field, *g_readme_view, *g_nfo_view;
 
-static const char *shell_field_text(Object *field) {
+const char *shell_field_text(Object *field) {
     ULONG ptr = 0;
     STRPTR txt = NULL;
     GetAttr(UPA_Field_String, field, &ptr);
@@ -380,7 +382,7 @@ static void shell_take(char *dst, size_t cap, char *s) {
     free(s);
 }
 
-static void shell_set_field(Object *field, const char *text) {
+void shell_set_field(Object *field, const char *text) {
     ULONG ptr = 0;
     GetAttr(UPA_Field_String, field, &ptr);
     if (ptr != 0) SetAttrs((Object *)ptr, MUIA_String_Contents, (ULONG)text, TAG_DONE);
@@ -1193,6 +1195,34 @@ static rp_group g_groups[RP_MAX_SHELL_GROUPS];
 static const char *g_group_labels[RP_MAX_SHELL_GROUPS + 1];
 static int g_ngroups;
 
+/* (Re)loads the group drawers into g_groups and g_group_labels. One bad drawer never hides the others; its
+ * message goes to broken. Returns -1 (reason in broken) when the group directory cannot be listed, else 0. */
+static int shell_load_groups(char *broken, size_t cap) {
+    char ids[RP_MAX_SHELL_GROUPS][RP_ID_MAX + 1];
+    char errmsg[256];
+    int i, n;
+    broken[0] = '\0';
+    g_ngroups = 0;
+    g_group_labels[0] = NULL;
+    n = rp_list_groups("PROGDIR:groups", ids, RP_MAX_SHELL_GROUPS, errmsg, sizeof(errmsg));
+    if (n < 0) {
+        strncpy(broken, errmsg, cap - 1);
+        broken[cap - 1] = '\0';
+        return -1;
+    }
+    for (i = 0; i < n; i++) {
+        if (rp_load_group("PROGDIR:groups", ids[i], &g_groups[g_ngroups], errmsg, sizeof(errmsg)) != 0) {
+            strncat(broken, errmsg, cap - strlen(broken) - 1);
+            strncat(broken, "\n", cap - strlen(broken) - 1);
+            continue;
+        }
+        g_group_labels[g_ngroups] = g_groups[g_ngroups].label;
+        g_ngroups++;
+    }
+    g_group_labels[g_ngroups] = NULL;
+    return 0;
+}
+
 /* The code follows the release name until the user types their own (the desktop Prefill rule). */
 static char g_code_filled[40];
 
@@ -1217,6 +1247,7 @@ static void shell_suggest_code(Object *name_field, Object *code_field, Object *g
 
 static int shell_main(void) {
     Object *app = NULL, *win = NULL;
+    Object *group_slot, *edit_groups_btn;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     Object *files_text, *pick_btn, *build_btn, *status;
     Object *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
@@ -1224,45 +1255,29 @@ static int shell_main(void) {
     Object *tabs, *pages, *preview_btn, *quit_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
     static const char *const formats[] = { "LHA", "ZIP", NULL };
-    char ids[RP_MAX_SHELL_GROUPS][RP_ID_MAX + 1];
-    char errmsg[256], broken[1024];
-    int n, i;
+    char broken[1024];
+    int i;
 
     MUIMasterBase = OpenLibrary((CONST_STRPTR) "muimaster.library", 19);
     if (MUIMasterBase == NULL) {
         shell_requester("muimaster.library 19 (MUI 3.8) is not installed.\nInstall MUI 3.8, then start Release Packer again.");
         return 20;
     }
-    n = rp_list_groups("PROGDIR:groups", ids, RP_MAX_SHELL_GROUPS, errmsg, sizeof(errmsg));
-    if (n < 0) {
-        shell_requester(errmsg);
+    if (shell_load_groups(broken, sizeof(broken)) < 0) {
+        shell_requester(broken);
         CloseLibrary(MUIMasterBase);
         return 20;
     }
-    if (n == 0) {
-        shell_requester("No groups found.\nPut your group drawers in PROGDIR:groups, then start again.");
-        CloseLibrary(MUIMasterBase);
-        return 20;
-    }
-    /* One bad drawer never hides the others; the good ones still open. */
-    broken[0] = '\0';
-    g_ngroups = 0;
-    for (i = 0; i < n; i++) {
-        if (rp_load_group("PROGDIR:groups", ids[i], &g_groups[g_ngroups], errmsg, sizeof(errmsg)) != 0) {
-            strncat(broken, errmsg, sizeof(broken) - strlen(broken) - 1);
-            strncat(broken, "\n", sizeof(broken) - strlen(broken) - 1);
-            continue;
-        }
-        g_group_labels[g_ngroups] = g_groups[g_ngroups].label;
-        g_ngroups++;
-    }
-    g_group_labels[g_ngroups] = NULL;
     if (g_ngroups == 0) {
-        shell_requester(broken[0] ? broken : "No usable groups.");
+        shell_requester(broken[0] ? broken : "No groups found.\nPut your group drawers in PROGDIR:groups, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
     }
     group_cycle = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_group_labels, TAG_DONE);
+    edit_groups_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Edit groups", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre,
+                                    UPA_Button_Role, (ULONG)UPV_Button_Role_Normal, MUIA_Weight, 1UL, TAG_DONE);
+    group_slot = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
+                               MUIA_Group_Child, (ULONG)group_cycle, MUIA_Group_Child, (ULONG)edit_groups_btn, TAG_DONE);
     name_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Release name", TAG_DONE);
     {   /* longest code any group allows; the exact length per group is still checked at Build */
         int i, maxcode = 1;
@@ -1316,7 +1331,7 @@ static int shell_main(void) {
                                  TAG_DONE);
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
-    if (group_cycle == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
+    if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
@@ -1328,7 +1343,7 @@ static int shell_main(void) {
     }
     {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
-        Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_cycle, row_label("Name"), name_field,
+        Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), name_field,
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, row_label("Category"), g_category_cycle,
@@ -1415,6 +1430,7 @@ static int shell_main(void) {
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
     DoMethod(g_category_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
+    DoMethod(edit_groups_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_EDIT_GROUPS);
     {
         ULONG code_str = 0;
         GetAttr(UPA_Field_String, code_field, &code_str);
@@ -1460,6 +1476,27 @@ static int shell_main(void) {
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
         if (id == ID_BUILD) {
             shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+        }
+        if (id == ID_EDIT_GROUPS && rp_editor_run(app, win, "PROGDIR:groups") == 1) {
+            /* The cycle entries are fixed at creation, so swap in a new cycle built from the reloaded groups. */
+            if (shell_load_groups(broken, sizeof(broken)) < 0 || g_ngroups == 0) {
+                shell_requester(broken[0] ? broken : "No usable groups left.\nRestart Release Packer after fixing the group drawers.");
+                break;
+            }
+            DoMethod(group_slot, MUIM_Group_InitChange);
+            DoMethod(group_slot, OM_REMMEMBER, (ULONG)group_cycle);
+            DoMethod(group_slot, OM_REMMEMBER, (ULONG)edit_groups_btn);
+            MUI_DisposeObject(group_cycle);
+            group_cycle = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_group_labels, TAG_DONE);
+            if (group_cycle == NULL) {
+                shell_requester("The Group cycle could not be rebuilt.\nRestart Release Packer.");
+                break;
+            }
+            DoMethod(group_slot, OM_ADDMEMBER, (ULONG)group_cycle);
+            DoMethod(group_slot, OM_ADDMEMBER, (ULONG)edit_groups_btn);
+            DoMethod(group_slot, MUIM_Group_ExitChange);
+            DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
+            shell_seed_status(status, &g_groups[0], code_field, format_cycle);
         }
         if (id == ID_PLATFORM) shell_guess_type(type_field, platform_field);
         if (id == ID_GROUP) {
