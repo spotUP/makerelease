@@ -35,6 +35,7 @@
 #include "build_gate.h"
 #include "last_choice.h"
 #include "paths_list.h"
+#include "phase_progress.h"
 #include "platform_tag.h"
 #include "aminet_short.h"
 #include "aminet.h"
@@ -314,6 +315,7 @@ static Object *g_news_field;
 static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
 static Object *g_also_aminet_chk;
+static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
 static Object *g_number_field, *g_number_row;
@@ -686,9 +688,12 @@ static void shell_guess_type(Object *type_cycle, Object *platform_field) {
 }
 
 /* One phase of a long step in the status line, drawn at once (the step blocks MUI until it returns). */
-static void shell_phase(Object *app, Object *status, const char *text) {
+static void shell_phase(Object *app, Object *status, int step, const char *text) {
     ULONG sigs = 0;
-    SetAttrs(status, UPA_Text_Contents, (ULONG)text, TAG_DONE);
+    char line[160];
+    rp_phase_line(step, RP_PHASES, text, line, sizeof(line));
+    SetAttrs(g_gauge, UPA_Progress_Value, (ULONG)rp_phase_percent(step, RP_PHASES), MUIA_ShowMe, (ULONG)TRUE, TAG_DONE);
+    SetAttrs(status, UPA_Text_Contents, (ULONG)line, TAG_DONE);
     DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
 }
 
@@ -1000,7 +1005,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
     {
         char outer[288], inner[352], work[416], nfo_name[384], archive[384], *cmd, done[448];
         struct stat st;
-        shell_phase(app, status, "Staging the release drawer...");
+        shell_phase(app, status, 1, "Staging the release drawer...");
         snprintf(outer, sizeof(outer), "T:rp-%s", base);
         snprintf(inner, sizeof(inner), "%s/%s", outer, base);
         if (rp_make_dirs(inner, errmsg, sizeof(errmsg)) != 0) goto build_fail;
@@ -1009,7 +1014,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         free(rendered);
         rendered = NULL;
         if (nfo != NULL) {
-            shell_phase(app, status, "Writing the NFO...");
+            shell_phase(app, status, 2, "Writing the NFO...");
             snprintf(nfo_name, sizeof(nfo_name), "%s/%s.NFO", inner, base);
             if (rp_write_file(nfo_name, nfo, strlen(nfo), errmsg, sizeof(errmsg)) != 0) goto build_fail;
             free(nfo);
@@ -1020,7 +1025,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
          * hand: its contents belong directly in the release drawer. */
         if (g_paths.n > 0) {
             size_t pi;
-            shell_phase(app, status, "Copying the files...");
+            shell_phase(app, status, 3, "Copying the files...");
             for (pi = 0; pi < g_paths.n; pi++) {
                 const char *src = g_paths.path[pi];
                 if (same_name_fold(base_name_of(src), base)) {
@@ -1090,7 +1095,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         {
             char packing[96];
             snprintf(packing, sizeof(packing), "Packing %s...", packed);
-            shell_phase(app, status, packing);
+            shell_phase(app, status, 4, packing);
         }
         if (rp_run_command(outer, cmd, errmsg, sizeof(errmsg)) != 0) {
             free(cmd);
@@ -1102,6 +1107,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         {
             char finaldir[384];
             snprintf(finaldir, sizeof(finaldir), "%s/%s", root, base);
+            shell_phase(app, status, 5, "Moving the release drawer...");
             if (rp_move_dir(outer, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
         }
         if (dry) {
@@ -1116,6 +1122,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
     build_fail:
         SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
     build_end:
+        SetAttrs(g_gauge, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
         {
             /* The staging drawer never outlives a Build (after a move it is already gone). */
             char rmerr[128];
@@ -1505,10 +1512,11 @@ static int shell_main(void) {
                                  UPA_List_Count, 6UL, /* the list asks its height from the row count at open: start at 6 rows, emptied after open */
                                  TAG_DONE);
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
+    g_gauge = MUI_NewObject((char *)"UP-Progress.mcc", UPA_Progress_Value, 0UL, UPA_Progress_Max, 100UL, MUIA_ShowMe, (ULONG)FALSE, MUIA_FixWidth, 160UL, TAG_DONE);
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
-        build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
+        build_btn == NULL || status == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
@@ -1549,7 +1557,8 @@ static int shell_main(void) {
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
-                                                                          MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status, TAG_DONE),
+                                                                          MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status,
+                                                                          MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), TAG_DONE),
                                                   TAG_DONE)
                                   : NULL;
         /* Window padding: MUI adds 4 px (3 px top and bottom) itself, these bands bring every edge to 8. KeepSpacing stops UP-Panel
