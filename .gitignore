@@ -30,3 +30,5 @@ tauri/src-tauri/gen/
 
 # AmiSSL SDK, fetch per amiga/thoughts/spot/amissl-setup.md
 amiga/vendor/amissl-sdk/
+tauri-spike/node_modules/
+tauri-spike/src-tauri/target/
