@@ -34,6 +34,7 @@
 #include "archive.h"
 #include "build_gate.h"
 #include "last_choice.h"
+#include "creators.h"
 #include "paths_list.h"
 #include "phase_progress.h"
 #include "sections.h"
@@ -195,6 +196,7 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_REMOVEFILE 20
 #define ID_REFRESH 21 /* redraw the file lists; ID_PREVIEW (the button) also runs the dry run */
 #define ID_TAB 22      /* tab switched: refresh the NFO or readme preview shown */
+#define ID_AUTHORS 24  /* the Authors line changed: redo the creators preview and the name suggestions */
 #define ID_FOCUS 23    /* another field got the cursor: the one just left may have changed the preview */
 
 #define RP_MAX_FILES_PATH 511
@@ -318,6 +320,7 @@ static Object *g_news_field;
 static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
 static Object *g_also_aminet_chk;
+static Object *g_sec_system[1];
 static Object *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[5], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
@@ -441,6 +444,56 @@ static rp_credit g_credits[RP_CREDITS_MAX];
 /* The parsed authors, in g_credits; returns how many. */
 static size_t shell_credits(void) {
     return rp_parse_credits(shell_field_text(g_authors_field), g_credits, RP_CREDITS_MAX);
+}
+
+/* The Creators preview under Authors (desktop creators-preview) with the member names that match the name being typed
+ * (desktop creators-autocomplete, shown as text because the Amiga form has no popup list). */
+static Object *g_creators_text, *g_creators_row;
+static char g_creators_buf[480];
+static rp_member g_creators_members[RP_MEMBERS_MAX];
+
+/* The roster's nicknames; a Members line that does not parse leaves none (Build names the line). */
+static size_t shell_creators_members(void) {
+    rp_row_err err;
+    int n = rp_parse_member_rows(shell_area_raw(g_members_field), g_creators_members, RP_MEMBERS_MAX, &err);
+    return n < 0 ? 0 : (size_t)n;
+}
+
+static void shell_creators_refresh(int x_group) {
+    char tok[RP_NICK_MAX + 1];
+    const char *hit[RP_CREATORS_SUGGEST_MAX];
+    size_t n = shell_credits(), nm = shell_creators_members(), k, i, len;
+    rp_creators_token(shell_field_text(g_authors_field), tok, sizeof tok);
+    rp_creators_preview(g_credits, n, x_group, g_creators_buf, sizeof g_creators_buf);
+    k = rp_creators_matches(tok, g_creators_members, nm, hit, RP_CREATORS_SUGGEST_MAX);
+    for (i = 0; i < k; i++) {
+        len = strlen(g_creators_buf);
+        snprintf(g_creators_buf + len, sizeof g_creators_buf - len, "%s%s", i == 0 ? " | Members: " : ", ", hit[i]);
+    }
+    SetAttrs(g_creators_text, UPA_Text_Contents, (ULONG)g_creators_buf, TAG_DONE);
+}
+
+/* The Authors field was left: a name that is the start of exactly one member becomes that member (desktop picks with Enter). */
+static void shell_creators_complete(void) {
+    char out[256];
+    if (rp_creators_complete(shell_field_text(g_authors_field), g_creators_members, shell_creators_members(), out, sizeof out)) shell_set_field(g_authors_field, out);
+}
+
+/* The /X System field (desktop x-system), prefilled from the Platform tag while the user has not typed their own. */
+static Object *g_system_field, *g_system_row;
+static char g_system_prefill[64];
+
+static void shell_system_prefill(Object *platform_field) {
+    const char *now = shell_field_text(g_system_field);
+    if (now[0] != '\0' && strcmp(now, g_system_prefill) != 0) return;
+    snprintf(g_system_prefill, sizeof g_system_prefill, "%s", shell_platform_tag(platform_field));
+    shell_set_field(g_system_field, g_system_prefill);
+}
+
+/* The System text the /X NFO prints: the field, or the Platform tag when it was cleared. */
+static const char *shell_system_text(const char *platform_tag) {
+    const char *t = shell_field_text(g_system_field);
+    return t[0] != '\0' ? t : platform_tag;
 }
 
 /* Copies a malloc'd string into dst (cut to cap) and frees it; NULL gives "". */
@@ -569,6 +622,7 @@ static unsigned long shell_form_state(Object *group_cycle, Object *name_field, O
     h = rp_gate_add(h, shell_field_text(code_field));
     h = rp_gate_add(h, shell_field_text(desc_field));
     h = rp_gate_add(h, shell_field_text(g_authors_field));
+    h = rp_gate_add(h, shell_field_text(g_system_field));
     h = rp_gate_add(h, shell_field_text(g_date_field));
     h = rp_gate_add(h, shell_field_text(g_released_field));
     h = rp_gate_add(h, shell_field_text(g_diz_line_field));
@@ -648,6 +702,7 @@ static void shell_show_all(Object **objs, size_t n, int show) {
 static void shell_apply_sections(const rp_group *g) {
     rp_sections s = rp_sections_for(g);
     shell_show_all(g_sec_boards, 2, s.boards);
+    shell_show_all(g_sec_system, 1, s.system);
     shell_show_all(g_sec_media, 3, s.media);
     shell_show_all(g_sec_publish, 5, s.publish);
     shell_show_all(g_sec_door, 1, s.door);
@@ -934,7 +989,7 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
         xf.release_name = name_txt;
         xf.release_date = date;
         xf.coder = coder;
-        xf.system = plat_txt;
+        xf.system = shell_system_text(plat_txt);
         xf.design = design;
         xf.notes = shell_notes_text();
         xf.news = shell_news_text();
@@ -1524,6 +1579,10 @@ static int shell_main(void) {
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
+    g_creators_text = shell_label("", UPV_Text_Tone_Muted);
+    g_creators_row = g_creators_text ? shell_row(row_label("Creators"), g_creators_text) : NULL;
+    g_system_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "aMiEXPRESS", MUIA_String_MaxLen, (ULONG)(sizeof(g_system_prefill) - 1), TAG_DONE);
+    g_system_row = g_system_field ? shell_row(row_label("System"), g_system_field) : NULL;
     g_date_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "2026-09-21", MUIA_String_MaxLen, 15UL, TAG_DONE);
     g_diz_line_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Banner release line (optional; blank = name at Released at)", MUIA_String_MaxLen, 100UL, TAG_DONE);
     g_released_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Mysdata 2026 (optional)", MUIA_String_MaxLen, 100UL, TAG_DONE);
@@ -1554,7 +1613,7 @@ static int shell_main(void) {
         build_btn == NULL || status == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
-        g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
+        g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1565,7 +1624,7 @@ static int shell_main(void) {
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, row_label("Category"), g_category_cycle,
-                                                                  row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_number_row, g_platform_row, NULL, NULL, NULL, NULL);
+                                                                  row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_creators_row, g_system_row, g_number_row, g_platform_row, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
@@ -1585,6 +1644,7 @@ static int shell_main(void) {
                                                                      row_label("Short"), g_short_field,
                                                                      area_label("Readme"), g_readme_view,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
+        g_sec_system[0] = g_system_row;
         g_sec_boards[0] = boards_lbl, g_sec_boards[1] = g_boards_field;
         g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds_field, g_sec_media[2] = embed_pick_btn;
         g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk;
@@ -1678,6 +1738,11 @@ static int shell_main(void) {
             DoMethod((Object *)name_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NAME);
         }
     }
+    {
+        ULONG auth_str = 0;
+        GetAttr(UPA_Field_String, g_authors_field, &auth_str);
+        if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AUTHORS);
+    }
     DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage,
              MUIV_TriggerValue);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
@@ -1708,6 +1773,8 @@ static int shell_main(void) {
     SetAttrs(preview_list, UPA_List_Count, 0UL, TAG_DONE);
     SetAttrs(files_list, UPA_List_Count, 0UL, TAG_DONE);
     shell_seed_status(status, &g_groups[open_group], code_field, format_cycle);
+    shell_creators_refresh(g_groups[open_group].renderer == R_XINNOVATIONS);
+    shell_system_prefill(platform_field);
     for (;;) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
@@ -1735,7 +1802,20 @@ static int shell_main(void) {
             DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
             shell_seed_status(status, &g_groups[0], code_field, format_cycle);
         }
+        if (id == ID_AUTHORS) {
+            ULONG ga = 0;
+            GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+            shell_creators_refresh(ga < (ULONG)g_ngroups && g_groups[ga].renderer == R_XINNOVATIONS);
+        }
+        if (id == ID_FOCUS) {
+            ULONG ao = 0, inner = 0;
+            GetAttr(MUIA_Window_ActiveObject, win, &ao);
+            GetAttr(UPA_Field_String, g_authors_field, &inner);
+            if (ao != inner) shell_creators_complete();
+            shell_system_prefill(platform_field);
+        }
         if (id == ID_PLATFORM) {
+            shell_system_prefill(platform_field);
             shell_platform_row(platform_field);
             shell_guess_type(type_field, platform_field);
         }
@@ -1745,6 +1825,7 @@ static int shell_main(void) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
             if (ga < (ULONG)g_ngroups) shell_seed_status(status, &g_groups[ga], code_field, format_cycle);
+            if (ga < (ULONG)g_ngroups) shell_creators_refresh(g_groups[ga].renderer == R_XINNOVATIONS);
         }
         if (id == ID_CODE || id == ID_FORMAT) {
             ULONG ga = 0;
