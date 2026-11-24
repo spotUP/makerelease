@@ -213,10 +213,13 @@ int rp_http_amiga(void *ctx, const rp_http_req *req, rp_http_resp *resp)
         if (!(AmiSSLMasterBase = OpenLibrary((STRPTR)"amisslmaster.library", AMISSLMASTER_MIN_VERSION))) {
             fail(resp, "amisslmaster.library missing%s", ""); goto done;
         }
-        if (OpenAmiSSLTags(AMISSL_CURRENT_VERSION, AmiSSL_UsesOpenSSLStructs, FALSE,
+        long orc = OpenAmiSSLTags(AMISSL_CURRENT_VERSION, AmiSSL_UsesOpenSSLStructs, FALSE,
                            AmiSSL_GetAmiSSLBase, (ULONG)&AmiSSLBase, AmiSSL_GetAmiSSLExtBase, (ULONG)&AmiSSLExtBase,
-                           AmiSSL_SocketBase, (ULONG)SocketBase, AmiSSL_ErrNoPtr, (ULONG)&errno, TAG_DONE) != 0) {
-            fail(resp, "cannot open AmiSSL%s", ""); goto done;
+                           AmiSSL_SocketBase, (ULONG)SocketBase, AmiSSL_ErrNoPtr, (ULONG)&errno, TAG_DONE);
+        if (orc != 0) {
+            snprintf(resp->error, sizeof resp->error, "cannot open AmiSSL (error %ld, API version %d, master v%d)",
+                     orc, (int)AMISSL_CURRENT_VERSION, (int)AmiSSLMasterBase->lib_Version);
+            goto done;
         }
         ssl_open = 1;
     }
