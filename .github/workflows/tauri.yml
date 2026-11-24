@@ -43,6 +43,11 @@ jobs:
         with:
           workspaces: tauri/src-tauri
 
+      # npm runs package scripts through cmd.exe on Windows; app scripts use mkdir -p / cp.
+      - name: npm scripts via Git bash
+        if: runner.os == 'Windows'
+        run: npm config set script-shell "C:\\Program Files\\Git\\bin\\bash.exe"
+
       - name: Install app and Tauri CLI
         run: |
           (cd app && npm ci)
