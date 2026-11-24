@@ -194,6 +194,8 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_ADDFILE 19
 #define ID_REMOVEFILE 20
 #define ID_REFRESH 21 /* redraw the file lists; ID_PREVIEW (the button) also runs the dry run */
+#define ID_TAB 22      /* tab switched: refresh the NFO or readme preview shown */
+#define ID_FOCUS 23    /* another field got the cursor: the one just left may have changed the preview */
 
 #define RP_MAX_FILES_PATH 511
 
@@ -382,6 +384,8 @@ static size_t g_nrows_members, g_nrows_boards, g_nrows_embeds;
 #define SHELL_TAB_NOTES 1
 #define SHELL_TAB_ROSTER 2
 #define SHELL_TAB_FILES 4
+#define SHELL_TAB_NFO 3
+#define SHELL_TAB_AMINET 6
 static Object *g_err_obj;
 static ULONG g_err_tab = (ULONG)-1; /* -1: no failed field to show */
 
@@ -1637,6 +1641,9 @@ static int shell_main(void) {
     DoMethod(aminet_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET);
     DoMethod(nfo_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NFO_PREVIEW);
     DoMethod(aminet_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET_PREVIEW);
+    /* live preview: no verified MUI timer, so refresh on tab switch and on field exit instead of debouncing */
+    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_TAB);
+    DoMethod(win, MUIM_Notify, MUIA_Window_ActiveObject, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FOCUS);
     DoMethod(platform_field, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
     DoMethod(g_category_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
@@ -1747,6 +1754,18 @@ static int shell_main(void) {
         }
         if (id == ID_NFO_PREVIEW) {
             shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+        }
+        if (id == ID_TAB || id == ID_FOCUS) {
+            ULONG tab = (ULONG)-1;
+            GetAttr(UPA_Tabs_Active, tabs, &tab);
+            if (tab == SHELL_TAB_NFO) shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+            else if (tab == SHELL_TAB_AMINET) {
+                shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,
+                             uname_field, email_field, 1);
+            }
+            /* a failed check here is only a stale preview: never jump to the field it names */
+            g_err_tab = (ULONG)-1;
+            g_err_obj = NULL;
         }
         if (id == ID_AMINET || id == ID_AMINET_PREVIEW) {
             shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,
