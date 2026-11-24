@@ -79,6 +79,12 @@ int main(void) {
     CHECK(rp_aminet_problems(a, r, good, msg, sizeof msg) == 0);
     CHECK(rp_aminet_problems(a, r, "Short: \nUploader: bad\nType: Demo\n", msg, sizeof msg) >= 4);
     CHECK(strstr(msg, "Short: is empty") && strstr(msg, "Architecture: is empty"));
+    {
+        char longshort[256];
+        snprintf(longshort, sizeof longshort, "Short: %050d\nUploader: me@x.org (Me)\nType: demo/misc\nArchitecture: generic\n", 0);
+        CHECK(rp_aminet_problems(a, r, longshort, msg, sizeof msg) >= 1);
+        CHECK(strstr(msg, "Short: is 50 characters; Aminet allows 40") != NULL);
+    }
     CHECK(rp_aminet_problems("a b.lha", r, good, msg, sizeof msg) == 1);
 
     CHECK(rp_aminet_upload(&ops, NULL, "UP-HYPOC.LHA", "me@x.org", good, "DATA", 4, msg, sizeof msg) == 0);

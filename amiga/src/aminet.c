@@ -132,7 +132,7 @@ int rp_aminet_problems(const char *archive, const char *readme, const char *text
     if (strncmp(text, "Short:", 6)) add(msg, cap, &n, "the first line must be \"Short:\"%s", "", 0, 0);
     header_value(text, "Short", v, sizeof v);
     if (!v[0]) add(msg, cap, &n, "Short: is empty%s", "", 0, 0);
-    else if (strlen(v) > RP_AMINET_SHORT_MAX) add(msg, cap, &n, "Short: is %d characters; Aminet allows 40%s", "", (int)strlen(v), 0);
+    else if (strlen(v) > RP_AMINET_SHORT_MAX) add(msg, cap, &n, "%sShort: is %d characters; Aminet allows 40", "", (int)strlen(v), 0);
     header_value(text, "Uploader", v, sizeof v);
     if (!uploader_ok(v)) add(msg, cap, &n, "Uploader: needs an email address and a name, as \"you@example.com (Your Name)\"%s", "", 0, 0);
     header_value(text, "Type", v, sizeof v);
@@ -143,7 +143,7 @@ int rp_aminet_problems(const char *archive, const char *readme, const char *text
     for (p = text; *p; line++) {
         const char *e = strchr(p, '\n');
         size_t ll = e ? (size_t)(e - p) : strlen(p);
-        if (ll > RP_AMINET_LINE_MAX) add(msg, cap, &n, "line %d is %d characters; Aminet allows 78%s", "", line, (int)ll);
+        if (ll > RP_AMINET_LINE_MAX) add(msg, cap, &n, "%sline %d is %d characters; Aminet allows 78", "", line, (int)ll);
         if (!e) break;
         p = e + 1;
     }
