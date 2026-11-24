@@ -39,6 +39,10 @@ int main(void) {
     CHECK(rp_creators_complete("Code: Bob", m, 4, out, sizeof out) == 0);
     CHECK(rp_creators_complete("Code: ", m, 4, out, sizeof out) == 0);
     CHECK(rp_creators_complete("Code: Spo", m, 4, out, 8) == 0);
+    CHECK(rp_creators_pick("Code: Spot, Sp", "Spice", out, sizeof out) == 1 && strcmp(out, "Code: Spot, Spice") == 0);
+    CHECK(rp_creators_pick("Code: Spot; Music:  j", "Jester", out, sizeof out) == 1 && strcmp(out, "Code: Spot; Music:  Jester") == 0);
+    CHECK(rp_creators_pick("Sp", "Spot", out, sizeof out) == 1 && strcmp(out, "Spot") == 0);
+    CHECK(rp_creators_pick("Code: Sp", "Spot", out, 10) == 0);
     /* preview */
     memset(c, 0, sizeof c);
     rp_creators_preview(c, 0, 0, out, sizeof out);

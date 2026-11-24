@@ -203,6 +203,9 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_NEXT 27     /* Next button: next tab page */
 #define ID_DIZCOUNT 25 /* Diz line, Released at or the name changed: redo the release line counter */
 #define ID_FOCUS 23    /* another field got the cursor: the one just left may have changed the preview */
+#define ID_CREATORS_KEY 28  /* Up, Down, Esc or Tab in the Authors field: move in or close the member list */
+#define ID_CREATORS_PICK 29 /* a member was clicked in the list */
+#define ID_CREATORS_ACK 30  /* Return in the Authors field: pick the highlighted member */
 
 #define RP_MAX_FILES_PATH 511
 
@@ -457,11 +460,23 @@ static size_t shell_credits(void) {
     return rp_parse_credits(shell_field_text(g_authors_field), g_credits, RP_CREDITS_MAX);
 }
 
-/* The Creators preview under Authors (desktop creators-preview) with the member names that match the name being typed
- * (desktop creators-autocomplete, shown as text because the Amiga form has no popup list). */
-static Object *g_creators_text, *g_creators_row;
+/* The Creators preview under Authors (desktop creators-preview), and the member names that match the name being typed in a
+ * popup list under the field (desktop creators-autocomplete): Up and Down move the highlight, Return, Tab or a click picks. */
+static Object *g_creators_text, *g_creators_row, *g_creators_pop, *g_creators_list;
 static char g_creators_buf[480];
 static rp_member g_creators_members[RP_MEMBERS_MAX];
+static const char *g_creators_hit[RP_CREATORS_SUGGEST_MAX]; /* into g_creators_members */
+static size_t g_creators_nhit, g_creators_shown;
+
+ULONG rp_creators_row_c(UP_ListCell *cell);
+ULONG rp_creators_row_c(UP_ListCell *cell) {
+    if (cell->row < 0 || (size_t)cell->row >= g_creators_nhit) return (ULONG) "";
+    return (ULONG)g_creators_hit[cell->row];
+}
+extern void rp_creators_row_tramp(void);
+__asm__(".text\n.even\n.globl _rp_creators_row_tramp\n_rp_creators_row_tramp:\n"
+        "\tmove.l %a1,-(%sp)\n\tjsr _rp_creators_row_c\n\taddq.l #4,%sp\n\trts\n");
+static struct Hook g_creators_hook;
 
 /* The roster's nicknames; a Members line that does not parse leaves none (Build names the line). */
 static size_t shell_creators_members(void) {
@@ -471,22 +486,77 @@ static size_t shell_creators_members(void) {
 }
 
 static void shell_creators_refresh(int x_group) {
-    char tok[RP_NICK_MAX + 1];
-    const char *hit[RP_CREATORS_SUGGEST_MAX];
-    size_t n = shell_credits(), nm = shell_creators_members(), k, i, len;
-    rp_creators_token(shell_field_text(g_authors_field), tok, sizeof tok);
-    rp_creators_preview(g_credits, n, x_group, g_creators_buf, sizeof g_creators_buf);
-    k = rp_creators_matches(tok, g_creators_members, nm, hit, RP_CREATORS_SUGGEST_MAX);
-    for (i = 0; i < k && g_sections.creators; i++) { /* member hits need a release server (desktop creatorsAutocomplete) */
-        len = strlen(g_creators_buf);
-        snprintf(g_creators_buf + len, sizeof g_creators_buf - len, "%s%s", i == 0 ? " | Members: " : ", ", hit[i]);
-    }
+    rp_creators_preview(g_credits, shell_credits(), x_group, g_creators_buf, sizeof g_creators_buf);
     SetAttrs(g_creators_text, UPA_Text_Contents, (ULONG)g_creators_buf, TAG_DONE);
 }
 
-/* The Authors field was left: a name that is the start of exactly one member becomes that member (desktop picks with Enter). */
+/* The popup's list, made again when the main window's cleanup (iconify) disposed the popup with its root. */
+static int shell_creators_root(Object *app) {
+    ULONG root = 0;
+    Object *card;
+    GetAttr(UPA_Popstring_Popup, g_creators_pop, &root);
+    if (root != 0) return 1;
+    *(void **)&g_creators_hook.h_Entry = (void *)rp_creators_row_tramp;
+    g_creators_list = MUI_NewObject((char *)"UP-List.mcc", UPA_List_RowHook, (ULONG)&g_creators_hook, UPA_List_MaxRows, (ULONG)RP_CREATORS_SUGGEST_MAX,
+                                    UPA_List_KeysUnfocused, (ULONG)TRUE, UPA_List_Raised, (ULONG)TRUE, TAG_DONE);
+    if (g_creators_list == NULL) return 0;
+    card = MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Popup, UPA_Panel_Popup, (ULONG)TRUE, MUIA_Group_Child, (ULONG)g_creators_list, TAG_DONE);
+    if (card == NULL) return 0; /* the panel disposed the list */
+    DoMethod(g_creators_list, MUIM_Notify, UPA_List_Picked, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CREATORS_PICK);
+    SetAttrs(g_creators_pop, UPA_Popstring_Popup, (ULONG)card, TAG_DONE);
+    g_creators_shown = 0;
+    return 1;
+}
+
+static int shell_creators_open(void) {
+    ULONG open = 0;
+    GetAttr(UPA_Popstring_Open, g_creators_pop, &open);
+    return open != 0;
+}
+
+/* Authors changed: the members matching the name being typed, listed under the field while it has the cursor. A name that
+ * already is the one match needs no list; member hits need a release server (desktop creatorsAutocomplete). */
+static void shell_creators_popup(Object *app, Object *win) {
+    char tok[RP_NICK_MAX + 1];
+    ULONG ao = 0, inner = 0;
+    int show;
+    rp_creators_token(shell_field_text(g_authors_field), tok, sizeof tok);
+    g_creators_nhit = rp_creators_matches(tok, g_creators_members, shell_creators_members(), g_creators_hit, RP_CREATORS_SUGGEST_MAX);
+    GetAttr(MUIA_Window_ActiveObject, win, &ao);
+    GetAttr(UPA_Field_String, g_authors_field, &inner);
+    show = g_sections.creators && ao == inner && g_creators_nhit > 0 && !(g_creators_nhit == 1 && strlen(g_creators_hit[0]) == strlen(tok));
+    if ((!show || g_creators_nhit != g_creators_shown) && shell_creators_open()) SetAttrs(g_creators_pop, UPA_Popstring_Open, FALSE, TAG_DONE); /* a new row count needs a new window height */
+    if (!show || !shell_creators_root(app)) return;
+    SetAttrs(g_creators_list, UPA_List_Count, (ULONG)g_creators_nhit, UPA_List_Active, 0UL, TAG_DONE);
+    g_creators_shown = g_creators_nhit;
+    if (!shell_creators_open()) SetAttrs(g_creators_pop, UPA_Popstring_Open, TRUE, TAG_DONE);
+}
+
+/* A listed member replaces the name being typed; the cursor goes back to the Authors field. */
+static void shell_creators_pick(Object *win, LONG row) {
+    char out[256];
+    ULONG inner = 0;
+    if (row >= 0 && (size_t)row < g_creators_nhit && rp_creators_pick(shell_field_text(g_authors_field), g_creators_hit[row], out, sizeof out)) shell_set_field(g_authors_field, out);
+    if (shell_creators_open()) SetAttrs(g_creators_pop, UPA_Popstring_Open, FALSE, TAG_DONE);
+    GetAttr(UPA_Field_String, g_authors_field, &inner);
+    SetAttrs(win, MUIA_Window_Activate, TRUE, MUIA_Window_ActiveObject, inner, TAG_DONE);
+}
+
+/* Up, Down, Esc or Tab in the Authors field while the list is open. */
+static void shell_creators_key(Object *win) {
+    ULONG key = 0, a = 0;
+    if (!shell_creators_open() || g_creators_nhit == 0) return;
+    GetAttr(UPA_Field_Key, g_authors_field, &key);
+    GetAttr(UPA_List_Active, g_creators_list, &a);
+    if (key == 0x45) SetAttrs(g_creators_pop, UPA_Popstring_Open, FALSE, TAG_DONE);
+    else if (key == 0x42) shell_creators_pick(win, (LONG)a);
+    else SetAttrs(g_creators_list, UPA_List_Active, (ULONG)(((LONG)a + (key == 0x4D ? 1 : (LONG)g_creators_nhit - 1)) % (LONG)g_creators_nhit), TAG_DONE);
+}
+
+/* The Authors field was left: the list closes, and a name that is the start of exactly one member becomes that member. */
 static void shell_creators_complete(void) {
     char out[256];
+    if (shell_creators_open()) SetAttrs(g_creators_pop, UPA_Popstring_Open, FALSE, TAG_DONE);
     if (g_sections.creators && rp_creators_complete(shell_field_text(g_authors_field), g_creators_members, shell_creators_members(), out, sizeof out)) shell_set_field(g_authors_field, out);
 }
 
@@ -1621,6 +1691,10 @@ static int shell_main(void) {
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
+    /* The member list pops under Authors without taking the cursor; an empty zero-weight button keeps the field's width. */
+    g_creators_pop = g_authors_field == NULL ? NULL
+                                             : MUI_NewObject((char *)"UP-Popstring.mcc", UPA_Popstring_String, (ULONG)g_authors_field, UPA_Popstring_NoActivate, (ULONG)TRUE,
+                                                             UPA_Popstring_Button, (ULONG)MUI_NewObject(MUIC_Rectangle, MUIA_Weight, 0UL, TAG_DONE), TAG_DONE);
     g_creators_text = shell_label("", UPV_Text_Tone_Muted);
     g_creators_row = g_creators_text ? shell_row(row_label("Creators"), g_creators_text) : NULL;
     g_system_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "aMiEXPRESS", MUIA_String_MaxLen, (ULONG)(sizeof(g_system_prefill) - 1), TAG_DONE);
@@ -1656,7 +1730,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
+        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_creators_pop == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
@@ -1667,7 +1741,7 @@ static int shell_main(void) {
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), name_field,
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
-                                                                  row_label("Authors"), g_authors_field, g_category_lbl, g_category_cycle,
+                                                                  row_label("Authors"), g_creators_pop, g_category_lbl, g_category_cycle,
                                                                   row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_creators_row, g_system_row, g_number_row, g_platform_row, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
@@ -1801,6 +1875,8 @@ static int shell_main(void) {
         ULONG auth_str = 0;
         GetAttr(UPA_Field_String, g_authors_field, &auth_str);
         if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AUTHORS);
+        if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CREATORS_ACK);
+        DoMethod(g_authors_field, MUIM_Notify, UPA_Field_Key, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CREATORS_KEY);
     }
     DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage,
              MUIV_TriggerValue);
@@ -1866,6 +1942,18 @@ static int shell_main(void) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
             shell_creators_refresh(ga < (ULONG)g_ngroups && g_groups[ga].renderer == R_XINNOVATIONS);
+            shell_creators_popup(app, win);
+        }
+        if (id == ID_CREATORS_KEY) shell_creators_key(win);
+        if (id == ID_CREATORS_ACK && shell_creators_open()) {
+            ULONG a = 0;
+            GetAttr(UPA_List_Active, g_creators_list, &a);
+            shell_creators_pick(win, (LONG)a);
+        }
+        if (id == ID_CREATORS_PICK) {
+            ULONG row = 0;
+            GetAttr(UPA_List_Picked, g_creators_list, &row);
+            shell_creators_pick(win, (LONG)row);
         }
         if (id == ID_FOCUS) {
             ULONG ao = 0, inner = 0;
