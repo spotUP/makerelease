@@ -1581,7 +1581,7 @@ static int shell_main(void) {
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     ULONG open_group = 0;
     Object *files_list, *add_file_btn, *remove_file_btn, *pick_btn, *build_btn, *status;
-    Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
+    Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text, *cover_image, *cover_thumb;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
     Object *tabs, *tabs_row = NULL, *pages, *preview_btn, *quit_btn, *back_btn, *next_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
@@ -1680,6 +1680,10 @@ static int shell_main(void) {
     g_boards_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "Name | Sysop | HQ | Status (X Innovations only)", TAG_DONE);
     g_embeds_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "youtube | caption | url   or   image | caption | path", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
+    /* Fit scales the picture into the fixed box; hidden until a cover is picked (an empty UP-Image is only an outline) */
+    cover_image = MUI_NewObject((char *)"UP-Image.mcc", UPA_Image_Fit, (ULONG)TRUE, TAG_DONE);
+    cover_thumb = cover_image ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_FixWidth, 48UL, MUIA_FixHeight, 36UL, MUIA_ShowMe, (ULONG)FALSE,
+                                              MUIA_Group_Child, (ULONG)cover_image, TAG_DONE) : NULL;
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
     *(void **)&g_preview_hook.h_Entry = (void *)rp_preview_row_tramp;
@@ -1695,7 +1699,7 @@ static int shell_main(void) {
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || g_code_status == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
-        cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
+        cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL || cover_thumb == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
@@ -1712,7 +1716,7 @@ static int shell_main(void) {
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
-        Object *cover_row = shell_row(cover_lbl, cover_text);
+        Object *cover_row = shell_row(cover_lbl, shell_row(cover_thumb, cover_text));
         Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, boards_lbl, g_boards_field,
                                                                                  embeds_lbl, g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
@@ -1936,7 +1940,12 @@ static int shell_main(void) {
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
         if (id == ID_NAME || id == ID_DIZCOUNT) shell_diz_count(name_field);
         if (id == ID_EMBED_PICK) shell_embed_pick();
-        if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
+        if (id == ID_COVER && shell_pick_cover()) {
+            SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
+            /* the class copies at most 255 characters of the path; a longer one shows an empty outline, the upload still uses g_cover */
+            SetAttrs(cover_image, UPA_Image_File, (ULONG)g_cover, TAG_DONE);
+            SetAttrs(cover_thumb, MUIA_ShowMe, (ULONG)TRUE, TAG_DONE);
+        }
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
             int ok = shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,
                                   format_cycle);
