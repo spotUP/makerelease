@@ -107,6 +107,12 @@ Object *shell_row(Object *a, Object *b) {
                          MUIA_Group_Child, (ULONG)a, MUIA_Group_Child, (ULONG)b, TAG_DONE);
 }
 
+/* A label over a full-width body, hidden or shown as one object (see shell_apply_sections); the spacer keeps the fixed label from capping the width. */
+Object *shell_section(const char *label, Object *body) {
+    return MUI_NewObject((char *)MUIC_Group, MUIA_Group_Child, (ULONG)shell_row(row_label(label), MUI_NewObject((char *)MUIC_Rectangle, TAG_DONE)),
+                         MUIA_Group_Child, (ULONG)body, TAG_DONE);
+}
+
 /* A two-column form: labels in one column (as wide as the widest), fields in the other, so every input shares a left edge. */
 Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object *l3, Object *f3, Object *l4, Object *f4,
                           Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7, Object *l8, Object *f8, Object *l9, Object *f9, Object *l10, Object *f10) {
@@ -334,7 +340,7 @@ static Object *g_sec_system[1];
 static Object *g_revoke_field; /* desktop revoke-code: code to revoke, blank = the Code field */
 static rp_sections g_sections; /* of the open group, set by shell_apply_sections */
 static const rp_division *g_division; /* likewise; NULL for a placeholder group */
-static Object *g_sec_history[2], *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[6], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
+static Object *g_sec_history[1], *g_sec_boards[1], *g_sec_media[1], *g_sec_publish[5], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 /* A network transfer runs inside the transport, which calls shell_net_pump between socket chunks: the window
  * stays live, the form (g_net_pages) is disabled and the Cancel button shows. */
@@ -501,7 +507,8 @@ extern void rp_table_cell_tramp(void);
 __asm__(".text\n.even\n.globl _rp_table_cell_tramp\n_rp_table_cell_tramp:\n"
         "\tmove.l %a1,-(%sp)\n\tmove.l %a0,-(%sp)\n\tjsr _rp_table_cell_c\n\taddq.l #8,%sp\n\trts\n");
 
-/* Builds table t: ncols titled columns, weights (0 = as wide as sample), and an optional extra button in the edit row. */
+/* Builds table t: ncols titled columns, weights (0 = as wide as sample), and an optional extra button in the edit row.
+ * The edit-row buttons have weight 0: at equal weight they left the fields their 20 px minimum. */
 static void shell_table_new(shell_table *t, int ncols, const char *const *titles, const int *weights, const char *const *samples, Object *extra) {
     struct TagItem tags[SHELL_TABLE_COLS + 7];
     int c, n = 1;
@@ -518,10 +525,10 @@ static void shell_table_new(shell_table *t, int ncols, const char *const *titles
         tags[n].ti_Tag = MUIA_Group_Child;
         tags[n++].ti_Data = (ULONG)(t->box[c] ? t->box[c] : t->field[c]);
     }
-    t->add = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Add", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
-    t->remove = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
-    t->up = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Move Up", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
-    t->down = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Move Down", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    t->add = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Add", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, MUIA_Weight, 0UL, TAG_DONE);
+    t->remove = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, MUIA_Weight, 0UL, TAG_DONE);
+    t->up = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Move Up", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, MUIA_Weight, 0UL, TAG_DONE);
+    t->down = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Move Down", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, MUIA_Weight, 0UL, TAG_DONE);
     tags[n].ti_Tag = MUIA_Group_Child;
     tags[n++].ti_Data = (ULONG)t->add;
     tags[n].ti_Tag = MUIA_Group_Child;
@@ -1013,15 +1020,18 @@ static void shell_show_all(Object **objs, size_t n, int show) {
     for (i = 0; i < n; i++) SetAttrs(objs[i], MUIA_ShowMe, (ULONG)show, TAG_DONE);
 }
 
-/* Hides the boards, media, Publish and Door parts the group does not have (desktop visibleSections); a label hides with its field. */
+/* Hides the boards, media, Publish and Door parts the group does not have (desktop visibleSections); a label hides with its field.
+ * Each part hides as ONE object, the row or section that holds it: a shown MUI 3.8 group whose children are all hidden reports
+ * a negative size (minus its spacing), which stops the page drawing there and pins the window to its minimum width, and a
+ * Columns group does the same for a hidden cell. So never hide every child of a shown group or a cell of a shell_form. */
 static void shell_apply_sections(const rp_group *g) {
     rp_sections s = g_sections = rp_sections_for(g);
     g_division = rp_division_for(g);
-    shell_show_all(g_sec_history, 2, s.history);
-    shell_show_all(g_sec_boards, 2, s.boards);
+    shell_show_all(g_sec_history, 1, s.history);
+    shell_show_all(g_sec_boards, 1, s.boards);
     shell_show_all(g_sec_system, 1, s.system);
-    shell_show_all(g_sec_media, 3, s.media);
-    shell_show_all(g_sec_publish, 6, s.publish);
+    shell_show_all(g_sec_media, 1, s.media);
+    shell_show_all(g_sec_publish, 5, s.publish);
     shell_show_all(g_sec_door, 1, s.door);
     SetAttrs(g_template_status, MUIA_ShowMe, (ULONG)s.diz_preview, TAG_DONE);
     SetAttrs(g_diz_count, MUIA_ShowMe, (ULONG)s.diz_line, TAG_DONE); /* a placeholder diz has no release line row */
@@ -2080,37 +2090,37 @@ static int shell_main(void) {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
         /* Paired rows (Name with Code, Platform with its detail, Format with Category, date with place, System with number) keep
          * the page inside an 800x600 screen with every row and the Credits table shown */
+        Object *category_row = shell_row(g_category_lbl, g_category_cycle);
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), shell_row(name_field, shell_row(row_label("Code"), shell_row(code_field, g_code_status))),
                                                                   row_label("Platform"), shell_row(platform_field, g_platform_row),
-                                                                  row_label("Format"), shell_row(format_cycle, shell_row(g_category_lbl, g_category_cycle)), row_label("Description"), desc_field,
+                                                                  row_label("Format"), shell_row(format_cycle, category_row), row_label("Description"), desc_field,
                                                                   area_label("Credits"), g_credits_tab->group,
                                                                   row_label("Release date"), shell_row(g_date_field, shell_row(row_label("Released at"), g_released_field)),
-                                                                  NULL, NULL, NULL, NULL, NULL, NULL), g_creators_row, shell_row(g_system_row, g_number_row), NULL, NULL, NULL, NULL);
+                                                                  NULL, NULL, NULL, NULL, NULL, NULL), g_creators_row, g_system_row, g_number_row, NULL, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
-        Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
+        Object *boards_sec = shell_section("Boards", g_boards->group), *embeds_sec = shell_section("Media embeds", g_embeds->group), *cover_lbl = row_label("Cover");
         Object *cover_row = shell_row(cover_lbl, shell_row(cover_thumb, cover_text));
-        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members->group, boards_lbl, g_boards->group,
-                                                                                 embeds_lbl, g_embeds->group,
-                                                                                 NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
+        Object *page_roster = shell_card("Members, boards and media", shell_section("Members", g_members->group), boards_sec, embeds_sec, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Diz line"), g_diz_line_field, area_label("Text"), g_nfo_view,
                                                                         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), g_diz_count, g_template_status, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(pick_btn, add_file_btn), files_list,
                                         shell_row(remove_file_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *revoke_row = shell_row(row_label("Revoke code"), g_revoke_field);
+        Object *publish_row = shell_row(cover_btn, publish_btn), *revoke_btn_row = shell_row(revoke_btn, door_btn);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
                                           cover_row,
-                                          shell_row(cover_btn, publish_btn), revoke_row, shell_row(revoke_btn, door_btn), shell_row(aminet_btn, g_also_aminet_chk), NULL);
+                                          publish_row, revoke_row, revoke_btn_row, shell_row(aminet_btn, g_also_aminet_chk), NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
                                                                      row_label("Short"), g_short_field,
                                                                      area_label("Readme"), g_readme_view,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         g_sec_system[0] = g_system_row;
-        g_sec_history[0] = g_category_lbl, g_sec_history[1] = g_category_cycle;
-        g_sec_boards[0] = boards_lbl, g_sec_boards[1] = g_boards->group;
-        g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds->group, g_sec_media[2] = embed_pick_btn;
-        g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk, g_sec_publish[5] = revoke_row;
+        g_sec_history[0] = category_row;
+        g_sec_boards[0] = boards_sec;
+        g_sec_media[0] = embeds_sec;
+        g_sec_publish[0] = cover_row, g_sec_publish[1] = publish_row, g_sec_publish[2] = revoke_btn_row, g_sec_publish[3] = g_also_aminet_chk, g_sec_publish[4] = revoke_row; /* the door button sits in revoke_btn_row and hides alone when only the door is missing */
         g_sec_door[0] = door_btn;
         Object *content;
         tabs = shell_tabs_new(0u, 0UL);
