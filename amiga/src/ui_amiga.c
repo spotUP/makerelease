@@ -34,6 +34,7 @@
 #include "archive.h"
 #include "build_gate.h"
 #include "last_choice.h"
+#include "platform_tag.h"
 #include "aminet.h"
 #include "aminet_preview.h"
 #include "release_preview.h"
@@ -299,6 +300,9 @@ static Object *g_date_field, *g_released_field, *g_readme_view, *g_nfo_view;
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
 static Object *g_number_field, *g_number_row;
 static char g_number_text[24];
+/* The Platform detail text (which console / the Other tag) and its row, shown for Console and Other only. */
+static Object *g_platform_text_field, *g_platform_row;
+static char g_platform_tag_buf[64];
 
 const char *shell_field_text(Object *field) {
     ULONG ptr = 0;
@@ -306,6 +310,21 @@ const char *shell_field_text(Object *field) {
     GetAttr(UPA_Field_String, field, &ptr);
     if (ptr != 0) GetAttr(MUIA_String_Contents, (Object *)ptr, (ULONG *)&txt);
     return txt ? (const char *)txt : "";
+}
+
+/* The platform tag for the Platform dropdown and its detail text (static buffer, used before the next call). */
+static const char *shell_platform_tag(Object *platform_field) {
+    ULONG pa = 0;
+    GetAttr(UPA_Cycle_Active, platform_field, &pa);
+    rp_platform_tag((int)pa, shell_field_text(g_platform_text_field), g_platform_tag_buf, sizeof g_platform_tag_buf);
+    return g_platform_tag_buf;
+}
+
+/* Show the detail row for Console and Other only. */
+static void shell_platform_row(Object *platform_field) {
+    ULONG pa = 0;
+    GetAttr(UPA_Cycle_Active, platform_field, &pa);
+    SetAttrs(g_platform_row, MUIA_ShowMe, (ULONG)rp_platform_wants_text((int)pa), TAG_DONE);
 }
 
 /* The multi-line fields as NFO-ready text (rp_text_normalize) in static copies: the class returns its own live buffer. */
@@ -503,6 +522,7 @@ static unsigned long shell_form_state(Object *group_cycle, Object *name_field, O
     snprintf(num, sizeof num, "%lu/%lu/%lu", (unsigned long)ga, (unsigned long)pa, (unsigned long)fa);
     h = rp_gate_add(h, num);
     h = rp_gate_add(h, shell_category());
+    h = rp_gate_add(h, shell_platform_tag(platform_field));
     h = rp_gate_add(h, shell_field_text(name_field));
     h = rp_gate_add(h, shell_field_text(code_field));
     h = rp_gate_add(h, shell_field_text(desc_field));
@@ -635,15 +655,8 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
     SetAttrs(list, UPA_List_Count, (ULONG)g_prev.nentries, UPA_List_Active, (ULONG)-1, TAG_DONE);
 }
 
-/* Same choices as the desktop app; index 0 is no platform tag. */
-static const char *const g_platform_labels[] = { "None", "A500", "A1200", "Console", NULL };
-static const char *const g_platform_tags[] = { "", "A500", "A1200", "Console" };
-
 static void shell_guess_type(Object *type_cycle, Object *platform_field) {
-    ULONG pa = 0;
-    const char *guess;
-    GetAttr(UPA_Cycle_Active, platform_field, &pa);
-    guess = rp_aminet_guess_type(shell_category(), pa < 4 ? g_platform_tags[pa] : "");
+    const char *guess = rp_aminet_guess_type(shell_category(), shell_platform_tag(platform_field));
     if (guess[0]) shell_set_type(type_cycle, guess);
 }
 
@@ -706,11 +719,7 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
     desc_txt = (STRPTR) "";
     if (name_ptr != 0) GetAttr(MUIA_String_Contents, (Object *)name_ptr, (ULONG *)&name_txt);
     if (code_ptr != 0) GetAttr(MUIA_String_Contents, (Object *)code_ptr, (ULONG *)&code_txt);
-    {
-        ULONG pa = 0;
-        GetAttr(UPA_Cycle_Active, platform_field, &pa);
-        plat_txt = (STRPTR)(pa < 4 ? g_platform_tags[pa] : "");
-    }
+    plat_txt = (STRPTR)shell_platform_tag(platform_field);
     if (desc_ptr != 0) GetAttr(MUIA_String_Contents, (Object *)desc_ptr, (ULONG *)&desc_txt);
     if (name_txt == NULL) name_txt = (STRPTR) "";
     if (code_txt == NULL) code_txt = (STRPTR) "";
@@ -1101,7 +1110,7 @@ static void shell_preview_nfo(Object *status, const rp_group *groups, Object *gr
 static void shell_online(Object *app, Object *status, int action, const rp_group *groups, Object *group_cycle,
                          Object *name_field, Object *code_field, Object *platform_field, Object *desc_field,
                          Object *format_cycle) {
-    ULONG gactive = 0, active = 0, sigs = 0, pa = 0;
+    ULONG gactive = 0, active = 0, sigs = 0;
     const rp_group *g;
     char code[40], base[64], packed[72], archive[160], diz[160], msg[400], pub_creators[256];
     struct DateStamp ds;
@@ -1141,11 +1150,10 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
         a.n_boards = g_nrows_boards;
         a.embeds = g_rows_embeds;
         a.n_embeds = g_nrows_embeds;
-        GetAttr(UPA_Cycle_Active, platform_field, &pa);
         a.group = g;
         a.code = code;
         a.release_name = shell_field_text(name_field);
-        a.platform_tag = pa < 4 ? g_platform_tags[pa] : "";
+        a.platform_tag = shell_platform_tag(platform_field);
         a.description = shell_field_text(desc_field);
         a.release_notes = shell_notes_text();
         a.news = shell_news_text();
@@ -1388,7 +1396,9 @@ static int shell_main(void) {
         for (i = 0; i < g_ngroups; i++) if (g_groups[i].code_length > maxcode) maxcode = g_groups[i].code_length;
         code_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. ABC", MUIA_String_MaxLen, (ULONG)maxcode + 1, TAG_DONE);
     }
-    platform_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_platform_labels, TAG_DONE);
+    platform_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)rp_platform_labels, TAG_DONE);
+    g_platform_text_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Which console, or CD32", MUIA_String_MaxLen, (ULONG)(sizeof(g_platform_tag_buf)), TAG_DONE);
+    g_platform_row = g_platform_text_field ? shell_row(row_label("Platform detail"), g_platform_text_field) : NULL;
     desc_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "One-line description", TAG_DONE);
     format_cycle =
         MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)formats, TAG_DONE);
@@ -1443,7 +1453,7 @@ static int shell_main(void) {
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
-        g_date_field == NULL || g_released_field == NULL || g_number_row == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
+        g_date_field == NULL || g_released_field == NULL || g_number_row == NULL || g_platform_row == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1454,7 +1464,7 @@ static int shell_main(void) {
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, row_label("Category"), g_category_cycle,
-                                                                  row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_number_row, NULL, NULL, NULL, NULL, NULL);
+                                                                  row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_number_row, g_platform_row, NULL, NULL, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, area_label("Boards"), g_boards_field,
@@ -1572,6 +1582,7 @@ static int shell_main(void) {
         shell_set_field(g_date_field, today);
     }
     if (shell_type_dir(type_field)[0] == '\0') shell_guess_type(type_field, platform_field);
+    shell_platform_row(platform_field);
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
     if (!is_open) {
@@ -1609,7 +1620,10 @@ static int shell_main(void) {
             DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
             shell_seed_status(status, &g_groups[0], code_field, format_cycle);
         }
-        if (id == ID_PLATFORM) shell_guess_type(type_field, platform_field);
+        if (id == ID_PLATFORM) {
+            shell_platform_row(platform_field);
+            shell_guess_type(type_field, platform_field);
+        }
         if (id == ID_GROUP || id == ID_FORMAT) shell_last_save(g_groups, g_ngroups, group_cycle, format_cycle);
         if (id == ID_GROUP) {
             ULONG ga = 0;
