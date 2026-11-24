@@ -1,6 +1,7 @@
 #include "aminet_preview.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 static int failures;
@@ -16,6 +17,11 @@ int main(void) {
     CHECK(p.n_problems == 0 && p.problems[0] == 0);
     CHECK(!strcmp(p.archive, "up-hypoc.lha") && !strcmp(p.readme_name, "up-hypoc.readme"));
     CHECK(p.readme && !strncmp(p.readme, "Short:        A demo\n", 21) && strstr(p.readme, "  Code: Spot\n"));
+    {
+        char *v = rp_aminet_preview_view(&p);
+        CHECK(v && !strncmp(v, "No problems.\n\nShort:", 20));
+        free(v);
+    }
     rp_aminet_preview_free(&p);
     CHECK(p.readme == NULL);
 
@@ -23,6 +29,11 @@ int main(void) {
     in.short_text = "";
     CHECK(rp_aminet_make_preview("a b.lha", &in, &p) == 0);
     CHECK(p.n_problems == 3 && strstr(p.problems, "Short: is empty") && strstr(p.problems, "may only contain"));
+    {
+        char *v = rp_aminet_preview_view(&p);
+        CHECK(v && !strncmp(v, "Problems: ", 10) && strstr(v, "Short: is empty") && strstr(v, "\n\nShort:"));
+        free(v);
+    }
     rp_aminet_preview_free(&p);
 
     /* name longer than the buffers */

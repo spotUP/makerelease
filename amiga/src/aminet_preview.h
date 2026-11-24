@@ -21,4 +21,7 @@ typedef struct {
 int rp_aminet_make_preview(const char *archive_base, const rp_aminet_readme_in *in, rp_aminet_preview *out);
 void rp_aminet_preview_free(rp_aminet_preview *p);
 
+/* The preview as one text for display: "Problems: ..." or "No problems." and a blank line, then the readme. malloc'd. */
+char *rp_aminet_preview_view(const rp_aminet_preview *p);
+
 #endif

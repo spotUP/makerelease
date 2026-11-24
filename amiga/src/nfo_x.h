@@ -45,5 +45,6 @@ void rp_x_release_name_in_banner(const char *banner, char *out, size_t cap);
 
 /* listArtFromBanner: the division art with only the release name filled in. */
 char *rp_x_list_art(const char *banner);
+char *rp_diz_with_released_at(const char *diz, const char *name, const char *place);
 
 #endif

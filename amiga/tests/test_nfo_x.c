@@ -148,6 +148,18 @@ static void test_diz(void) {
     expect_file(c, "x-3.DIZ");
     free(b);
     free(c);
+    /* Released at: row 8 reads "name at place"; empty place or name leaves the diz as it was */
+    b = rp_diz_with_released_at(rp_x_banner(), "Demo", " Mysdata 2026 ");
+    c = rp_diz_apply_release_line(rp_x_banner(), RP_X_RELEASE_ROW, "Demo at Mysdata 2026");
+    CHECK(b && c && strcmp(b, c) == 0);
+    free(b);
+    free(c);
+    b = rp_diz_with_released_at(rp_x_banner(), "Demo", "");
+    CHECK(b && strcmp(b, rp_x_banner()) == 0);
+    free(b);
+    b = rp_diz_with_released_at(rp_x_banner(), "", "Mysdata");
+    CHECK(b && strcmp(b, rp_x_banner()) == 0);
+    free(b);
     free(a);
     if (shipped && names) {
         char want[128];

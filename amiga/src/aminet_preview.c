@@ -28,3 +28,13 @@ void rp_aminet_preview_free(rp_aminet_preview *p) {
     free(p->readme);
     p->readme = NULL;
 }
+
+char *rp_aminet_preview_view(const rp_aminet_preview *p) {
+    const char *readme = p->readme ? p->readme : "";
+    size_t n = strlen(p->problems) + strlen(readme) + 32;
+    char *out = malloc(n);
+    if (!out) return NULL;
+    if (p->n_problems > 0) snprintf(out, n, "Problems: %s\n\n%s", p->problems, readme);
+    else snprintf(out, n, "No problems.\n\n%s", readme);
+    return out;
+}

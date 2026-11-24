@@ -151,6 +151,17 @@ char *rp_x_list_art(const char *banner) {
     return rp_diz_apply_release_line(BANNER, RP_X_RELEASE_ROW, name);
 }
 
+/* The desktop's DIZ line source: "<name> at <place>" when Released at is filled; the diz is returned unchanged
+ * (a copy) when either is empty, so the group's own line stays until both exist. */
+char *rp_diz_with_released_at(const char *diz, const char *name, const char *place) {
+    char line[256];
+    while (is_ws(*name)) name++;
+    while (is_ws(*place)) place++;
+    if (*name == '\0' || *place == '\0') return dup_n(diz, strlen(diz));
+    snprintf(line, sizeof line, "%s at %s", name, place);
+    return rp_diz_apply_release_line(diz, RP_X_RELEASE_ROW, line);
+}
+
 /* ---- NFO ---- */
 
 static int sb_nl(strbuf *b) {
