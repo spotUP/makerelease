@@ -203,6 +203,7 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_NEXT 27     /* Next button: next tab page */
 #define ID_DIZCOUNT 25 /* Diz line, Released at or the name changed: redo the release line counter */
 #define ID_FOCUS 23    /* another field got the cursor: the one just left may have changed the preview */
+#define ID_TABLE 100   /* Roster tables: ID_TABLE + table * SHELL_TABLE_ACTIONS + action, see shell_table_event */
 
 #define RP_MAX_FILES_PATH 511
 
@@ -385,7 +386,7 @@ static const char *shell_news_text(void) { return shell_area_text(g_news_field, 
 
 /* The Roster tab: members ("Nickname | role"), boards (X Innovations only) and media embeds, one row per line. */
 #define SHELL_ROWS_MAX 3000
-static Object *g_members_field, *g_boards_field, *g_embeds_field;
+static Object *g_boards_field, *g_embeds_field;
 static rp_member g_rows_members[RP_MEMBERS_MAX];
 static rp_board_row g_rows_boards[RP_ONLINE_BOARDS_MAX];
 static rp_embed_row g_rows_embeds[RP_ONLINE_EMBEDS_MAX];
@@ -414,6 +415,175 @@ static const char *shell_area_raw(Object *area) {
     return ptr ? (const char *)ptr : "";
 }
 
+/* A Roster table (desktop memberlist, boards and media embeds tables): the rows in titled columns, one string field per
+ * column for the picked row, Add and Remove. The rows stay raw "a | b" lines (rp_rtab), so the parsers read the same text
+ * the text areas held before, and a parser's line number is the row number. */
+#define SHELL_TABLE_COLS 4
+#define SHELL_TABLE_FIELD_MAX 255
+#define SHELL_TABLE_ACTIONS 4 /* ID_TABLE + table * 4 + one of these */
+#define SHELL_TABLE_PICK 0
+#define SHELL_TABLE_ADD 1
+#define SHELL_TABLE_REMOVE 2
+#define SHELL_TABLE_EDIT 3
+typedef struct {
+    rp_rtab rows;
+    const char *titles[SHELL_TABLE_COLS];
+    UP_ListColumns cols;
+    Object *list, *group, *add, *remove;
+    Object *field[SHELL_TABLE_COLS];
+    long cur;                                    /* the row whose cells the fields hold; -1 none */
+    char cell[SHELL_TABLE_COLS][128];            /* hook answers, one per column (a row's cells are asked in turn) */
+    char *text;                                  /* last rp_rtab_text, owned */
+    struct Hook hook;
+} shell_table;
+#define SHELL_TABLE_MEMBERS 0
+#define SHELL_TABLE_COUNT 1
+static shell_table g_tables[SHELL_TABLE_COUNT];
+#define g_members (&g_tables[SHELL_TABLE_MEMBERS])
+
+ULONG rp_table_cell_c(struct Hook *h, UP_ListCell *cell);
+ULONG rp_table_cell_c(struct Hook *h, UP_ListCell *cell) {
+    shell_table *t = (shell_table *)h->h_Data;
+    int c = (int)cell->col;
+    if (c < 0 || c >= t->rows.ncols) return (ULONG) "";
+    if (cell->row < 0) return (ULONG)t->titles[c];
+    rp_rtab_cell(&t->rows, (size_t)cell->row, c, t->cell[c], sizeof t->cell[c]);
+    return (ULONG)t->cell[c];
+}
+/* The list calls the hook with the hook in A0 and the cell in A1. */
+extern void rp_table_cell_tramp(void);
+__asm__(".text\n.even\n.globl _rp_table_cell_tramp\n_rp_table_cell_tramp:\n"
+        "\tmove.l %a1,-(%sp)\n\tmove.l %a0,-(%sp)\n\tjsr _rp_table_cell_c\n\taddq.l #8,%sp\n\trts\n");
+
+/* Builds table t: ncols titled columns, weights (0 = as wide as sample), and an optional extra button in the edit row. */
+static void shell_table_new(shell_table *t, int ncols, const char *const *titles, const int *weights, const char *const *samples, Object *extra) {
+    struct TagItem tags[SHELL_TABLE_COLS + 5];
+    int c, n = 1;
+    t->rows.ncols = ncols;
+    t->cur = -1;
+    t->cols.n = ncols;
+    t->hook.h_Data = t;
+    *(void **)&t->hook.h_Entry = (void *)rp_table_cell_tramp;
+    for (c = 0; c < ncols; c++) {
+        t->titles[c] = titles[c];
+        t->cols.weight[c] = weights[c];
+        t->cols.sample[c] = samples ? samples[c] : NULL;
+        t->field[c] = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG)titles[c], MUIA_String_MaxLen, (ULONG)(SHELL_TABLE_FIELD_MAX + 1), TAG_DONE);
+        tags[n].ti_Tag = MUIA_Group_Child;
+        tags[n++].ti_Data = (ULONG)t->field[c];
+    }
+    t->add = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Add", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    t->remove = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    tags[n].ti_Tag = MUIA_Group_Child;
+    tags[n++].ti_Data = (ULONG)t->add;
+    tags[n].ti_Tag = MUIA_Group_Child;
+    tags[n++].ti_Data = (ULONG)t->remove;
+    if (extra) {
+        tags[n].ti_Tag = MUIA_Group_Child;
+        tags[n++].ti_Data = (ULONG)extra;
+    }
+    tags[n].ti_Tag = TAG_DONE;
+    tags[0].ti_Tag = MUIA_Group_Horiz;
+    tags[0].ti_Data = (ULONG)TRUE;
+    t->list = MUI_NewObject((char *)"UP-List.mcc", UPA_List_CellHook, (ULONG)&t->hook, UPA_List_Columns, (ULONG)&t->cols, UPA_List_Title, (ULONG)TRUE,
+                            UPA_List_MaxRows, 3UL, UPA_List_Count, 0UL, UPA_List_Active, (ULONG)-1, TAG_DONE);
+    t->group = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Child, (ULONG)t->list, MUIA_Group_Child,
+                             (ULONG)MUI_NewObjectA((char *)MUIC_Group, tags),
+                             TAG_DONE);
+}
+
+/* All parts of t were made (the window is built only then). */
+static int shell_table_ok(const shell_table *t) {
+    int c;
+    for (c = 0; c < t->rows.ncols; c++)
+        if (t->field[c] == NULL) return 0;
+    return t->list && t->group && t->add && t->remove;
+}
+
+/* The fields differ from row cur's cells: write them into it and redraw the list. */
+static void shell_table_flush(shell_table *t) {
+    const char *v[SHELL_TABLE_COLS];
+    char cell[SHELL_TABLE_FIELD_MAX + 1];
+    int c, differs = 0;
+    if (t->cur < 0 || (size_t)t->cur >= t->rows.n) return;
+    for (c = 0; c < t->rows.ncols; c++) {
+        v[c] = shell_field_text(t->field[c]);
+        rp_rtab_cell(&t->rows, (size_t)t->cur, c, cell, sizeof cell);
+        if (strcmp(cell, v[c]) != 0) differs = 1;
+    }
+    if (differs && rp_rtab_set_row(&t->rows, (size_t)t->cur, v) == 0) SetAttrs(t->list, UPA_List_Count, (ULONG)t->rows.n, TAG_DONE);
+}
+
+/* Fill the fields from row (-1 clears them) and select it in the list. */
+static void shell_table_pick(shell_table *t, long row) {
+    char cell[SHELL_TABLE_FIELD_MAX + 1];
+    int c;
+    if (row >= (long)t->rows.n) row = -1;
+    t->cur = row;
+    for (c = 0; c < t->rows.ncols; c++) {
+        cell[0] = '\0';
+        if (row >= 0) rp_rtab_cell(&t->rows, (size_t)row, c, cell, sizeof cell);
+        shell_set_field(t->field[c], cell);
+    }
+    SetAttrs(t->list, UPA_List_Active, (ULONG)row, TAG_DONE);
+}
+
+/* The rows as one text for the parsers and the gate hash; valid until the next call for t. */
+static const char *shell_table_text(shell_table *t) {
+    free(t->text);
+    t->text = rp_rtab_text(&t->rows);
+    return t->text ? t->text : "";
+}
+
+static void shell_table_set_text(shell_table *t, const char *text) {
+    rp_rtab_set_text(&t->rows, text);
+    SetAttrs(t->list, UPA_List_Count, (ULONG)t->rows.n, TAG_DONE);
+    shell_table_pick(t, -1);
+}
+
+/* One table event (an ID_TABLE id); returns the field to give the cursor, or NULL. */
+static Object *shell_table_event(shell_table *t, int action) {
+    ULONG a = (ULONG)-1;
+    int c;
+    if (action == SHELL_TABLE_PICK) {
+        GetAttr(UPA_List_Active, t->list, &a);
+        if ((long)a == t->cur) return NULL;
+        shell_table_flush(t);
+        shell_table_pick(t, (long)a);
+        return NULL;
+    }
+    if (action == SHELL_TABLE_EDIT) {
+        if (t->cur < 0) { /* typing with no row picked starts a new row */
+            for (c = 0; c < t->rows.ncols && !*shell_field_text(t->field[c]); c++) {}
+            if (c == t->rows.ncols || (t->cur = rp_rtab_add(&t->rows)) < 0) return NULL;
+            SetAttrs(t->list, UPA_List_Count, (ULONG)t->rows.n, UPA_List_Active, (ULONG)t->cur, TAG_DONE);
+        }
+        shell_table_flush(t);
+        return NULL;
+    }
+    shell_table_flush(t);
+    if (action == SHELL_TABLE_ADD) {
+        long r = rp_rtab_add(&t->rows);
+        if (r < 0) return NULL;
+        SetAttrs(t->list, UPA_List_Count, (ULONG)t->rows.n, TAG_DONE);
+        shell_table_pick(t, r);
+        return t->field[0];
+    }
+    if (t->cur >= 0) { /* SHELL_TABLE_REMOVE */
+        rp_rtab_remove(&t->rows, (size_t)t->cur);
+        SetAttrs(t->list, UPA_List_Count, (ULONG)t->rows.n, TAG_DONE);
+        shell_table_pick(t, -1);
+    }
+    return NULL;
+}
+
+/* A parser named line `line` of t: pick that row and point the error focus at its first field. */
+static void shell_table_err(shell_table *t, size_t line) {
+    shell_table_flush(t);
+    if (line > 0) shell_table_pick(t, (long)line - 1);
+    shell_err_at(SHELL_TAB_ROSTER, t->field[0]);
+}
+
 /* Pick an image file and add it to the Media embeds field as an "image | caption | path" row. */
 static void shell_embed_pick(void) {
     char path[RP_MAX_FILES_PATH + 1];
@@ -434,8 +604,8 @@ static int shell_roster_read(const rp_group *g, char *msg, size_t cap) {
     rp_row_err err;
     int n;
     g_nrows_members = g_nrows_boards = g_nrows_embeds = 0;
-    n = rp_parse_member_rows(shell_area_raw(g_members_field), g_rows_members, RP_MEMBERS_MAX, &err);
-    if (n < 0) { shell_err_at(SHELL_TAB_ROSTER, g_members_field); snprintf(msg, cap, "Members: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+    n = rp_parse_member_rows(shell_table_text(g_members), g_rows_members, RP_MEMBERS_MAX, &err);
+    if (n < 0) { shell_table_err(g_members, err.line); snprintf(msg, cap, "Members: Row %lu: %s", (unsigned long)err.line, err.msg); return -1; }
     g_nrows_members = (size_t)n;
     if (g->renderer == R_XINNOVATIONS) {
         n = rp_parse_board_rows(shell_area_raw(g_boards_field), g_rows_boards, RP_ONLINE_BOARDS_MAX, &err);
@@ -466,7 +636,7 @@ static rp_member g_creators_members[RP_MEMBERS_MAX];
 /* The roster's nicknames; a Members line that does not parse leaves none (Build names the line). */
 static size_t shell_creators_members(void) {
     rp_row_err err;
-    int n = rp_parse_member_rows(shell_area_raw(g_members_field), g_creators_members, RP_MEMBERS_MAX, &err);
+    int n = rp_parse_member_rows(shell_table_text(g_members), g_creators_members, RP_MEMBERS_MAX, &err);
     return n < 0 ? 0 : (size_t)n;
 }
 
@@ -645,7 +815,7 @@ static unsigned long shell_form_state(Object *group_cycle, Object *name_field, O
     }
     h = rp_gate_add(h, shell_area_raw(g_notes_field));
     h = rp_gate_add(h, shell_area_raw(g_news_field));
-    h = rp_gate_add(h, shell_area_raw(g_members_field));
+    h = rp_gate_add(h, shell_table_text(g_members));
     h = rp_gate_add(h, shell_area_raw(g_boards_field));
     return rp_gate_add(h, shell_area_raw(g_embeds_field));
 }
@@ -681,12 +851,20 @@ static void shell_prefill_area(Object *area, char **last, const char *text) {
     *last = strdup(shell_area_raw(area));
 }
 
+/* The same for a Roster table. */
+static void shell_prefill_table(shell_table *t, char **last, const char *text) {
+    if (!rp_prefill_replaceable(shell_table_text(t), *last ? *last : "")) return;
+    shell_table_set_text(t, text);
+    free(*last);
+    *last = strdup(shell_table_text(t));
+}
+
 /* Fill the Roster tab for group g: the seed's merged members and boards when seeded, else the group file's members.
  * Text the user typed stays; the embeds are never prefilled. */
 static void shell_roster_prefill(const rp_group *g, int seeded) {
     char *m = seeded ? rp_format_member_rows(g_seed.members, g_seed.nmembers) : rp_format_member_rows(g->members, g->nmembers);
     char *b = (seeded && g->renderer == R_XINNOVATIONS) ? rp_format_board_rows(g_seed.boards, g_seed.nboards) : NULL;
-    shell_prefill_area(g_members_field, &g_prefilled_members, m ? m : "");
+    shell_prefill_table(g_members, &g_prefilled_members, m ? m : "");
     shell_prefill_area(g_boards_field, &g_prefilled_boards, b ? b : "");
     free(m);
     free(b);
@@ -1636,7 +1814,11 @@ static int shell_main(void) {
     aminet_preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview readme", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     g_notes_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NOTES_MAX, UPA_TextArea_Placeholder, (ULONG) "Release notes, one paragraph per line", TAG_DONE);
     g_news_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NEWS_MAX, UPA_TextArea_Placeholder, (ULONG) "News", TAG_DONE);
-    g_members_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "Nickname | role, one member per line", TAG_DONE);
+    {
+        static const char *const titles[] = {"Nickname", "Role"};
+        static const int weights[] = {1, 2};
+        shell_table_new(g_members, 2, titles, weights, NULL, NULL);
+    }
     g_boards_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "Name | Sysop | HQ | Status (X Innovations only)", TAG_DONE);
     g_embeds_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "youtube | caption | url   or   image | caption | path", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
@@ -1656,7 +1838,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
+        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || !shell_table_ok(g_members) || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
@@ -1673,7 +1855,7 @@ static int shell_main(void) {
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
         Object *cover_row = shell_row(cover_lbl, cover_text);
-        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, boards_lbl, g_boards_field,
+        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members->group, boards_lbl, g_boards_field,
                                                                                  embeds_lbl, g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Diz line"), g_diz_line_field, area_label("Text"), g_nfo_view,
@@ -1774,6 +1956,19 @@ static int shell_main(void) {
     DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
     DoMethod(format_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FORMAT);
     DoMethod(edit_groups_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_EDIT_GROUPS);
+    for (i = 0; i < SHELL_TABLE_COUNT; i++) {
+        shell_table *t = &g_tables[i];
+        ULONG base = ID_TABLE + (ULONG)i * SHELL_TABLE_ACTIONS;
+        int c;
+        DoMethod(t->list, MUIM_Notify, UPA_List_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_PICK);
+        DoMethod(t->add, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_ADD);
+        DoMethod(t->remove, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_REMOVE);
+        for (c = 0; c < t->rows.ncols; c++) {
+            ULONG s = 0;
+            GetAttr(UPA_Field_String, t->field[c], &s);
+            if (s != 0) DoMethod((Object *)s, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_EDIT);
+        }
+    }
     {
         ULONG code_str = 0;
         GetAttr(UPA_Field_String, code_field, &code_str);
@@ -1866,6 +2061,14 @@ static int shell_main(void) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
             shell_creators_refresh(ga < (ULONG)g_ngroups && g_groups[ga].renderer == R_XINNOVATIONS);
+        }
+        if (id >= ID_TABLE && id < ID_TABLE + SHELL_TABLE_COUNT * SHELL_TABLE_ACTIONS) {
+            Object *f = shell_table_event(&g_tables[(id - ID_TABLE) / SHELL_TABLE_ACTIONS], (int)((id - ID_TABLE) % SHELL_TABLE_ACTIONS));
+            ULONG inner = 0;
+            if (f != NULL) {
+                GetAttr(UPA_Field_String, f, &inner);
+                SetAttrs(win, MUIA_Window_ActiveObject, inner != 0 ? inner : (ULONG)f, TAG_DONE);
+            }
         }
         if (id == ID_FOCUS) {
             ULONG ao = 0, inner = 0;
