@@ -71,9 +71,10 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     const rp_group *g = a->group;
     rp_rel_cfg cfg;
     const char *division;
-    char *s[3 + 2 * RP_MEMBERS_MAX + 4] = {0}, *archive = NULL, *image = NULL, *json = NULL;
+    char *s[8 + 2 * RP_MEMBERS_MAX + 2 * RP_CREDITS_MAX] = {0}, *archive = NULL, *image = NULL, *json = NULL;
     size_t i, ns = 0, alen = 0, ilen = 0;
     rp_rel_member mem[RP_MEMBERS_MAX];
+    rp_rel_credit cr[RP_CREDITS_MAX];
     rp_rel_form f;
     rp_rel_file af, imf;
     rp_rel_err err;
@@ -101,7 +102,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     f.diz_banner = s[ns++] = u8dup(dizraw);
     f.entry_title = f.release_name;
     f.entry_category = "";
-    f.entry_creators = "";
+    f.entry_creators = s[ns++] = u8dup(a->creators ? a->creators : "");
     f.division = division;
     f.description = s[ns++] = u8dup(a->description);
     for (i = 0; i < g->nmembers; i++) {
@@ -110,6 +111,12 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     }
     f.members = mem;
     f.n_members = g->nmembers;
+    for (i = 0; i < a->n_credits && i < RP_CREDITS_MAX; i++) {
+        cr[i].role = s[ns++] = u8dup(a->credits[i].role);
+        cr[i].name = s[ns++] = u8dup(a->credits[i].name);
+        f.n_credits = i + 1;
+    }
+    f.credits = cr;
     for (i = 0; i < ns; i++) if (!s[i]) { snprintf(msg, cap, "Not published - out of memory"); goto done; }
 
     json = rp_rel_publish_body(&f);

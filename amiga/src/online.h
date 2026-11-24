@@ -7,6 +7,7 @@
 
 #include <stddef.h>
 
+#include "credits.h"
 #include "groups.h"
 #include "http.h"
 
@@ -16,6 +17,9 @@ int rp_latin1_to_utf8(const char *in, char *out, size_t cap);
 typedef struct {
     const rp_group *group;
     const char *code, *release_name, *platform_tag, *description, *release_notes;
+    const char *creators;      /* release history creator line; NULL = "" */
+    const rp_credit *credits;  /* role/name rows from the Authors field; n_credits may be 0 */
+    size_t n_credits;
     const char *format;        /* "LHA" or "ZIP" */
     const char *diz_path;      /* the built file_id.diz */
     const char *archive_path;  /* the built archive; its base name is the upload name */

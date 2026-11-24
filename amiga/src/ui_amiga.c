@@ -35,6 +35,7 @@
 #include "aminet.h"
 #include "aminet_types.h"
 #include "archive_preview.h"
+#include "credits.h"
 #include "date.h"
 #include "groups.h"
 #include "naming.h"
@@ -88,17 +89,17 @@ static Object *shell_row(Object *a, Object *b) {
 
 /* A two-column form: labels in one column (as wide as the widest), fields in the other, so every input shares a left edge. */
 static Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object *l3, Object *f3, Object *l4, Object *f4,
-                          Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7) {
-    Object *kids[14];
-    struct TagItem t[18];
+                          Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7, Object *l8, Object *f8) {
+    Object *kids[16];
+    struct TagItem t[20];
     int i, n = 0;
     kids[0] = l1; kids[1] = f1; kids[2] = l2; kids[3] = f2; kids[4] = l3; kids[5] = f3; kids[6] = l4;
-    kids[7] = f4; kids[8] = l5; kids[9] = f5; kids[10] = l6; kids[11] = f6; kids[12] = l7; kids[13] = f7;
+    kids[7] = f4; kids[8] = l5; kids[9] = f5; kids[10] = l6; kids[11] = f6; kids[12] = l7; kids[13] = f7; kids[14] = l8; kids[15] = f8;
     t[n].ti_Tag = MUIA_Group_Columns;
     t[n++].ti_Data = 2;
     t[n].ti_Tag = MUIA_FillArea;
     t[n++].ti_Data = (ULONG)FALSE;
-    for (i = 0; i < 14; i++) {
+    for (i = 0; i < 16; i++) {
         if (kids[i] == NULL) continue;
         t[n].ti_Tag = MUIA_Group_Child;
         t[n++].ti_Data = (ULONG)kids[i];
@@ -266,6 +267,8 @@ static struct Hook g_preview_hook;
 
 /* The Release tab notes field; read by Build, Publish and Aminet. */
 static Object *g_notes_field;
+/* The Release tab authors field: "Role: Name, Name; Role: Name", parsed by rp_parse_credits. */
+static Object *g_authors_field;
 
 static const char *shell_field_text(Object *field) {
     ULONG ptr = 0;
@@ -273,6 +276,22 @@ static const char *shell_field_text(Object *field) {
     GetAttr(UPA_Field_String, field, &ptr);
     if (ptr != 0) GetAttr(MUIA_String_Contents, (Object *)ptr, (ULONG *)&txt);
     return txt ? (const char *)txt : "";
+}
+
+static rp_credit g_credits[RP_CREDITS_MAX];
+
+/* The parsed authors, in g_credits; returns how many. */
+static size_t shell_credits(void) {
+    return rp_parse_credits(shell_field_text(g_authors_field), g_credits, RP_CREDITS_MAX);
+}
+
+/* Copies a malloc'd string into dst (cut to cap) and frees it; NULL gives "". */
+static void shell_take(char *dst, size_t cap, char *s) {
+    dst[0] = '\0';
+    if (s == NULL) return;
+    strncpy(dst, s, cap - 1);
+    dst[cap - 1] = '\0';
+    free(s);
 }
 
 static void shell_set_field(Object *field, const char *text) {
@@ -352,6 +371,10 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     char path[256], *diz = NULL, *nfo = NULL, code[40], base[64], packed[72], date[16];
     char membuf[RP_MEMBERS_MAX][RP_NICK_MAX + RP_ROLE_MAX + 4];
     const char *memberlines[RP_MEMBERS_MAX];
+    static char creditbuf[RP_CREDITS_MAX][RP_CREDIT_ROLE_MAX + RP_CREDIT_NAME_MAX + 4];
+    const char *creditlines[RP_CREDITS_MAX];
+    char creators[256], coder[128], design[128];
+    size_t ncredits;
     rp_scalar scalars[11];
     rp_block blocks[4];
     rp_values v;
@@ -407,6 +430,14 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
                  g->members[i].role);
         memberlines[i] = membuf[i];
     }
+    ncredits = shell_credits();
+    for (i = 0; i < ncredits; i++) {
+        snprintf(creditbuf[i], sizeof(creditbuf[i]), "%s: %s", g_credits[i].role, g_credits[i].name);
+        creditlines[i] = creditbuf[i];
+    }
+    shell_take(creators, sizeof(creators), rp_creators_from_credits(g_credits, ncredits));
+    shell_take(coder, sizeof(coder), rp_credit_names_for_role(g_credits, ncredits, RP_ROLE_CODER));
+    shell_take(design, sizeof(design), rp_credit_names_for_role(g_credits, ncredits, RP_ROLE_DESIGN));
     scalars[0].name = "group";
     scalars[0].value = g->label;
     scalars[1].name = "url";
@@ -428,7 +459,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     scalars[9].name = "description";
     scalars[9].value = desc_txt;
     scalars[10].name = "creators";
-    scalars[10].value = "";
+    scalars[10].value = creators;
     blocks[0].name = "notes";
     blocks[0].lines = &no_lines;
     blocks[0].nlines = 0;
@@ -439,8 +470,8 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
     blocks[2].lines = memberlines;
     blocks[2].nlines = g->nmembers;
     blocks[3].name = "credits";
-    blocks[3].lines = &no_lines;
-    blocks[3].nlines = 0;
+    blocks[3].lines = creditlines;
+    blocks[3].nlines = ncredits;
     v.scalars = scalars;
     v.nscalars = 11;
     v.blocks = blocks;
@@ -473,7 +504,7 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         hist.filenames = lower;
         hist.title = name_txt;
         hist.category = "";
-        hist.creators = "";
+        hist.creators = creators;
         nf.release_name = name_txt;
         nf.platform = plat_txt;
         nf.code = code;
@@ -496,9 +527,9 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         memset(&xf, 0, sizeof xf);
         xf.release_name = name_txt;
         xf.release_date = date;
-        xf.coder = "";
+        xf.coder = coder;
         xf.system = plat_txt;
-        xf.design = "";
+        xf.design = design;
         xf.notes = shell_field_text(g_notes_field);
         xf.news = "";
         xf.members = g->members;
@@ -632,7 +663,7 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
                          Object *format_cycle) {
     ULONG gactive = 0, active = 0, sigs = 0, pa = 0;
     const rp_group *g;
-    char code[40], base[64], packed[72], archive[160], diz[160], msg[400];
+    char code[40], base[64], packed[72], archive[160], diz[160], msg[400], pub_creators[256];
     struct DateStamp ds;
     unsigned long seed;
     GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
@@ -661,6 +692,10 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
         a.platform_tag = pa < 4 ? g_platform_tags[pa] : "";
         a.description = shell_field_text(desc_field);
         a.release_notes = shell_field_text(g_notes_field);
+        a.n_credits = shell_credits();
+        a.credits = g_credits;
+        shell_take(pub_creators, sizeof(pub_creators), rp_creators_from_credits(g_credits, a.n_credits));
+        a.creators = pub_creators;
         a.format = active ? "ZIP" : "LHA";
         a.diz_path = diz;
         a.archive_path = archive;
@@ -685,7 +720,8 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     const rp_group *g;
     char code[40], base[64], packed[72], archive[160], lname[RP_AMINET_FILENAME_MAX + 16], lreadme[RP_AMINET_FILENAME_MAX + 16];
     char creators[256], msg[400];
-    rp_aminet_credit credits[RP_MEMBERS_MAX];
+    rp_aminet_credit credits[RP_MEMBERS_MAX > RP_CREDITS_MAX ? RP_MEMBERS_MAX : RP_CREDITS_MAX];
+    size_t ncredits;
     rp_aminet_readme_in in;
     char *readme = NULL, *norm = NULL, *data = NULL;
     FILE *f;
@@ -701,12 +737,24 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     SetAttrs(status, UPA_Text_Contents, (ULONG) "Working...", TAG_DONE);
     DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
     creators[0] = '\0';
-    for (i = 0; i < g->nmembers; i++) {
-        credits[i].role = g->members[i].role;
-        credits[i].name = g->members[i].nickname;
-        if (strlen(creators) + strlen(g->members[i].nickname) + 3 < sizeof(creators)) {
-            if (i > 0) strcat(creators, ", ");
-            strcat(creators, g->members[i].nickname);
+    ncredits = shell_credits();
+    if (ncredits > 0) {
+        /* the Authors field is the one place a release's people are entered */
+        for (i = 0; i < ncredits; i++) {
+            credits[i].role = g_credits[i].role;
+            credits[i].name = g_credits[i].name;
+        }
+        shell_take(creators, sizeof(creators), rp_creators_from_credits(g_credits, ncredits));
+    } else {
+        /* no authors entered: credit the group's members as before */
+        ncredits = g->nmembers;
+        for (i = 0; i < g->nmembers; i++) {
+            credits[i].role = g->members[i].role;
+            credits[i].name = g->members[i].nickname;
+            if (strlen(creators) + strlen(g->members[i].nickname) + 3 < sizeof(creators)) {
+                if (i > 0) strcat(creators, ", ");
+                strcat(creators, g->members[i].nickname);
+            }
         }
     }
     memset(&in, 0, sizeof in);
@@ -721,7 +769,7 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     in.description = shell_field_text(desc_field);
     in.release_notes = shell_field_text(g_notes_field);
     in.credits = credits;
-    in.n_credits = g->nmembers;
+    in.n_credits = ncredits;
     {
         rp_aminet_prefs pr;
         memset(&pr, 0, sizeof pr);
@@ -842,7 +890,7 @@ static int shell_main(void) {
     {   /* longest code any group allows; the exact length per group is still checked at Build */
         int i, maxcode = 1;
         for (i = 0; i < g_ngroups; i++) if (g_groups[i].code_length > maxcode) maxcode = g_groups[i].code_length;
-        code_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Short release code", MUIA_String_MaxLen, (ULONG)maxcode + 1, TAG_DONE);
+        code_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. ABC", MUIA_String_MaxLen, (ULONG)maxcode + 1, TAG_DONE);
     }
     platform_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_platform_labels, TAG_DONE);
     desc_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "One-line description", TAG_DONE);
@@ -867,6 +915,7 @@ static int shell_main(void) {
     arch_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "e.g. m68k-amigaos", TAG_DONE);
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
+    g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
     g_notes_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Release notes (one line)", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
@@ -882,7 +931,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL) {
+        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_authors_field == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -892,7 +941,7 @@ static int shell_main(void) {
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_cycle, row_label("Name"), name_field,
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
-                                                                  row_label("Notes"), g_notes_field), NULL, NULL, NULL, NULL, NULL, NULL);
+                                                                  row_label("Authors"), g_authors_field, row_label("Notes"), g_notes_field), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
@@ -900,7 +949,7 @@ static int shell_main(void) {
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
-                                                                     NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
+                                                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         static const char *const tab_captions[] = { "Release", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
