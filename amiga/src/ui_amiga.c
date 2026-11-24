@@ -663,11 +663,14 @@ static jnode *g_seed_tree;
 static char g_code_checked[48]; /* "<group>:<code>" last asked about, so a repeat notify does not ask again */
 
 static int shell_seed_load(const rp_group *g, char *msg, size_t cap) {
+    char why[300];
     json_free(g_seed_tree);
     g_seed_tree = NULL;
     memset(&g_seed, 0, sizeof g_seed);
     g_code_checked[0] = '\0';
-    return rp_online_seed(g, rp_http_amiga, NULL, shell_unix_now(), &g_seed, &g_seed_tree, msg, cap);
+    if (rp_online_seed(g, rp_http_amiga, NULL, shell_unix_now(), &g_seed, &g_seed_tree, why, sizeof(why)) == 0) return 0;
+    snprintf(msg, cap, "Failed to load current members/release number: %s", why); /* desktop init() wording */
+    return -1;
 }
 
 /* What the last prefill left in each Roster area (read back from the field), so a later prefill can tell untouched text from user edits. */
@@ -890,7 +893,10 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
             shell_err_at(SHELL_TAB_RELEASE, g_category_cycle);
             return shell_fail(err, errcap, "Category: choose one on the Release tab first.");
         }
-        if (shell_seed_load(g, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
+        if (shell_seed_load(g, errmsg, sizeof(errmsg)) != 0) {
+            snprintf(err, errcap, "%s. Build needs the server's release number: check the network and the group's Server base, then Build again.", errmsg);
+            return -1;
+        }
         if (g_seed.number_text[0]) number = g_seed.number_text;
     } else {
         /* no door counts releases: the number is what the form holds (blank is refused by Build, not here) */
