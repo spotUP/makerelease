@@ -58,14 +58,15 @@ int main(void) {
 
     {
         rp_credit cr[1] = {{ "Code", "R\xE9my" }};
-        a.credits = cr; a.n_credits = 1; a.creators = "R\xE9my";
+        a.credits = cr; a.n_credits = 1; a.creators = "R\xE9my"; a.news = "line one\nline two";
         reply_status[0] = 201; reply_body[0] = "{\"releaseNumber\":5}";
         reply_status[1] = 200; reply_body[1] = "{\"wordpressPostUrl\":\"https://wp/p\",\"archiveUrl\":\"https://a/x.lha\"}";
         reset();
         CHECK(rp_online_publish(&a, msg, sizeof msg) == 0);
         CHECK(strstr(create_body, "\"credits\":[{\"role\":\"Code\",\"name\":\"R\xC3\xA9my\"}]") != NULL);
         CHECK(strstr(create_body, "\"entryCreators\":\"R\xC3\xA9my\"") != NULL);
-        a.credits = NULL; a.n_credits = 0; a.creators = NULL;
+        CHECK(strstr(create_body, "\"news\":\"line one\\nline two\"") != NULL);
+        a.credits = NULL; a.n_credits = 0; a.creators = NULL; a.news = NULL;
     }
     reply_status[0] = 201; reply_body[0] = "{\"releaseNumber\":5}";
     reply_status[1] = 200; reply_body[1] = "{\"wordpressPostUrl\":\"https://wp/p\",\"archiveUrl\":\"https://a/x.lha\"}";

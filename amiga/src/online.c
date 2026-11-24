@@ -72,7 +72,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     const rp_group *g = a->group;
     rp_rel_cfg cfg;
     const char *division;
-    char *s[8 + 2 * RP_MEMBERS_MAX + 2 * RP_CREDITS_MAX] = {0}, *archive = NULL, *image = NULL, *json = NULL;
+    char *s[9 + 2 * RP_MEMBERS_MAX + 2 * RP_CREDITS_MAX] = {0}, *archive = NULL, *image = NULL, *json = NULL;
     size_t i, ns = 0, alen = 0, ilen = 0;
     rp_rel_member mem[RP_MEMBERS_MAX];
     rp_rel_credit cr[RP_CREDITS_MAX];
@@ -100,7 +100,7 @@ int rp_online_publish(const rp_online_publish_args *a, char *msg, size_t cap) {
     f.release_name = s[ns++] = u8dup(a->release_name);
     f.platform_tag = s[ns++] = u8dup(a->platform_tag);
     f.release_notes = s[ns++] = u8dup(a->release_notes ? a->release_notes : "");
-    f.news = "";
+    f.news = s[ns++] = u8dup(a->news ? a->news : "");
     f.diz_banner = s[ns++] = u8dup(dizraw);
     f.entry_title = f.release_name;
     f.entry_category = s[ns++] = u8dup(a->category);

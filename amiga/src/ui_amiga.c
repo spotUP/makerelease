@@ -40,6 +40,7 @@
 #include "date.h"
 #include "groups.h"
 #include "naming.h"
+#include "text_norm.h"
 #include "nfo_uprough.h"
 #include "nfo_x.h"
 #include "online.h"
@@ -271,6 +272,8 @@ static struct Hook g_preview_hook;
 
 /* The Release tab notes field; read by Build, Publish and Aminet. */
 static Object *g_notes_field;
+/* The Release tab news field (multi-line, like the desktop news text); read by Build and Publish. */
+static Object *g_news_field;
 /* The Release tab authors field: "Role: Name, Name; Role: Name", parsed by rp_parse_credits. */
 static Object *g_authors_field;
 
@@ -281,6 +284,21 @@ static const char *shell_field_text(Object *field) {
     if (ptr != 0) GetAttr(MUIA_String_Contents, (Object *)ptr, (ULONG *)&txt);
     return txt ? (const char *)txt : "";
 }
+
+/* The multi-line fields as NFO-ready text (rp_text_normalize) in static copies: the class returns its own live buffer. */
+#define SHELL_NOTES_MAX 2000
+#define SHELL_NEWS_MAX 1000
+static char g_notes_buf[SHELL_NOTES_MAX + 1], g_news_buf[SHELL_NEWS_MAX + 1];
+
+static const char *shell_area_text(Object *area, char *buf, size_t cap) {
+    ULONG ptr = 0;
+    GetAttr(UPA_TextArea_Text, area, &ptr);
+    rp_text_normalize(ptr ? (const char *)ptr : "", buf, cap);
+    return buf;
+}
+
+static const char *shell_notes_text(void) { return shell_area_text(g_notes_field, g_notes_buf, sizeof g_notes_buf); }
+static const char *shell_news_text(void) { return shell_area_text(g_news_field, g_news_buf, sizeof g_news_buf); }
 
 static rp_credit g_credits[RP_CREDITS_MAX];
 
@@ -594,8 +612,8 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         nf.code = code;
         nf.format_lha = active ? 0 : 1;
         nf.release_date = date;
-        nf.notes = shell_field_text(g_notes_field);
-        nf.news = "";
+        nf.notes = shell_notes_text();
+        nf.news = shell_news_text();
         nf.members = g->members;
         nf.nmembers = g->nmembers;
         nfo = rp_render_nfo_uprough(g->file_prefix, &hist, 1, &nf, errmsg, sizeof(errmsg));
@@ -614,8 +632,8 @@ static void shell_build(Object *status, const rp_group *groups, Object *group_cy
         xf.coder = coder;
         xf.system = plat_txt;
         xf.design = design;
-        xf.notes = shell_field_text(g_notes_field);
-        xf.news = "";
+        xf.notes = shell_notes_text();
+        xf.news = shell_news_text();
         xf.members = g->members;
         xf.nmembers = g->nmembers;
         nfo = rp_render_nfo_x(&xf);
@@ -775,7 +793,8 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
         a.release_name = shell_field_text(name_field);
         a.platform_tag = pa < 4 ? g_platform_tags[pa] : "";
         a.description = shell_field_text(desc_field);
-        a.release_notes = shell_field_text(g_notes_field);
+        a.release_notes = shell_notes_text();
+        a.news = shell_news_text();
         a.category = shell_category();
         a.n_credits = shell_credits();
         a.credits = g_credits;
@@ -853,7 +872,7 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     in.group_url = g->url;
     in.entry_creators = creators;
     in.description = shell_field_text(desc_field);
-    in.release_notes = shell_field_text(g_notes_field);
+    in.release_notes = shell_notes_text();
     in.credits = credits;
     in.n_credits = ncredits;
     {
@@ -1004,7 +1023,8 @@ static int shell_main(void) {
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
-    g_notes_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Release notes (one line)", TAG_DONE);
+    g_notes_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NOTES_MAX, UPA_TextArea_Placeholder, (ULONG) "Release notes, one paragraph per line", TAG_DONE);
+    g_news_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NEWS_MAX, UPA_TextArea_Placeholder, (ULONG) "News", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
@@ -1019,7 +1039,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_authors_field == NULL || g_category_cycle == NULL) {
+        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_authors_field == NULL || g_category_cycle == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1029,7 +1049,10 @@ static int shell_main(void) {
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_cycle, row_label("Name"), name_field,
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
-                                                                  row_label("Authors"), g_authors_field, row_label("Notes"), g_notes_field, row_label("Category"), g_category_cycle), NULL, NULL, NULL, NULL, NULL, NULL);
+                                                                  row_label("Authors"), g_authors_field, row_label("Category"), g_category_cycle,
+                                                                  NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
+        Object *page_notes = shell_card("Notes and news", shell_form(row_label("Notes"), g_notes_field, row_label("News"), g_news_field,
+                                                                     NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
                                         shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
@@ -1038,11 +1061,11 @@ static int shell_main(void) {
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
-        static const char *const tab_captions[] = { "Release", "Files", "Publish", "Aminet", NULL };
+        static const char *const tab_captions[] = { "Release", "Notes", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
-                              MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_files),
+                              MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),

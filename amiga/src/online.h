@@ -19,6 +19,7 @@ int rp_latin1_to_utf8(const char *in, char *out, size_t cap);
 typedef struct {
     const rp_group *group;
     const char *code, *release_name, *platform_tag, *description, *release_notes;
+    const char *news;          /* multi-line news text, LF separated; NULL = "" */
     const char *creators;      /* release history creator line; NULL = "" */
     const char *category;      /* history entry category (rp_release_categories); required */
     const rp_credit *credits;  /* role/name rows from the Authors field; n_credits may be 0 */
