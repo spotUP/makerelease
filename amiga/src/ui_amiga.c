@@ -414,6 +414,36 @@ static void shell_err_at(ULONG tab, Object *obj) {
     g_err_obj = obj;
 }
 
+/* The field the last failed check named, outlined in the theme's error colour. One SetAttrs carries both
+ * class tags: UP-Field reads UPA_Field_Error, UP-TextArea reads UPA_TextArea_Error, any other class ignores
+ * both. Typing in the field clears its mark inside the class; a passed check clears it here. */
+static Object *g_marked;
+static void shell_mark(Object *obj) {
+    if (g_marked != NULL && g_marked != obj) SetAttrs(g_marked, UPA_Field_Error, (ULONG)FALSE, UPA_TextArea_Error, (ULONG)FALSE, TAG_DONE);
+    g_marked = obj;
+    if (obj != NULL) SetAttrs(obj, UPA_Field_Error, (ULONG)TRUE, UPA_TextArea_Error, (ULONG)TRUE, TAG_DONE);
+}
+
+/* Transient notice beside the status line, like the desktop toast.ts: the newest text replaces the last one
+ * and UP-Text clears it itself after UPA_Text_Timeout. UP-Text tones are fixed at creation, so the kind is an
+ * ASCII token in front of the text. */
+enum { SHELL_TOAST_INFO, SHELL_TOAST_OK, SHELL_TOAST_ERROR };
+static Object *g_toast;
+static void shell_toast(int kind, const char *text) {
+    static char buf[256]; /* UP-Text may keep the pointer until the next set */
+    if (g_toast == NULL || text == NULL || !text[0]) return;
+    snprintf(buf, sizeof(buf), "%s %s", kind == SHELL_TOAST_OK ? "[OK]" : kind == SHELL_TOAST_ERROR ? "[ERROR]" : "[INFO]", text);
+    /* timeout before contents: the contents set arms the clock with the timeout then in force */
+    SetAttrs(g_toast, UPA_Text_Timeout, (ULONG)(kind == SHELL_TOAST_ERROR ? 10000 : 5000), UPA_Text_Contents, (ULONG)buf, TAG_DONE);
+}
+
+/* The status line's current text, for a toast that repeats a result the status line already holds. */
+static const char *shell_status_text(Object *status) {
+    ULONG t = 0;
+    GetAttr(UPA_Text_Contents, status, &t);
+    return (const char *)t;
+}
+
 static const char *shell_area_raw(Object *area) {
     ULONG ptr = 0;
     GetAttr(UPA_TextArea_Text, area, &ptr);
@@ -1246,6 +1276,8 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             else snprintf(done, sizeof(done), "Built %s", archive);
         }
         SetAttrs(status, UPA_Text_Contents, (ULONG)done, TAG_DONE);
+        shell_mark(NULL);
+        shell_toast(SHELL_TOAST_OK, done);
         goto build_end;
     build_fail:
         if (dry) {
@@ -1253,7 +1285,11 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             char shown[sizeof(errmsg) + 40];
             snprintf(shown, sizeof(shown), "Preview failed: %s", errmsg);
             SetAttrs(status, UPA_Text_Contents, (ULONG)shown, TAG_DONE);
-        } else SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+            shell_toast(SHELL_TOAST_ERROR, shown);
+        } else {
+            SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+            shell_toast(SHELL_TOAST_ERROR, errmsg);
+        }
     build_end:
         SetAttrs(g_gauge, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
         {
@@ -1402,11 +1438,13 @@ static int shell_online(Object *app, Object *status, int action, const rp_group 
         a.http = rp_http_amiga;
         rc = rp_online_publish(&a, msg, sizeof(msg));
     } else if (action == ID_REVOKE) {
-        rp_online_revoke(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
+        rc = rp_online_revoke(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
     } else {
-        rp_online_door(g, archive, seed, rp_http_amiga, NULL, msg, sizeof(msg));
+        rc = rp_online_door(g, archive, seed, rp_http_amiga, NULL, msg, sizeof(msg));
     }
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+    if (rc == 0) shell_mark(NULL);
+    shell_toast(rc == 0 ? SHELL_TOAST_OK : SHELL_TOAST_ERROR, msg);
     return rc;
 }
 
@@ -1739,6 +1777,7 @@ static int shell_main(void) {
     g_gauge = MUI_NewObject((char *)"UP-Progress.mcc", UPA_Progress_Value, 0UL, UPA_Progress_Max, 100UL, MUIA_ShowMe, (ULONG)FALSE, MUIA_FixWidth, 160UL, TAG_DONE);
     g_template_status = shell_label("", UPV_Text_Tone_Muted);
     g_diz_count = shell_label("", UPV_Text_Tone_Muted);
+    g_toast = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)"", UPA_Text_Timeout, 5000UL, MUIA_HorizWeight, 60UL, TAG_DONE);
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || g_code_status == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
@@ -1793,7 +1832,7 @@ static int shell_main(void) {
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)(tabs_row = shell_row(tabs, quit_btn)),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
-                                                                          MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status,
+                                                                          MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status, MUIA_Group_Child, (ULONG)g_toast,
                                                                           MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)g_net_cancel_btn, MUIA_Group_Child, (ULONG)back_btn, MUIA_Group_Child, (ULONG)next_btn, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), TAG_DONE),
                                                   TAG_DONE)
                                   : NULL;
@@ -2084,6 +2123,8 @@ static int shell_main(void) {
         if (g_err_tab != (ULONG)-1) {
             /* the failed check names a field: show its tab and put the cursor there (inner string gadget for UP-Field) */
             ULONG inner = 0;
+            shell_mark(g_err_obj);
+            shell_toast(SHELL_TOAST_ERROR, shell_status_text(status));
             SetAttrs(tabs, UPA_Tabs_Active, g_err_tab, TAG_DONE);
             if (g_err_obj != NULL) {
                 GetAttr(UPA_Field_String, g_err_obj, &inner);
