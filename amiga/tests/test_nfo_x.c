@@ -186,9 +186,36 @@ static void test_diz(void) {
     free(names);
 }
 
+/* The name line wraps a long release name onto further framed rows; it never cuts the name. */
+static void test_name_not_cut(void) {
+    static const char *names[2] = {
+        "Test release name",
+        "A much longer release name that goes on and on past sixty columns of field width",
+    };
+    int i;
+    for (i = 0; i < 2; i++) {
+        rp_nfo_x_form f;
+        char *nfo;
+        memset(&f, 0, sizeof f);
+        f.release_name = names[i];
+        f.release_date = f.coder = f.system = f.design = f.notes = f.news = "";
+        nfo = rp_render_nfo_x(&f);
+        CHECK(nfo != NULL);
+        if (!nfo) continue;
+        if (i == 0) {
+            CHECK(strstr(nfo, "<<-- Test release name -->>") != NULL);
+        } else {
+            CHECK(strstr(nfo, "<<-- A much longer release name that goes on and on past | %% |\n") != NULL);
+            CHECK(strstr(nfo, "  sixty columns of field width -->>  ") != NULL);
+        }
+        free(nfo);
+    }
+}
+
 int main(void) {
     test_nfo();
     test_diz();
+    test_name_not_cut();
     if (failures) {
         printf("%d failure(s)\n", failures);
         return 1;
