@@ -36,6 +36,12 @@ typedef int (*rp_http_fn)(void *ctx, const rp_http_req *req, rp_http_resp *resp)
 /* Real transport, to be implemented: plain http:// over bsdsocket.library,
  * https:// over AmiSSL. ctx is unused. Same contract as rp_http_fn. */
 int rp_http_amiga(void *ctx, const rp_http_req *req, rp_http_resp *resp);
+
+/* Set by the UI while a request or FTP upload runs: called between socket chunks and every
+ * ~200 ms while the transport waits, so the caller can service its window. done/total are the
+ * bytes of the payload being sent (total 0 while waiting). Nonzero return cancels the transfer.
+ * NULL (default) = plain blocking I/O. Covers rp_http_amiga and rp_tcp_amiga_ops. */
+extern int (*rp_net_pump)(unsigned long done, unsigned long total);
 #endif
 
 #endif
