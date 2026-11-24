@@ -1314,8 +1314,15 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
     }
     rp_base_name(g->file_prefix, code, base, sizeof(out->base));
     snprintf(packed, sizeof(out->packed), "%s.%s", base, active ? "ZIP" : "LHA");
-    snprintf(path, sizeof(path), "PROGDIR:groups/%s/file_id.diz", g->id);
-    if (rp_read_template(path, 0, &diz, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
+    {   /* Up Rough builds on the last release's art (the seed's currentDizText); otherwise the group's template */
+        const char *art = RP_ONLINE_HAS_SERVER(g) ? rp_inherited_banner(rp_division_for(g), g_seed.current_diz) : NULL;
+        if (art != NULL) {
+            if ((diz = strdup(art)) == NULL) return shell_fail(err, errcap, "out of memory");
+        } else {
+            snprintf(path, sizeof(path), "PROGDIR:groups/%s/file_id.diz", g->id);
+            if (rp_read_template(path, 0, &diz, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
+        }
+    }
     width = 0;
     for (i = 0; i < nmembers; i++) {
         size_t nl = strlen(members[i].nickname);
@@ -1671,8 +1678,9 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
 static void shell_diz_count(Object *name_field) {
     char msg[160];
     const rp_division *d = g_division;
+    const char *art = g_seed_ok ? rp_inherited_banner(d, g_seed.current_diz) : NULL; /* desktop: the slot of the art in use */
     if (d == NULL) return; /* a placeholder group has no release line row */
-    rp_diz_line_counter(d->rows[0].label, rp_diz_slot_width(d->banner, d->rows[0].row), shell_field_text(g_diz_line_field), shell_field_text(name_field),
+    rp_diz_line_counter(d->rows[0].label, rp_diz_slot_width(art ? art : d->banner, d->rows[0].row), shell_field_text(g_diz_line_field), shell_field_text(name_field),
                         shell_field_text(g_released_field), msg, sizeof msg);
     SetAttrs(g_diz_count, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
 }
