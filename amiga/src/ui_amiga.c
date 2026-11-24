@@ -214,7 +214,7 @@ static int shell_pick_image(const char *title, char *out, size_t cap) {
     struct FileRequester *req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG)title,
                                                     ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (req == NULL) {
-        shell_requester("The file requester could not open.\nFree some memory and try again.");
+        shell_requester("The file requester could not open.\nasl.library may be missing, or memory ran out.");
         return 0;
     }
     if (!AslRequest(req, NULL) || req->rf_File == NULL || req->rf_File[0] == '\0') {
@@ -257,7 +257,7 @@ static int shell_pick_path(int drawers_only) {
     req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG)(drawers_only ? "Add a drawer" : "Add a file"),
                               ASLFR_DrawersOnly, (ULONG)(drawers_only ? TRUE : FALSE), ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (req == NULL) {
-        shell_requester("The file requester could not open.\nFree some memory and try again.");
+        shell_requester("The file requester could not open.\nasl.library may be missing, or memory ran out.");
         return 0;
     }
     if (!AslRequest(req, NULL)) {
@@ -1658,7 +1658,7 @@ static int shell_main(void) {
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
-        shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
+        shell_requester("The window objects could not be created.\nAn UP-MCC class did not load, or memory ran out. Check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
     }
@@ -1732,14 +1732,14 @@ static int shell_main(void) {
                         TAG_DONE);
     }
     if (win == NULL) {
-        shell_requester("The window could not be created.\nFree some memory and check the UP-MCC install, then start again.");
+        shell_requester("The window could not be created.\nAn UP-MCC class did not load, or memory ran out. Check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
     }
     app = MUI_NewObject((char *)MUIC_Application, MUIA_Application_Title, (ULONG) "Release Packer",
                         MUIA_Application_Base, (ULONG) "RLSPACK", MUIA_Application_Window, (ULONG)win, TAG_DONE);
     if (app == NULL) {
-        shell_requester("The application could not be created.\nFree some memory and check the UP-MCC install, then start again.");
+        shell_requester("The application could not be created.\nMUI did not start the application, or memory ran out. Check the MUI install, then start again.");
         MUI_DisposeObject(win);
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1824,7 +1824,7 @@ static int shell_main(void) {
     SetAttrs(win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, win, &is_open);
     if (!is_open) {
-        shell_requester("The window did not open.\nThe screen or window could not be opened. Close other programs to free memory, then start again.");
+        shell_requester("The window did not open.\nIt may be larger than the screen, or memory ran out. Use a larger screen mode, then start again.");
         MUI_DisposeObject(app);
         CloseLibrary(MUIMasterBase);
         return 20;

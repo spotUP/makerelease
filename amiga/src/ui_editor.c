@@ -547,7 +547,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
         g_c_renderer == NULL || g_c_backend == NULL || g_f_base == NULL || g_f_key == NULL || g_f_key_plain == NULL || g_k_showkey == NULL || g_a_members == NULL || g_a_diz == NULL || g_a_nfo == NULL ||
         g_k_nfo_remove == NULL || new_btn == NULL || dup_btn == NULL || del_btn == NULL || reload_btn == NULL || folder_btn == NULL || import_btn == NULL || save_btn == NULL ||
         close_btn == NULL || g_tabs == NULL) {
-        shell_requester("The group editor objects could not be created.\nFree some memory and check the UP-MCC install.");
+        shell_requester("The group editor objects could not be created.\nAn UP-MCC class did not load, or memory ran out. Check the UP-MCC install.");
         return 0;
     }
     SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
@@ -558,7 +558,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     g_server_ui[3] = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Child, (ULONG)g_f_key,
                                    MUIA_Group_Child, (ULONG)g_f_key_plain, MUIA_Group_Child, (ULONG)g_k_showkey, TAG_DONE);
     if (g_members_note == NULL || g_server_ui[0] == NULL || g_server_ui[2] == NULL || g_server_ui[3] == NULL) {
-        shell_requester("The group editor objects could not be created.\nFree some memory and check the UP-MCC install.");
+        shell_requester("The group editor objects could not be created.\nAn UP-MCC class did not load, or memory ran out. Check the UP-MCC install.");
         return 0;
     }
     page_group = shell_card("Group", shell_form(row_label("Label"), g_f_label, row_label("Id"), g_f_id, row_label("Url"), g_f_url,
@@ -590,7 +590,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
                           (ULONG)MUI_NewObject((char *)"UP-Panel.mcc", UPA_Panel_Role, (ULONG)UPV_Panel_Role_Surface, MUIA_Group_Child, (ULONG)content, TAG_DONE),
                           TAG_DONE);
     if (g_win == NULL) {
-        shell_requester("The group editor window could not be created.\nFree some memory and try again.");
+        shell_requester("The group editor window could not be created.\nAn UP-MCC class did not load, or memory ran out.");
         return 0;
     }
     DoMethod(app, OM_ADDMEMBER, (ULONG)g_win);
@@ -625,7 +625,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     SetAttrs(g_win, MUIA_Window_Open, TRUE, TAG_DONE);
     GetAttr(MUIA_Window_Open, g_win, &opened);
     if (!opened) {
-        shell_requester("The group editor window did not open.\nClose other programs to free memory, then try again.");
+        shell_requester("The group editor window did not open.\nIt may be larger than the screen, or memory ran out. Use a larger screen mode.");
     } else {
         ed_set_mode_new(0);
         ed_refresh_list(NULL);
