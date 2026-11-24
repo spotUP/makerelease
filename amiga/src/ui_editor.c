@@ -75,6 +75,8 @@ static char g_asl_drawer[512], g_asl_file[128]; /* the template requester rememb
 
 static Object *g_win, *g_list, *g_status, *g_tabs, *g_pages;
 static Object *g_f_label, *g_f_id, *g_f_url, *g_f_prefix, *g_f_code, *g_c_renderer, *g_c_backend, *g_f_base, *g_f_key, *g_f_key_plain;
+static Object *g_server_ui[4]; /* Server base and Server key labels and fields, hidden while the backend is none */
+static Object *g_members_note;
 static Object *g_k_showkey; /* the key shows as dots in g_f_key; ticking Show swaps in g_f_key_plain (MUIA_String_Secret is creation-only in MUI) */
 static Object *g_a_members, *g_a_diz, *g_a_nfo, *g_k_nfo_remove;
 static struct Hook g_row_hook;
@@ -179,6 +181,15 @@ static void ed_apply_showkey(void) {
     SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)on, TAG_DONE);
 }
 
+/* Desktop pe-server: the server fields and the "server list replaces this one" note show only for the doorserver backend. */
+static void ed_apply_server(void) {
+    ULONG a = 0;
+    size_t i;
+    GetAttr(UPA_Cycle_Active, g_c_backend, &a);
+    for (i = 0; i < sizeof g_server_ui / sizeof g_server_ui[0]; i++) SetAttrs(g_server_ui[i], MUIA_ShowMe, (ULONG)(a == 1), TAG_DONE);
+    SetAttrs(g_members_note, MUIA_ShowMe, (ULONG)(a == 1), TAG_DONE);
+}
+
 static void ed_fill_form(const rp_group *g) {
     char num[16];
     shell_set_field(g_f_label, g->label);
@@ -199,6 +210,7 @@ static void ed_fill_form(const rp_group *g) {
     rp_editor_members_format(g->members, g->nmembers, g_members_buf, sizeof g_members_buf);
     SetAttrs(g_a_members, UPA_TextArea_Text, (ULONG)g_members_buf, TAG_DONE);
     SetAttrs(g_k_nfo_remove, MUIA_Selected, (ULONG)FALSE, TAG_DONE);
+    ed_apply_server();
 }
 
 static void ed_set_mode_new(int is_new) {
@@ -517,14 +529,22 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
         return 0;
     }
     SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
+    g_members_note = shell_label("The server's member list replaces this one.", UPV_Text_Tone_Muted);
+    g_server_ui[0] = row_label("Server base");
+    g_server_ui[1] = g_f_base;
+    g_server_ui[2] = row_label("Server key");
+    g_server_ui[3] = MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Child, (ULONG)g_f_key,
+                                   MUIA_Group_Child, (ULONG)g_f_key_plain, MUIA_Group_Child, (ULONG)g_k_showkey, TAG_DONE);
+    if (g_members_note == NULL || g_server_ui[0] == NULL || g_server_ui[2] == NULL || g_server_ui[3] == NULL) {
+        shell_requester("The group editor objects could not be created.\nFree some memory and check the UP-MCC install.");
+        return 0;
+    }
     page_group = shell_card("Group", shell_form(row_label("Label"), g_f_label, row_label("Id"), g_f_id, row_label("Url"), g_f_url,
                                                 row_label("File prefix"), g_f_prefix, row_label("Code length"), g_f_code,
                                                 row_label("Renderer"), g_c_renderer, row_label("Backend"), g_c_backend,
-                                                row_label("Server base"), g_f_base, row_label("Server key"),
-                                                MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_Group_Child, (ULONG)g_f_key,
-                                                              MUIA_Group_Child, (ULONG)g_f_key_plain, MUIA_Group_Child, (ULONG)g_k_showkey, TAG_DONE),
+                                                g_server_ui[0], g_server_ui[1], g_server_ui[2], g_server_ui[3],
                                                 area_label("Members"), g_a_members),
-                            NULL, NULL, NULL, NULL, NULL, NULL);
+                            g_members_note, NULL, NULL, NULL, NULL, NULL);
     page_tpl = shell_card("Templates", shell_form(area_label("file_id.diz"), g_a_diz, area_label("release.nfo"), g_a_nfo, row_label("NFO template"), g_k_nfo_remove,
                                                   NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL),
                           shell_row(import_btn, NULL), NULL, NULL, NULL, NULL, NULL);
@@ -606,7 +626,10 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
             else if (id == EID_SAVE) ed_save();
             else if (id == EID_RELOAD) ed_reload();
             else if (id == EID_IMPORT) ed_import();
-            else if (id == EID_DIRTY) g_dirty = 1;
+            else if (id == EID_DIRTY) {
+                g_dirty = 1;
+                ed_apply_server();
+            }
             else if (id == EID_SHOWKEY) {
                 int was_dirty = g_dirty; /* the text copy fires the edit notifications, but Show is not an edit */
                 ed_apply_showkey();
