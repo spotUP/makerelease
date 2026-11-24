@@ -9,7 +9,7 @@ U="${1:-$A/build/upmcc}"; B="${2:-$A/build/m68k-am}"
 cd /Users/spot/Code/UP-Term/vtcon/tools/rig || exit 1
 P="python3 ami.py"
 # one exec per dir: makedir aborts the rest of its chain when a dir exists
-G=$(cd "$A/scratch-rig/groups" && ls -d */ | tr -d /)
+G="${RIG_GROUPS:-$(cd "$A/scratch-rig/groups" && ls -d */ | tr -d /)}"  # RIG_GROUPS="uprough xinnovations" installs only real groups
 for d in DH0:Packer DH0:Packer/groups $(for g in $G; do echo DH0:Packer/groups/$g; done) ENVARC:UP-MCC ENV:UP-MCC; do $P exec "makedir $d" >/dev/null 2>&1; done
 # AmiSSL: for the packer's TLS (same line as RIG_LIBS in UP-Term vtcon rig.py); a fresh rig has none after go
 $P exec "Assign >NIL: AmiSSL: DH0:AmiSSL" >/dev/null 2>&1
