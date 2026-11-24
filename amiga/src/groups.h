@@ -39,9 +39,16 @@ typedef struct {
     size_t nmembers;
 } rp_group;
 
+/* 1 when s is a valid drawer name: a-z, 0-9, "-", at most RP_ID_MAX. */
+int rp_is_group_id(const char *s);
+
 /* Drawer names under dir (skips dot files), sorted, up to max. Returns the
  * count, or -1 with err set. */
 int rp_list_groups(const char *dir, char ids[][RP_ID_MAX + 1], int max, char *err, size_t errcap);
+
+/* The same validation over profile.json text already in memory; file is only
+ * the name shown in messages. Returns 0, or -1 with err naming file+field. */
+int rp_parse_group(const char *text, const char *file, const char *id, rp_group *g, char *err, size_t errcap);
 
 /* profile.json of one group. Returns 0, or -1 with err naming file+field. */
 int rp_load_group(const char *dir, const char *id, rp_group *g, char *err, size_t errcap);

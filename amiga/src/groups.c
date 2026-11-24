@@ -9,7 +9,7 @@
 #include "json.h"
 #include "template.h"
 
-static int is_id(const char *s) {
+int rp_is_group_id(const char *s) {
     size_t i, n = strlen(s);
     if (n == 0 || n > RP_ID_MAX) return 0;
     for (i = 0; i < n; i++) {
@@ -78,50 +78,21 @@ static int get_text(const jnode *obj, const char *file, const char *key, const c
     return 0;
 }
 
-int rp_load_group(const char *dir, const char *id, rp_group *g, char *err, size_t errcap) {
-    char file[512], *text = NULL;
-    FILE *f;
-    long len;
-    size_t nread;
+int rp_parse_group(const char *text, const char *file, const char *id, rp_group *g, char *err, size_t errcap) {
     jnode *root = NULL;
     const jnode *v, *server, *members;
     size_t i;
     int rc = -1;
 
     memset(g, 0, sizeof *g);
-    if (!is_id(id)) {
-        snprintf(err, errcap, "%s: the drawer name \"%s\" must use only a-z, 0-9 and \"-\"", dir, id);
+    if (!rp_is_group_id(id)) {
+        snprintf(err, errcap, "%s: the drawer name \"%s\" must use only a-z, 0-9 and \"-\"", file, id);
         return -1;
     }
     strncpy(g->id, id, RP_ID_MAX);
-    snprintf(file, sizeof(file), "%s/%s/profile.json", dir, id);
-    f = fopen(file, "rb");
-    if (!f) {
-        snprintf(err, errcap, "%s: could not be read", file);
-        return -1;
-    }
-    fseek(f, 0, SEEK_END);
-    len = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    text = malloc((size_t)(len < 0 ? 0 : len) + 1);
-    if (!text) {
-        fclose(f);
-        snprintf(err, errcap, "%s: out of memory", file);
-        return -1;
-    }
-    /* A UTF-8 BOM (Windows editors) would choke the parser; strip it. */
-    nread = len > 0 ? fread(text, 1, (size_t)len, f) : 0;
-    fclose(f);
-    text[nread] = '\0';
-    {
-        char *t = text;
-        if (nread >= 3 && (unsigned char)t[0] == 0xEF && (unsigned char)t[1] == 0xBB && (unsigned char)t[2] == 0xBF) {
-            t += 3;
-            memmove(text, t, strlen(t) + 1);
-        }
-    }
+    /* A UTF-8 BOM (Windows editors) would choke the parser; skip it. */
+    if ((unsigned char)text[0] == 0xEF && (unsigned char)text[1] == 0xBB && (unsigned char)text[2] == 0xBF) text += 3;
     root = json_parse(text, err, errcap);
-    free(text);
     if (!root) {
         char tmp[256];
         snprintf(tmp, sizeof(tmp), "%s: is not valid JSON (%s)", file, err);
@@ -237,6 +208,41 @@ int rp_load_group(const char *dir, const char *id, rp_group *g, char *err, size_
     rc = 0;
 done:
     json_free(root);
+    return rc;
+}
+
+int rp_load_group(const char *dir, const char *id, rp_group *g, char *err, size_t errcap) {
+    char file[512], *text;
+    FILE *f;
+    long len;
+    size_t nread;
+    int rc;
+
+    memset(g, 0, sizeof *g);
+    if (!rp_is_group_id(id)) {
+        snprintf(err, errcap, "%s: the drawer name \"%s\" must use only a-z, 0-9 and \"-\"", dir, id);
+        return -1;
+    }
+    snprintf(file, sizeof(file), "%s/%s/profile.json", dir, id);
+    f = fopen(file, "rb");
+    if (!f) {
+        snprintf(err, errcap, "%s: could not be read", file);
+        return -1;
+    }
+    fseek(f, 0, SEEK_END);
+    len = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    text = malloc((size_t)(len < 0 ? 0 : len) + 1);
+    if (!text) {
+        fclose(f);
+        snprintf(err, errcap, "%s: out of memory", file);
+        return -1;
+    }
+    nread = len > 0 ? fread(text, 1, (size_t)len, f) : 0;
+    fclose(f);
+    text[nread] = '\0';
+    rc = rp_parse_group(text, file, id, g, err, errcap);
+    free(text);
     return rc;
 }
 
