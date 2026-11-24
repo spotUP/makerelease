@@ -611,8 +611,14 @@ fn centre_left_heavy(text: &str) -> String {
     format!("{}{text}{}", " ".repeat(left), " ".repeat(pad - left))
 }
 
+/// A name too long for one field row wraps onto further centred rows rather
+/// than being cut; a single word wider than the field is the only clip left.
 fn release_name_line(release_name: &str) -> String {
-    frame_line(&centre_left_heavy(&format!("<<-- {release_name} -->>")))
+    wrap_words(&format!("<<-- {release_name} -->>"), FIELD_WIDTH, FIELD_WIDTH)
+        .iter()
+        .map(|line| frame_line(&centre_left_heavy(line)))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 fn wrap_notes(notes: &str) -> Vec<String> {
@@ -1661,6 +1667,9 @@ mod tests {
         assert_eq!(jslen(&long), 74);
         assert!(long.ends_with("| %% |"));
         assert_eq!(release_name_line("mORE dOORS 1.5"), fx[25]);
+        let long = release_name_line(&"word ".repeat(16));
+        assert_eq!(long.lines().count(), 2);
+        assert!(long.contains("-->>"));
         assert_eq!(spaced_caps("sysops"), "s Y S O P S");
         assert_eq!(spaced_caps("artists"), "a R T i S T S");
         let r = roster_block(&x_members());
