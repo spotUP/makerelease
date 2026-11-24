@@ -27,6 +27,7 @@ cp "$APPIMAGE" "$STAGE/linux/"
 # macOS universal, built locally against the current renderer
 sh tauri/scripts/sync-web.sh
 rustup target add x86_64-apple-darwin aarch64-apple-darwin
+[ -d tauri/node_modules ] || (cd tauri && npm ci)
 (cd tauri && nice -n 19 npx tauri build --target universal-apple-darwin --bundles app)
 mkdir "$STAGE/mac"
 ditto "tauri/src-tauri/target/universal-apple-darwin/release/bundle/macos/makerelease.app" "$STAGE/mac/makerelease.app"
