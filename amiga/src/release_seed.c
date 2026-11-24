@@ -115,3 +115,7 @@ int rp_release_number_preview(const char *number_text, const char *file_prefix, 
     n = snprintf(out, cap, "release %s %s", number_text[0] ? number_text : "?", lower);
     return n >= 0 && (size_t)n < cap ? 0 : -1;
 }
+
+int rp_prefill_replaceable(const char *current, const char *last_prefill) {
+    return current[0] == '\0' || strcmp(current, last_prefill) == 0;
+}

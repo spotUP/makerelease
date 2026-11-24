@@ -53,4 +53,8 @@ int rp_code_check(const rp_rel_cfg *c, const char *code, const char *base_name, 
 int rp_release_number_preview(const char *number_text, const char *file_prefix, const char *code, int code_length, int lha,
                               char *out, size_t cap);
 
+/* Whether a group change may overwrite a prefilled field: 1 when the field is empty or still holds what the last prefill put
+ * there (last_prefill "" when none), 0 when the user edited it. */
+int rp_prefill_replaceable(const char *current, const char *last_prefill);
+
 #endif

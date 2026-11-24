@@ -85,6 +85,13 @@ int main(void) {
     CHECK(rp_release_number_preview("", "up-", "", 5, 0, msg, sizeof msg) == 0 && !strcmp(msg, "release ? up-xxxxx.zip"));
     CHECK(rp_release_number_preview("1", "up-", "ab", 5, 1, msg, 8) == -1);
 
+    /* prefill decision */
+    CHECK(rp_prefill_replaceable("", "") == 1);
+    CHECK(rp_prefill_replaceable("", "Alice | lead") == 1);
+    CHECK(rp_prefill_replaceable("Alice | lead", "Alice | lead") == 1);
+    CHECK(rp_prefill_replaceable("Alice | lead\nBob | coder", "Alice | lead") == 0);
+    CHECK(rp_prefill_replaceable("typed", "") == 0);
+
     if (failures) { printf("%d failure(s)\n", failures); return 1; }
     printf("test_release_seed ok\n");
     return 0;

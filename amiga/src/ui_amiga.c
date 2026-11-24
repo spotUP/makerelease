@@ -183,6 +183,7 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_AMINET_PREVIEW 14
 #define ID_NFO_PREVIEW 15
 #define ID_EDIT_GROUPS 16
+#define ID_FORMAT 17
 
 #define RP_MAX_FILES_PATH 511
 
@@ -485,21 +486,45 @@ static int shell_seed_load(const rp_group *g, char *msg, size_t cap) {
     return rp_online_seed(g, rp_http_amiga, NULL, shell_unix_now(), &g_seed, &g_seed_tree, msg, cap);
 }
 
-/* Fill the Roster tab for group g: the seed's merged members and boards when seeded, else the group file's members. */
+/* What the last prefill left in each Roster area (read back from the field), so a later prefill can tell untouched text from user edits. */
+static char *g_prefilled_members, *g_prefilled_boards;
+
+/* Put text in an area only when the user has not edited it (empty, or still the last prefill). */
+static void shell_prefill_area(Object *area, char **last, const char *text) {
+    if (!rp_prefill_replaceable(shell_area_raw(area), *last ? *last : "")) return;
+    SetAttrs(area, UPA_TextArea_Text, (ULONG)text, TAG_DONE);
+    free(*last);
+    *last = strdup(shell_area_raw(area));
+}
+
+/* Fill the Roster tab for group g: the seed's merged members and boards when seeded, else the group file's members.
+ * Text the user typed stays; the embeds are never prefilled. */
 static void shell_roster_prefill(const rp_group *g, int seeded) {
     char *m = seeded ? rp_format_member_rows(g_seed.members, g_seed.nmembers) : rp_format_member_rows(g->members, g->nmembers);
     char *b = (seeded && g->renderer == R_XINNOVATIONS) ? rp_format_board_rows(g_seed.boards, g_seed.nboards) : NULL;
-    SetAttrs(g_members_field, UPA_TextArea_Text, (ULONG)(m ? m : ""), TAG_DONE);
-    SetAttrs(g_boards_field, UPA_TextArea_Text, (ULONG)(b ? b : ""), TAG_DONE);
-    SetAttrs(g_embeds_field, UPA_TextArea_Text, (ULONG) "", TAG_DONE);
+    shell_prefill_area(g_members_field, &g_prefilled_members, m ? m : "");
+    shell_prefill_area(g_boards_field, &g_prefilled_boards, b ? b : "");
     free(m);
     free(b);
 }
 
+static int g_seed_ok; /* the open group's seed loaded, so the status line can show the release number */
+
+/* The status line for the open group: the release number preview, then the seed's warnings. Redone on every Code or Format edit. */
+static void shell_number_status(Object *status, const rp_group *g, Object *code_field, Object *format_cycle) {
+    char ok[2200], pv[96], code[40];
+    ULONG fa = 0;
+    GetAttr(UPA_Cycle_Active, format_cycle, &fa);
+    rp_upper(shell_field_text(code_field), code, sizeof(code));
+    if (rp_release_number_preview(g_seed.number_text, g->file_prefix, code, g->code_length, fa == 0, pv, sizeof(pv)) != 0) pv[0] = '\0';
+    snprintf(ok, sizeof(ok), "%s%s%s", pv, pv[0] && g_seed.warnings[0] ? " - " : "", g_seed.warnings);
+    SetAttrs(status, UPA_Text_Contents, (ULONG)ok, TAG_DONE);
+}
+
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
 static void shell_seed_status(Object *status, const rp_group *g, Object *code_field, Object *format_cycle) {
-    char msg[400], ok[2200], pv[96], code[40];
-    ULONG fa = 0;
+    char msg[400];
+    g_seed_ok = 0;
     if (!RP_ONLINE_HAS_SERVER(g)) {
         shell_roster_prefill(g, 0);
         return;
@@ -510,11 +535,8 @@ static void shell_seed_status(Object *status, const rp_group *g, Object *code_fi
         return;
     }
     shell_roster_prefill(g, 1);
-    GetAttr(UPA_Cycle_Active, format_cycle, &fa);
-    rp_upper(shell_field_text(code_field), code, sizeof(code));
-    if (rp_release_number_preview(g_seed.number_text, g->file_prefix, code, g->code_length, fa == 0, pv, sizeof(pv)) != 0) pv[0] = '\0';
-    snprintf(ok, sizeof(ok), "%s%s%s", pv, pv[0] && g_seed.warnings[0] ? " - " : "", g_seed.warnings);
-    SetAttrs(status, UPA_Text_Contents, (ULONG)ok, TAG_DONE);
+    g_seed_ok = 1;
+    shell_number_status(status, g, code_field, format_cycle);
 }
 
 /* Once the typed code has the group's length, ask the server whether it is taken. */
@@ -1430,6 +1452,7 @@ static int shell_main(void) {
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
     DoMethod(g_category_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
+    DoMethod(format_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FORMAT);
     DoMethod(edit_groups_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_EDIT_GROUPS);
     {
         ULONG code_str = 0;
@@ -1503,6 +1526,12 @@ static int shell_main(void) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
             if (ga < (ULONG)g_ngroups) shell_seed_status(status, &g_groups[ga], code_field, format_cycle);
+        }
+        if (id == ID_CODE || id == ID_FORMAT) {
+            ULONG ga = 0;
+            GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+            /* the number preview first; a code check that fires then replaces it with its verdict */
+            if (g_seed_ok && ga < (ULONG)g_ngroups) shell_number_status(status, &g_groups[ga], code_field, format_cycle);
         }
         if (id == ID_CODE) shell_code_check(status, g_groups, group_cycle, code_field);
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
