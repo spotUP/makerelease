@@ -162,6 +162,20 @@ char *rp_diz_with_released_at(const char *diz, const char *name, const char *pla
     return rp_diz_apply_release_line(diz, RP_X_RELEASE_ROW, line);
 }
 
+/* A typed Diz line replaces the release line as it is (clipped to the slot by rp_diz_apply_release_line); blank falls back to Released at. */
+char *rp_diz_with_line(const char *diz, const char *name, const char *place, const char *line) {
+    char t[256];
+    size_t n;
+    while (is_ws(*line)) line++;
+    n = strlen(line);
+    while (n > 0 && is_ws(line[n - 1])) n--;
+    if (n == 0) return rp_diz_with_released_at(diz, name, place);
+    if (n >= sizeof t) n = sizeof t - 1;
+    memcpy(t, line, n);
+    t[n] = '\0';
+    return rp_diz_apply_release_line(diz, RP_X_RELEASE_ROW, t);
+}
+
 /* ---- NFO ---- */
 
 static int sb_nl(strbuf *b) {

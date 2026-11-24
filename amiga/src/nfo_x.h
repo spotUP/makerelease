@@ -47,4 +47,8 @@ void rp_x_release_name_in_banner(const char *banner, char *out, size_t cap);
 char *rp_x_list_art(const char *banner);
 char *rp_diz_with_released_at(const char *diz, const char *name, const char *place);
 
+/* The editable diz release line (desktop diz-release-line.ts): a non-blank line (trimmed) is the row-8 text and wins over Released at;
+ * a blank one gives rp_diz_with_released_at. Returns malloc'd diz. */
+char *rp_diz_with_line(const char *diz, const char *name, const char *place, const char *line);
+
 #endif
