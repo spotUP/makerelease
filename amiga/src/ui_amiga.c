@@ -468,16 +468,17 @@ static void shell_today(char *out, size_t cap) {
 #define RP_AMINET_PREFS_PATH "PROGDIR:aminet.prefs"
 #define RP_LAST_CHOICE_PATH "PROGDIR:last.prefs"
 
-/* Remember the open group and format for the next start (desktop main.ts keeps both in localStorage). */
+/* Remember the open group and format for the next start, and the format for that group (desktop main.ts keeps both in localStorage). */
 static void shell_last_save(const rp_group *groups, int ngroups, Object *group_cycle, Object *format_cycle) {
     ULONG ga = 0, fa = 0;
     rp_last_choice c;
     GetAttr(UPA_Cycle_Active, group_cycle, &ga);
     GetAttr(UPA_Cycle_Active, format_cycle, &fa);
     if (ga >= (ULONG)ngroups) return;
-    memset(&c, 0, sizeof c);
+    rp_last_choice_load(RP_LAST_CHOICE_PATH, &c); /* keeps the other groups' formats; a missing file is empty */
     snprintf(c.group, sizeof c.group, "%s", groups[ga].id);
     c.zip = fa != 0;
+    rp_last_format_set(&c, groups[ga].id, c.zip);
     rp_last_choice_save(RP_LAST_CHOICE_PATH, &c);
 }
 
@@ -489,11 +490,24 @@ static ULONG shell_last_restore(const rp_group *groups, int ngroups, Object *gro
     SetAttrs(format_cycle, UPA_Cycle_Active, (ULONG)(c.zip ? 1 : 0), TAG_DONE);
     for (i = 0; i < (ULONG)ngroups; i++) {
         if (strcmp(groups[i].id, c.group) == 0) {
+            int z;
+            if (rp_last_format_get(&c, c.group, &z)) SetAttrs(format_cycle, UPA_Cycle_Active, (ULONG)z, TAG_DONE);
             SetAttrs(group_cycle, UPA_Cycle_Active, i, TAG_DONE);
             return i;
         }
     }
     return 0;
+}
+
+/* The format the newly chosen group last used; a group that never picked one keeps the current format. */
+static void shell_last_format_apply(const rp_group *groups, int ngroups, Object *group_cycle, Object *format_cycle) {
+    ULONG ga = 0;
+    rp_last_choice c;
+    int z;
+    GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+    if (ga >= (ULONG)ngroups) return;
+    rp_last_choice_load(RP_LAST_CHOICE_PATH, &c);
+    if (rp_last_format_get(&c, groups[ga].id, &z)) SetAttrs(format_cycle, UPA_Cycle_Active, (ULONG)z, TAG_DONE);
 }
 
 /* Aminet Directory cycle entries: index 0 is "(choose)" (no directory), index i+1 is rp_aminet_types[i]. */
@@ -1725,6 +1739,7 @@ static int shell_main(void) {
             shell_platform_row(platform_field);
             shell_guess_type(type_field, platform_field);
         }
+        if (id == ID_GROUP) shell_last_format_apply(g_groups, g_ngroups, group_cycle, format_cycle);
         if (id == ID_GROUP || id == ID_FORMAT) shell_last_save(g_groups, g_ngroups, group_cycle, format_cycle);
         if (id == ID_GROUP) {
             ULONG ga = 0;
