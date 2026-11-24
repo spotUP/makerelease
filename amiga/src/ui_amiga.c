@@ -36,6 +36,7 @@
 #include "last_choice.h"
 #include "creators.h"
 #include "diz_count.h"
+#include "divisions.h"
 #include "paths_list.h"
 #include "phase_progress.h"
 #include "sections.h"
@@ -327,6 +328,7 @@ static Object *g_also_aminet_chk;
 static Object *g_sec_system[1];
 static Object *g_revoke_field; /* desktop revoke-code: code to revoke, blank = the Code field */
 static rp_sections g_sections; /* of the open group, set by shell_apply_sections */
+static const rp_division *g_division; /* likewise; NULL for a placeholder group */
 static Object *g_sec_history[2], *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[6], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
@@ -711,6 +713,7 @@ static void shell_show_all(Object **objs, size_t n, int show) {
 /* Hides the boards, media, Publish and Door parts the group does not have (desktop visibleSections); a label hides with its field. */
 static void shell_apply_sections(const rp_group *g) {
     rp_sections s = g_sections = rp_sections_for(g);
+    g_division = rp_division_for(g);
     shell_show_all(g_sec_history, 2, s.history);
     shell_show_all(g_sec_boards, 2, s.boards);
     shell_show_all(g_sec_system, 1, s.system);
@@ -1240,10 +1243,12 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
 }
 
 /* The Preview tab: the file_id.diz and NFO Build would write, made by the same shell_render_release. */
-/* The release line counter (desktop renderDizPreview): width of the built-in banner's row, text = typed Diz line, else name at place. */
+/* The release line counter (desktop renderDizPreview): the open division's row label and slot width, text = typed Diz line, else name at place. */
 static void shell_diz_count(Object *name_field) {
     char msg[160];
-    rp_diz_line_counter(rp_diz_slot_width(rp_x_banner(), RP_X_RELEASE_ROW), shell_field_text(g_diz_line_field), shell_field_text(name_field),
+    const rp_division *d = g_division;
+    if (d == NULL) return; /* a placeholder group has no release line row */
+    rp_diz_line_counter(d->rows[0].label, rp_diz_slot_width(d->banner, d->rows[0].row), shell_field_text(g_diz_line_field), shell_field_text(name_field),
                         shell_field_text(g_released_field), msg, sizeof msg);
     SetAttrs(g_diz_count, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
 }

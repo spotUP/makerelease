@@ -12,7 +12,7 @@ static size_t trimmed(const char *s, size_t *first) {
     return z - a;
 }
 
-void rp_diz_line_counter(size_t width, const char *line, const char *name, const char *place, char *out, size_t cap) {
+void rp_diz_line_counter(const char *label, size_t width, const char *line, const char *name, const char *place, char *out, size_t cap) {
     size_t a, n = trimmed(line, &a), na, nn, pa, np;
     if (cap == 0) return;
     if (n == 0) {
@@ -21,6 +21,6 @@ void rp_diz_line_counter(size_t width, const char *line, const char *name, const
         /* "<name> at <place>" needs both, like dizLineSourceText */
         n = (nn > 0 && np > 0) ? nn + 4 + np : nn;
     }
-    if (n > width) snprintf(out, cap, "Release line: %lu characters, the diz fits %lu; the rest is cut off.", (unsigned long)n, (unsigned long)width);
-    else snprintf(out, cap, "Release line: %lu/%lu characters.", (unsigned long)n, (unsigned long)width);
+    if (n > width) snprintf(out, cap, "%s: %lu characters, the diz fits %lu; the rest is cut off.", label, (unsigned long)n, (unsigned long)width);
+    else snprintf(out, cap, "%s: %lu/%lu characters.", label, (unsigned long)n, (unsigned long)width);
 }
