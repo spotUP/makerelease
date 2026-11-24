@@ -29,4 +29,9 @@ int rp_gate_open(const rp_build_gate *gate, unsigned long state);
 #define RP_REQUIRED_NOTES 2
 int rp_build_required(const char *description, const char *notes, char *err, size_t errcap);
 
+/* The Release tab's manual release number, for a group without a release server (desktop index.html
+ * release-number-text; the text prints as release_number in the NFO and diz). out gets the text trimmed of
+ * surrounding whitespace. 0 when usable; -1 with the refusal text in err when blank or holding a control character. */
+int rp_manual_number(const char *text, char *out, size_t outcap, char *err, size_t errcap);
+
 #endif

@@ -43,6 +43,17 @@ int main(void) {
         CHECK(rp_build_required(NULL, NULL, err, sizeof err) == RP_REQUIRED_DESCRIPTION);
         CHECK(rp_build_required(" x ", "\n y", err, sizeof err) == 0);
     }
+    {   /* a group without a server needs a typed release number */
+        char err[128], out[8];
+        CHECK(rp_manual_number("042", out, sizeof out, err, sizeof err) == 0 && strcmp(out, "042") == 0);
+        CHECK(rp_manual_number("  7 \t", out, sizeof out, err, sizeof err) == 0 && strcmp(out, "7") == 0);
+        CHECK(rp_manual_number("", out, sizeof out, err, sizeof err) == -1 && strstr(err, "Release number") != NULL);
+        CHECK(rp_manual_number("  \t", out, sizeof out, err, sizeof err) == -1 && out[0] == '\0');
+        CHECK(rp_manual_number(NULL, out, sizeof out, err, sizeof err) == -1);
+        CHECK(rp_manual_number("4\x01" "2", out, sizeof out, err, sizeof err) == -1);
+        /* a too long number is cut to the buffer, never overrun */
+        CHECK(rp_manual_number("123456789", out, sizeof out, err, sizeof err) == 0 && strcmp(out, "1234567") == 0);
+    }
     if (failures == 0) printf("build_gate: ok\n");
     return failures != 0;
 }

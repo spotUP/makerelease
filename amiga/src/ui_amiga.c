@@ -295,6 +295,9 @@ static Object *g_news_field;
 static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
 static Object *g_date_field, *g_released_field, *g_readme_view, *g_nfo_view;
+/* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
+static Object *g_number_field, *g_number_row;
+static char g_number_text[24];
 
 const char *shell_field_text(Object *field) {
     ULONG ptr = 0;
@@ -476,6 +479,7 @@ static unsigned long shell_form_state(Object *group_cycle, Object *name_field, O
     h = rp_gate_add(h, shell_field_text(g_authors_field));
     h = rp_gate_add(h, shell_field_text(g_date_field));
     h = rp_gate_add(h, shell_field_text(g_released_field));
+    h = rp_gate_add(h, shell_field_text(g_number_field));
     h = rp_gate_add(h, g_files);
     h = rp_gate_add(h, shell_area_raw(g_notes_field));
     h = rp_gate_add(h, shell_area_raw(g_news_field));
@@ -543,6 +547,7 @@ static void shell_number_status(Object *status, const rp_group *g, Object *code_
 static void shell_seed_status(Object *status, const rp_group *g, Object *code_field, Object *format_cycle) {
     char msg[400];
     g_seed_ok = 0;
+    SetAttrs(g_number_row, MUIA_ShowMe, (ULONG)!RP_ONLINE_HAS_SERVER(g), TAG_DONE);
     if (!RP_ONLINE_HAS_SERVER(g)) {
         shell_roster_prefill(g, 0);
         return;
@@ -709,6 +714,10 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
         }
         if (shell_seed_load(g, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
         if (g_seed.number_text[0]) number = g_seed.number_text;
+    } else {
+        /* no door counts releases: the number is what the form holds (blank is refused by Build, not here) */
+        rp_manual_number(shell_field_text(g_number_field), g_number_text, sizeof(g_number_text), errmsg, sizeof(errmsg));
+        number = g_number_text;
     }
     rp_base_name(g->file_prefix, code, base, sizeof(out->base));
     snprintf(packed, sizeof(out->packed), "%s.%s", base, active ? "ZIP" : "LHA");
@@ -892,6 +901,17 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         return;
     default:
         break;
+    }
+    {   /* a group without a server has no number to count: the typed one must be usable */
+        ULONG ga = 0;
+        char num[sizeof(g_number_text)];
+        GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+        if (!RP_ONLINE_HAS_SERVER(&groups[ga]) &&
+            rp_manual_number(shell_field_text(g_number_field), num, sizeof(num), errmsg, sizeof(errmsg)) != 0) {
+            shell_err_at(SHELL_TAB_RELEASE, g_number_field);
+            SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
+            return;
+        }
     }
     if (g_files[0] == '\0') {
         shell_err_at(SHELL_TAB_FILES, NULL);
@@ -1366,6 +1386,8 @@ static int shell_main(void) {
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
     g_date_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "2026-09-21", MUIA_String_MaxLen, 15UL, TAG_DONE);
     g_released_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Mysdata 2026 (optional)", MUIA_String_MaxLen, 100UL, TAG_DONE);
+    g_number_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "042", MUIA_String_MaxLen, (ULONG)(sizeof(g_number_text) - 1), TAG_DONE);
+    g_number_row = g_number_field ? shell_row(row_label("Release number"), g_number_field) : NULL;
     g_readme_view = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_README_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview readme to see the readme and its problems here", TAG_DONE);
     g_nfo_view = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NFO_VIEW_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview NFO to see the file_id.diz and the NFO here", TAG_DONE);
     nfo_preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview NFO", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
@@ -1390,7 +1412,7 @@ static int shell_main(void) {
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
-        g_date_field == NULL || g_released_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
+        g_date_field == NULL || g_released_field == NULL || g_number_row == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
         return 20;
@@ -1401,7 +1423,7 @@ static int shell_main(void) {
                                                                   row_label("Code"), code_field, row_label("Platform"), platform_field,
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, row_label("Category"), g_category_cycle,
-                                                                  row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), NULL, NULL, NULL, NULL, NULL, NULL);
+                                                                  row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_number_row, NULL, NULL, NULL, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, area_label("Boards"), g_boards_field,
