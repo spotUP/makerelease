@@ -465,8 +465,8 @@ static size_t shell_credits(void) {
 
 /* The Creators preview under Authors (desktop creators-preview) with the member names that match the name being typed
  * (desktop creators-autocomplete, shown as text because the Amiga form has no popup list). */
-static Object *g_creators_text, *g_creators_row;
-static char g_creators_buf[480];
+static Object *g_creators_text, *g_creators_row, *g_x_credits_text;
+static char g_creators_buf[480], g_x_credits_buf[200];
 static rp_member g_creators_members[RP_MEMBERS_MAX];
 
 /* The roster's nicknames; a Members line that does not parse leaves none (Build names the line). */
@@ -481,7 +481,10 @@ static void shell_creators_refresh(int x_group) {
     const char *hit[RP_CREATORS_SUGGEST_MAX];
     size_t n = shell_credits(), nm = shell_creators_members(), k, i, len;
     rp_creators_token(shell_field_text(g_authors_field), tok, sizeof tok);
-    rp_creators_preview(g_credits, n, x_group, g_creators_buf, sizeof g_creators_buf);
+    rp_creators_preview(g_credits, n, g_creators_buf, sizeof g_creators_buf);
+    /* the /X NFO header line sits on the System row, which only /X shows */
+    rp_x_credits_preview(g_credits, n, g_x_credits_buf, sizeof g_x_credits_buf);
+    SetAttrs(g_x_credits_text, UPA_Text_Contents, (ULONG)(x_group ? g_x_credits_buf : ""), TAG_DONE);
     k = rp_creators_matches(tok, g_creators_members, nm, hit, RP_CREATORS_SUGGEST_MAX);
     for (i = 0; i < k && g_sections.creators; i++) { /* member hits need a release server (desktop creatorsAutocomplete) */
         len = strlen(g_creators_buf);
@@ -756,6 +759,8 @@ static void shell_seed_status(Object *status, const rp_group *g, Object *code_fi
     shell_number_status(status, g, code_field, format_cycle);
 }
 
+static Object *g_code_status; /* the availability answer beside the Code field */
+
 /* Once the typed code has the group's length, ask the server whether it is taken. */
 static void shell_code_check(Object *status, const rp_group *groups, Object *group_cycle, Object *code_field) {
     ULONG ga = 0;
@@ -765,13 +770,18 @@ static void shell_code_check(Object *status, const rp_group *groups, Object *gro
     GetAttr(UPA_Cycle_Active, group_cycle, &ga);
     g = &groups[ga];
     rp_upper(shell_field_text(code_field), code, sizeof(code));
-    if (!RP_ONLINE_HAS_SERVER(g) || (int)strlen(code) != g->code_length) return;
+    if (!RP_ONLINE_HAS_SERVER(g) || (int)strlen(code) != g->code_length) {
+        g_code_checked[0] = '\0'; /* the old answer no longer fits the typed code */
+        SetAttrs(g_code_status, UPA_Text_Contents, (ULONG)"", TAG_DONE);
+        return;
+    }
     snprintf(key, sizeof(key), "%s:%s", g->id, code);
     if (strcmp(key, g_code_checked) == 0) return;
     strcpy(g_code_checked, key);
     rc = rp_online_code_check(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
     if (rc == 0) snprintf(msg, sizeof(msg), "Code %s is free.", code);
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+    SetAttrs(g_code_status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
 }
 
 static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_text, const rp_group *groups,
@@ -1584,16 +1594,41 @@ static void shell_suggest_code(Object *name_field, Object *code_field, Object *g
 }
 
 
+/* Tab captions get a "+ " mark on each step Next has left behind. UP-Tabs captions are fixed at creation, so a new mark
+ * rebuilds the tabs; the captions alternate between two buffers because the old tabs still point at theirs until disposed. */
+static const char *const g_tab_names[SHELL_TAB_COUNT] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet" };
+static char g_tab_caps[2][SHELL_TAB_COUNT][16];
+static const char *g_tab_ptrs[2][SHELL_TAB_COUNT + 1];
+static int g_tab_buf;
+
+static Object *shell_tabs_new(unsigned done, ULONG active) {
+    int i;
+    g_tab_buf ^= 1;
+    for (i = 0; i < SHELL_TAB_COUNT; i++) {
+        snprintf(g_tab_caps[g_tab_buf][i], sizeof g_tab_caps[g_tab_buf][i], "%s%s", (done >> i) & 1u ? "+ " : "", g_tab_names[i]);
+        g_tab_ptrs[g_tab_buf][i] = g_tab_caps[g_tab_buf][i];
+    }
+    g_tab_ptrs[g_tab_buf][SHELL_TAB_COUNT] = NULL;
+    return MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)g_tab_ptrs[g_tab_buf], UPA_Tabs_Active, active, TAG_DONE);
+}
+
+/* live preview: no verified MUI timer, so refresh on tab switch and on field exit instead of debouncing */
+static void shell_tabs_notify(Object *tabs, Object *app, Object *pages) {
+    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_TAB);
+    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage, MUIV_TriggerValue);
+}
+
 static int shell_main(void) {
     Object *app = NULL, *win = NULL;
     Object *group_slot, *edit_groups_btn;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     ULONG open_group = 0;
     Object *files_list, *add_file_btn, *remove_file_btn, *pick_btn, *build_btn, *status;
-    Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
+    Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text, *cover_image, *cover_thumb;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
-    Object *tabs, *pages, *preview_btn, *quit_btn, *back_btn, *next_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
+    Object *tabs, *tabs_row = NULL, *pages, *preview_btn, *quit_btn, *back_btn, *next_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
+    unsigned tabs_done = 0; /* bit per tab: steps Next has left behind */
     static const char *const formats[] = { "LHA", "ZIP", NULL };
     char broken[1024];
     int i;
@@ -1666,9 +1701,14 @@ static int shell_main(void) {
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
     g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
     g_creators_text = shell_label("", UPV_Text_Tone_Muted);
+    /* Ellipsis keeps a long server answer from widening the window; the full answer is also in the status line */
+    g_code_status = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG) "", UPA_Text_Widest, (ULONG) "Code ABCD is free.", UPA_Text_Ellipsis, (ULONG)TRUE,
+                                  UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted, TAG_DONE);
     g_creators_row = g_creators_text ? shell_row(row_label("Creators"), g_creators_text) : NULL;
     g_system_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "aMiEXPRESS", MUIA_String_MaxLen, (ULONG)(sizeof(g_system_prefill) - 1), TAG_DONE);
-    g_system_row = g_system_field ? shell_row(row_label("System"), g_system_field) : NULL;
+    g_x_credits_text = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG) "", UPA_Text_Widest, (ULONG) "NFO header: cODER [Name]  dESIGN [Name]",
+                                     UPA_Text_Ellipsis, (ULONG)TRUE, UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted, TAG_DONE);
+    g_system_row = g_system_field && g_x_credits_text ? shell_row(row_label("System"), shell_row(g_system_field, g_x_credits_text)) : NULL;
     g_date_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "2026-09-21", MUIA_String_MaxLen, 15UL, TAG_DONE);
     g_diz_line_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Banner release line (optional; blank = name at Released at)", MUIA_String_MaxLen, 100UL, TAG_DONE);
     g_released_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Mysdata 2026 (optional)", MUIA_String_MaxLen, 100UL, TAG_DONE);
@@ -1684,6 +1724,10 @@ static int shell_main(void) {
     g_boards_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "Name | Sysop | HQ | Status (X Innovations only)", TAG_DONE);
     g_embeds_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_ROWS_MAX, UPA_TextArea_Placeholder, (ULONG) "youtube | caption | url   or   image | caption | path", TAG_DONE);
     cover_text = shell_label("(no cover image picked)", UPV_Text_Tone_Muted);
+    /* Fit scales the picture into the fixed box; hidden until a cover is picked (an empty UP-Image is only an outline) */
+    cover_image = MUI_NewObject((char *)"UP-Image.mcc", UPA_Image_Fit, (ULONG)TRUE, TAG_DONE);
+    cover_thumb = cover_image ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_FixWidth, 48UL, MUIA_FixHeight, 36UL, MUIA_ShowMe, (ULONG)FALSE,
+                                              MUIA_Group_Child, (ULONG)cover_image, TAG_DONE) : NULL;
     flatten_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove extra nested folder", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     warn_text = shell_label("", UPV_Text_Tone_Normal);
     *(void **)&g_preview_hook.h_Entry = (void *)rp_preview_row_tramp;
@@ -1696,10 +1740,10 @@ static int shell_main(void) {
     g_template_status = shell_label("", UPV_Text_Tone_Muted);
     g_diz_count = shell_label("", UPV_Text_Tone_Muted);
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
-    if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
+    if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || g_code_status == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || g_net_cancel_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
-        cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL ||
+        cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL || cover_thumb == NULL ||
         aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nAn UP-MCC class did not load, or memory ran out. Check the UP-MCC install, then start again.");
@@ -1710,7 +1754,7 @@ static int shell_main(void) {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
         /* Paired rows (Platform with its detail, date with place, System with number) keep the page inside an 800x600 screen with every row shown */
         Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), name_field,
-                                                                  row_label("Code"), code_field, row_label("Platform"), shell_row(platform_field, g_platform_row),
+                                                                  row_label("Code"), shell_row(code_field, g_code_status), row_label("Platform"), shell_row(platform_field, g_platform_row),
                                                                   row_label("Format"), format_cycle, row_label("Description"), desc_field,
                                                                   row_label("Authors"), g_authors_field, g_category_lbl, g_category_cycle,
                                                                   row_label("Release date"), shell_row(g_date_field, shell_row(row_label("Released at"), g_released_field)),
@@ -1718,7 +1762,7 @@ static int shell_main(void) {
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
-        Object *cover_row = shell_row(cover_lbl, cover_text);
+        Object *cover_row = shell_row(cover_lbl, shell_row(cover_thumb, cover_text));
         Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, boards_lbl, g_boards_field,
                                                                                  embeds_lbl, g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
@@ -1741,13 +1785,12 @@ static int shell_main(void) {
         g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds_field, g_sec_media[2] = embed_pick_btn;
         g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk, g_sec_publish[5] = revoke_row;
         g_sec_door[0] = door_btn;
-        static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
         Object *content;
-        tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
+        tabs = shell_tabs_new(0u, 0UL);
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                               MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_roster), MUIA_Group_Child, (ULONG)top_page(page_nfo), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
-        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)shell_row(tabs, quit_btn),
+        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)(tabs_row = shell_row(tabs, quit_btn)),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
                                                                           MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status,
@@ -1811,8 +1854,6 @@ static int shell_main(void) {
     DoMethod(aminet_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET);
     DoMethod(nfo_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NFO_PREVIEW);
     DoMethod(aminet_preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AMINET_PREVIEW);
-    /* live preview: no verified MUI timer, so refresh on tab switch and on field exit instead of debouncing */
-    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_TAB);
     DoMethod(win, MUIM_Notify, MUIA_Window_ActiveObject, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FOCUS);
     DoMethod(platform_field, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PLATFORM);
     DoMethod(door_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_DOOR);
@@ -1850,8 +1891,7 @@ static int shell_main(void) {
         GetAttr(UPA_Field_String, g_authors_field, &auth_str);
         if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AUTHORS);
     }
-    DoMethod(tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)pages, 3UL, MUIM_Set, MUIA_Group_ActivePage,
-             MUIV_TriggerValue);
+    shell_tabs_notify(tabs, app, pages);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
     {
         rp_aminet_prefs pr;
@@ -1949,7 +1989,12 @@ static int shell_main(void) {
         if (id == ID_NAME) shell_suggest_code(name_field, code_field, group_cycle);
         if (id == ID_NAME || id == ID_DIZCOUNT) shell_diz_count(name_field);
         if (id == ID_EMBED_PICK) shell_embed_pick();
-        if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
+        if (id == ID_COVER && shell_pick_cover()) {
+            SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
+            /* the class copies at most 255 characters of the path; a longer one shows an empty outline, the upload still uses g_cover */
+            SetAttrs(cover_image, UPA_Image_File, (ULONG)g_cover, TAG_DONE);
+            SetAttrs(cover_thumb, MUIA_ShowMe, (ULONG)TRUE, TAG_DONE);
+        }
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
             int ok;
             shell_net_busy(1);
@@ -1973,6 +2018,21 @@ static int shell_main(void) {
             int to;
             GetAttr(UPA_Tabs_Active, tabs, &cur);
             to = rp_page_step((int)cur, id == ID_NEXT ? 1 : -1, NULL, SHELL_TAB_COUNT);
+            if (to >= 0 && id == ID_NEXT && !((tabs_done >> cur) & 1u)) {
+                Object *t = shell_tabs_new(tabs_done | 1u << cur, cur);
+                if (t != NULL) { /* no memory for new tabs: keep the old ones, only the mark is lost */
+                    tabs_done |= 1u << cur;
+                    DoMethod(tabs_row, MUIM_Group_InitChange);
+                    DoMethod(tabs_row, OM_REMMEMBER, (ULONG)tabs);
+                    DoMethod(tabs_row, OM_REMMEMBER, (ULONG)quit_btn);
+                    MUI_DisposeObject(tabs);
+                    tabs = t;
+                    DoMethod(tabs_row, OM_ADDMEMBER, (ULONG)tabs);
+                    DoMethod(tabs_row, OM_ADDMEMBER, (ULONG)quit_btn);
+                    DoMethod(tabs_row, MUIM_Group_ExitChange);
+                    shell_tabs_notify(tabs, app, pages);
+                }
+            }
             if (to >= 0) SetAttrs(tabs, UPA_Tabs_Active, (ULONG)to, TAG_DONE);
         }
         if (id == ID_TAB || id == ID_FOCUS) {

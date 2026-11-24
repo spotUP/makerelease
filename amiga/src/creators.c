@@ -56,14 +56,17 @@ int rp_creators_complete(const char *text, const rp_member *members, size_t n, c
     return 1;
 }
 
-void rp_creators_preview(const rp_credit *credits, size_t n, int x_group, char *out, size_t cap) {
+void rp_creators_preview(const rp_credit *credits, size_t n, char *out, size_t cap) {
     char *all = rp_creators_from_credits(credits, n);
-    int len = snprintf(out, cap, "%s%s", all && all[0] ? "Release history creator line: " : "Release history creator line: add a credit with both a role and a name.", all ? all : "");
+    snprintf(out, cap, "%s%s", all && all[0] ? "Release history creator line: " : "Release history creator line: add a credit with both a role and a name.", all ? all : "");
     free(all);
-    if (x_group && len > 0 && (size_t)len < cap) {
-        char *coder = rp_credit_names_for_role(credits, n, RP_ROLE_CODER), *design = rp_credit_names_for_role(credits, n, RP_ROLE_DESIGN);
-        snprintf(out + len, cap - (size_t)len, " | NFO header: cODER [%s]  dESIGN [%s]", coder && coder[0] ? coder : "-", design && design[0] ? design : "-");
-        free(coder);
-        free(design);
-    }
+}
+
+void rp_x_credits_preview(const rp_credit *credits, size_t n, char *out, size_t cap) {
+    char *coder = rp_credit_names_for_role(credits, n, RP_ROLE_CODER), *design = rp_credit_names_for_role(credits, n, RP_ROLE_DESIGN);
+    int some = (coder && coder[0]) || (design && design[0]);
+    snprintf(out, cap, "NFO header: cODER [%s]  dESIGN [%s]%s", coder && coder[0] ? coder : "-", design && design[0] ? design : "-",
+             some ? "" : " - add credits with roles like Code or Graphics");
+    free(coder);
+    free(design);
 }

@@ -41,15 +41,17 @@ int main(void) {
     CHECK(rp_creators_complete("Code: Spo", m, 4, out, 8) == 0);
     /* preview */
     memset(c, 0, sizeof c);
-    rp_creators_preview(c, 0, 0, out, sizeof out);
+    rp_creators_preview(c, 0, out, sizeof out);
     CHECK(strstr(out, "add a credit") != NULL);
+    rp_x_credits_preview(c, 0, out, sizeof out);
+    CHECK(strcmp(out, "NFO header: cODER [-]  dESIGN [-] - add credits with roles like Code or Graphics") == 0);
     strcpy(c[0].role, "Code"); strcpy(c[0].name, "Spot");
     strcpy(c[1].role, "Graphics"); strcpy(c[1].name, "Zed");
     strcpy(c[2].role, "Music"); strcpy(c[2].name, "Spot");
-    rp_creators_preview(c, 3, 0, out, sizeof out);
+    rp_creators_preview(c, 3, out, sizeof out);
     CHECK(strcmp(out, "Release history creator line: Spot, Zed") == 0);
-    rp_creators_preview(c, 3, 1, out, sizeof out);
-    CHECK(strcmp(out, "Release history creator line: Spot, Zed | NFO header: cODER [Spot]  dESIGN [Zed]") == 0);
+    rp_x_credits_preview(c, 3, out, sizeof out);
+    CHECK(strcmp(out, "NFO header: cODER [Spot]  dESIGN [Zed]") == 0);
     if (failures) { printf("%d failure(s)\n", failures); return 1; }
     printf("test_creators: ok\n");
     return 0;
