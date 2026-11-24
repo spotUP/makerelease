@@ -198,16 +198,16 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_REMOVEFILE 20
 #define ID_REFRESH 21 /* redraw the file lists; ID_PREVIEW (the button) also runs the dry run */
 #define ID_TAB 22      /* tab switched: refresh the NFO or readme preview shown */
-#define ID_AUTHORS 24  /* the Authors line changed: redo the creators preview and the name suggestions */
+#define ID_AUTHORS 24  /* the credits table changed: redo the creators preview and the name suggestions */
 #define ID_BACK 26     /* Back button: previous tab page */
 #define ID_NEXT 27     /* Next button: next tab page */
 #define ID_DIZCOUNT 25 /* Diz line, Released at or the name changed: redo the release line counter */
 #define ID_FOCUS 23    /* another field got the cursor: the one just left may have changed the preview */
 #define ID_CANCEL 28   /* Cancel button: stop the running Publish / Revoke / Door / Aminet transfer */
-#define ID_CREATORS_KEY 29  /* Up, Down, Esc or Tab in the Authors field: move in or close the member list */
+#define ID_CREATORS_KEY 29  /* Up, Down, Esc or Tab in the credit Name field: move in or close the member list */
 #define ID_CREATORS_PICK 30 /* a member was clicked in the list */
-#define ID_CREATORS_ACK 31  /* Return in the Authors field: pick the highlighted member */
-#define ID_TABLE 100   /* Roster tables: ID_TABLE + table * SHELL_TABLE_ACTIONS + action, see shell_table_event */
+#define ID_CREATORS_ACK 31  /* Return in the credit Name field: pick the highlighted member */
+#define ID_TABLE 100   /* Row tables: ID_TABLE + table * SHELL_TABLE_ACTIONS + action, see shell_table_event */
 
 #define RP_MAX_FILES_PATH 511
 
@@ -326,7 +326,7 @@ static struct Hook g_preview_hook, g_paths_hook;
 static Object *g_notes_field;
 /* The Release tab news field (multi-line, like the desktop news text); read by Build and Publish. */
 static Object *g_news_field;
-/* The Release tab authors field: "Role: Name, Name; Role: Name", parsed by rp_parse_credits. */
+/* The credits table's Name field (g_credits_tab column 1), inside the creators popup; the name being typed is matched against the members. */
 static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
 static Object *g_also_aminet_chk;
@@ -452,22 +452,25 @@ static const char *shell_area_raw(Object *area) {
     return ptr ? (const char *)ptr : "";
 }
 
-/* A Roster table (desktop memberlist, boards and media embeds tables): the rows in titled columns, one string field per
- * column for the picked row, Add and Remove. The rows stay raw "a | b" lines (rp_rtab), so the parsers read the same text
+/* A row table (desktop memberlist, boards, media embeds and credits tables): the rows in titled columns, one string field
+ * per column for the picked row, Add, Remove, Move Up and Move Down. The rows stay raw "a | b" lines (rp_rtab), so the parsers read the same text
  * the text areas held before, and a parser's line number is the row number. */
 #define SHELL_TABLE_COLS 4
 #define SHELL_TABLE_FIELD_MAX 255
-#define SHELL_TABLE_ACTIONS 4 /* ID_TABLE + table * 4 + one of these */
+#define SHELL_TABLE_ACTIONS 6 /* ID_TABLE + table * 6 + one of these */
 #define SHELL_TABLE_PICK 0
 #define SHELL_TABLE_ADD 1
 #define SHELL_TABLE_REMOVE 2
 #define SHELL_TABLE_EDIT 3
+#define SHELL_TABLE_UP 4
+#define SHELL_TABLE_DOWN 5
 typedef struct {
     rp_rtab rows;
     const char *titles[SHELL_TABLE_COLS];
     UP_ListColumns cols;
-    Object *list, *group, *add, *remove;
-    Object *field[SHELL_TABLE_COLS];
+    Object *list, *group, *add, *remove, *up, *down;
+    Object *field[SHELL_TABLE_COLS];             /* made by shell_table_new unless the caller set it first */
+    Object *box[SHELL_TABLE_COLS];               /* what the edit row shows for the column; NULL = the field */
     long cur;                                    /* the row whose cells the fields hold; -1 none */
     char cell[SHELL_TABLE_COLS][128];            /* hook answers, one per column (a row's cells are asked in turn) */
     char *text;                                  /* last rp_rtab_text, owned */
@@ -476,11 +479,13 @@ typedef struct {
 #define SHELL_TABLE_MEMBERS 0
 #define SHELL_TABLE_BOARDS 1
 #define SHELL_TABLE_EMBEDS 2
-#define SHELL_TABLE_COUNT 3
+#define SHELL_TABLE_CREDITS 3 /* the Release tab credits (desktop credits-table), Role and Name */
+#define SHELL_TABLE_COUNT 4
 static shell_table g_tables[SHELL_TABLE_COUNT];
 #define g_members (&g_tables[SHELL_TABLE_MEMBERS])
 #define g_boards (&g_tables[SHELL_TABLE_BOARDS])
 #define g_embeds (&g_tables[SHELL_TABLE_EMBEDS])
+#define g_credits_tab (&g_tables[SHELL_TABLE_CREDITS])
 
 ULONG rp_table_cell_c(struct Hook *h, UP_ListCell *cell);
 ULONG rp_table_cell_c(struct Hook *h, UP_ListCell *cell) {
@@ -498,7 +503,7 @@ __asm__(".text\n.even\n.globl _rp_table_cell_tramp\n_rp_table_cell_tramp:\n"
 
 /* Builds table t: ncols titled columns, weights (0 = as wide as sample), and an optional extra button in the edit row. */
 static void shell_table_new(shell_table *t, int ncols, const char *const *titles, const int *weights, const char *const *samples, Object *extra) {
-    struct TagItem tags[SHELL_TABLE_COLS + 5];
+    struct TagItem tags[SHELL_TABLE_COLS + 7];
     int c, n = 1;
     t->rows.ncols = ncols;
     t->cur = -1;
@@ -509,16 +514,22 @@ static void shell_table_new(shell_table *t, int ncols, const char *const *titles
         t->titles[c] = titles[c];
         t->cols.weight[c] = weights[c];
         t->cols.sample[c] = samples ? samples[c] : NULL;
-        t->field[c] = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG)titles[c], MUIA_String_MaxLen, (ULONG)(SHELL_TABLE_FIELD_MAX + 1), TAG_DONE);
+        if (t->field[c] == NULL) t->field[c] = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG)titles[c], MUIA_String_MaxLen, (ULONG)(SHELL_TABLE_FIELD_MAX + 1), TAG_DONE);
         tags[n].ti_Tag = MUIA_Group_Child;
-        tags[n++].ti_Data = (ULONG)t->field[c];
+        tags[n++].ti_Data = (ULONG)(t->box[c] ? t->box[c] : t->field[c]);
     }
     t->add = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Add", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     t->remove = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    t->up = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Move Up", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    t->down = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Move Down", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     tags[n].ti_Tag = MUIA_Group_Child;
     tags[n++].ti_Data = (ULONG)t->add;
     tags[n].ti_Tag = MUIA_Group_Child;
     tags[n++].ti_Data = (ULONG)t->remove;
+    tags[n].ti_Tag = MUIA_Group_Child;
+    tags[n++].ti_Data = (ULONG)t->up;
+    tags[n].ti_Tag = MUIA_Group_Child;
+    tags[n++].ti_Data = (ULONG)t->down;
     if (extra) {
         tags[n].ti_Tag = MUIA_Group_Child;
         tags[n++].ti_Data = (ULONG)extra;
@@ -538,7 +549,7 @@ static int shell_table_ok(const shell_table *t) {
     int c;
     for (c = 0; c < t->rows.ncols; c++)
         if (t->field[c] == NULL) return 0;
-    return t->list && t->group && t->add && t->remove;
+    return t->list && t->group && t->add && t->remove && t->up && t->down;
 }
 
 /* The fields differ from row cur's cells: write them into it and redraw the list. */
@@ -610,6 +621,13 @@ static Object *shell_table_event(shell_table *t, int action) {
         shell_table_pick(t, r);
         return t->field[0];
     }
+    if (action == SHELL_TABLE_UP || action == SHELL_TABLE_DOWN) {
+        long r = t->cur < 0 ? -1 : rp_rtab_move(&t->rows, (size_t)t->cur, action == SHELL_TABLE_DOWN);
+        if (r < 0) return NULL;
+        SetAttrs(t->list, UPA_List_Count, (ULONG)t->rows.n, TAG_DONE);
+        shell_table_pick(t, r);
+        return NULL;
+    }
     if (t->cur >= 0) { /* SHELL_TABLE_REMOVE */
         rp_rtab_remove(&t->rows, (size_t)t->cur);
         SetAttrs(t->list, UPA_List_Count, (ULONG)t->rows.n, TAG_DONE);
@@ -663,12 +681,12 @@ static int shell_roster_read(const rp_group *g, char *msg, size_t cap) {
 
 static rp_credit g_credits[RP_CREDITS_MAX];
 
-/* The parsed authors, in g_credits; returns how many. */
+/* The parsed credits table rows ("Role | Name"), in g_credits; returns how many. */
 static size_t shell_credits(void) {
-    return rp_parse_credits(shell_field_text(g_authors_field), g_credits, RP_CREDITS_MAX);
+    return rp_parse_credits(shell_table_text(g_credits_tab), g_credits, RP_CREDITS_MAX);
 }
 
-/* The Creators preview under Authors (desktop creators-preview), and the member names that match the name being typed in a
+/* The Creators preview under Credits (desktop creators-preview), and the member names that match the name being typed in a
  * popup list under the field (desktop creators-autocomplete): Up and Down move the highlight, Return, Tab or a click picks. */
 static Object *g_creators_text, *g_creators_row, *g_x_credits_text, *g_creators_pop, *g_creators_list;
 static char g_creators_buf[480], g_x_credits_buf[200];
@@ -726,7 +744,7 @@ static int shell_creators_open(void) {
     return open != 0;
 }
 
-/* Authors changed: the members matching the name being typed, listed under the field while it has the cursor. A name that
+/* Credits changed: the members matching the name being typed, listed under the field while it has the cursor. A name that
  * already is the one match needs no list; member hits need a release server (desktop creatorsAutocomplete). */
 static void shell_creators_popup(Object *app, Object *win) {
     char tok[RP_NICK_MAX + 1];
@@ -744,7 +762,7 @@ static void shell_creators_popup(Object *app, Object *win) {
     if (!shell_creators_open()) SetAttrs(g_creators_pop, UPA_Popstring_Open, TRUE, TAG_DONE);
 }
 
-/* A listed member replaces the name being typed; the cursor goes back to the Authors field. */
+/* A listed member replaces the name being typed; the cursor goes back to the credit Name field. */
 static void shell_creators_pick(Object *win, LONG row) {
     char out[256];
     ULONG inner = 0;
@@ -754,7 +772,7 @@ static void shell_creators_pick(Object *win, LONG row) {
     SetAttrs(win, MUIA_Window_Activate, TRUE, MUIA_Window_ActiveObject, inner, TAG_DONE);
 }
 
-/* Up, Down, Esc or Tab in the Authors field while the list is open. */
+/* Up, Down, Esc or Tab in the credit Name field while the list is open. */
 static void shell_creators_key(Object *win) {
     ULONG key = 0, a = 0;
     if (!shell_creators_open() || g_creators_nhit == 0) return;
@@ -765,7 +783,7 @@ static void shell_creators_key(Object *win) {
     else SetAttrs(g_creators_list, UPA_List_Active, (ULONG)(((LONG)a + (key == 0x4D ? 1 : (LONG)g_creators_nhit - 1)) % (LONG)g_creators_nhit), TAG_DONE);
 }
 
-/* The Authors field was left: the list closes, and a name that is the start of exactly one member becomes that member. */
+/* The credit Name field was left: the list closes, and a name that is the start of exactly one member becomes that member. */
 static void shell_creators_complete(void) {
     char out[256];
     if (shell_creators_open()) SetAttrs(g_creators_pop, UPA_Popstring_Open, FALSE, TAG_DONE);
@@ -915,7 +933,7 @@ static unsigned long shell_form_state(Object *group_cycle, Object *name_field, O
     h = rp_gate_add(h, shell_field_text(name_field));
     h = rp_gate_add(h, shell_field_text(code_field));
     h = rp_gate_add(h, shell_field_text(desc_field));
-    h = rp_gate_add(h, shell_field_text(g_authors_field));
+    h = rp_gate_add(h, shell_table_text(g_credits_tab));
     h = rp_gate_add(h, shell_field_text(g_system_field));
     h = rp_gate_add(h, shell_field_text(g_date_field));
     h = rp_gate_add(h, shell_field_text(g_released_field));
@@ -1721,7 +1739,7 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
     creators[0] = '\0';
     ncredits = shell_credits();
     if (ncredits > 0) {
-        /* the Authors field is the one place a release's people are entered */
+        /* the Credits table is the one place a release's people are entered */
         for (i = 0; i < ncredits; i++) {
             credits[i].role = g_credits[i].role;
             credits[i].name = g_credits[i].name;
@@ -1980,11 +1998,19 @@ static int shell_main(void) {
     arch_field = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)rp_aminet_architectures, TAG_DONE);
     uname_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your name", TAG_DONE);
     email_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Your email address", TAG_DONE);
-    g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Role: Name, Name; Role: Name", MUIA_String_MaxLen, 255UL, TAG_DONE);
-    /* The member list pops under Authors without taking the cursor; an empty zero-weight button keeps the field's width. */
+    g_authors_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Name", MUIA_String_MaxLen, (ULONG)(SHELL_TABLE_FIELD_MAX + 1), TAG_DONE);
+    /* The member list pops under the credit Name without taking the cursor; an empty zero-weight button keeps the field's width. */
     g_creators_pop = g_authors_field == NULL ? NULL
                                              : MUI_NewObject((char *)"UP-Popstring.mcc", UPA_Popstring_String, (ULONG)g_authors_field, UPA_Popstring_NoActivate, (ULONG)TRUE,
                                                              UPA_Popstring_Button, (ULONG)MUI_NewObject(MUIC_Rectangle, MUIA_Weight, 0UL, TAG_DONE), TAG_DONE);
+    {
+        /* desktop credits table; Name is the popup field above, so member hits keep working while a row is typed */
+        static const char *const titles[] = {"Role", "Name"};
+        static const int weights[] = {1, 2};
+        g_credits_tab->field[1] = g_authors_field;
+        g_credits_tab->box[1] = g_creators_pop;
+        shell_table_new(g_credits_tab, 2, titles, weights, NULL, NULL);
+    }
     g_creators_text = shell_label("", UPV_Text_Tone_Muted);
     /* Ellipsis keeps a long server answer from widening the window; the full answer is also in the status line */
     g_code_status = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG) "", UPA_Text_Widest, (ULONG) "Code ABCD is free.", UPA_Text_Ellipsis, (ULONG)TRUE,
@@ -2044,7 +2070,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || g_net_cancel_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || g_revoke_field == NULL || door_btn == NULL || cover_text == NULL || cover_thumb == NULL ||
-        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || !shell_table_ok(g_members) || !shell_table_ok(g_boards) || !shell_table_ok(g_embeds) || g_authors_field == NULL || g_creators_pop == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
+        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || !shell_table_ok(g_members) || !shell_table_ok(g_boards) || !shell_table_ok(g_embeds) || !shell_table_ok(g_credits_tab) || g_authors_field == NULL || g_creators_pop == NULL || g_category_cycle == NULL || g_category_lbl == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_creators_row == NULL || g_system_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nAn UP-MCC class did not load, or memory ran out. Check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
@@ -2052,13 +2078,14 @@ static int shell_main(void) {
     }
     {
         /* Tabs like the desktop wizard, over the steps the Amiga has data for; one page shows at a time, so no scrolling */
-        /* Paired rows (Platform with its detail, date with place, System with number) keep the page inside an 800x600 screen with every row shown */
-        Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), name_field,
-                                                                  row_label("Code"), shell_row(code_field, g_code_status), row_label("Platform"), shell_row(platform_field, g_platform_row),
-                                                                  row_label("Format"), format_cycle, row_label("Description"), desc_field,
-                                                                  row_label("Authors"), g_creators_pop, g_category_lbl, g_category_cycle,
+        /* Paired rows (Name with Code, Platform with its detail, Format with Category, date with place, System with number) keep
+         * the page inside an 800x600 screen with every row and the Credits table shown */
+        Object *page_release = shell_card("Release", shell_form(row_label("Group"), group_slot, row_label("Name"), shell_row(name_field, shell_row(row_label("Code"), shell_row(code_field, g_code_status))),
+                                                                  row_label("Platform"), shell_row(platform_field, g_platform_row),
+                                                                  row_label("Format"), shell_row(format_cycle, shell_row(g_category_lbl, g_category_cycle)), row_label("Description"), desc_field,
+                                                                  area_label("Credits"), g_credits_tab->group,
                                                                   row_label("Release date"), shell_row(g_date_field, shell_row(row_label("Released at"), g_released_field)),
-                                                                  NULL, NULL), g_creators_row, shell_row(g_system_row, g_number_row), NULL, NULL, NULL, NULL);
+                                                                  NULL, NULL, NULL, NULL, NULL, NULL), g_creators_row, shell_row(g_system_row, g_number_row), NULL, NULL, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
         Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
@@ -2170,6 +2197,8 @@ static int shell_main(void) {
         DoMethod(t->list, MUIM_Notify, UPA_List_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_PICK);
         DoMethod(t->add, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_ADD);
         DoMethod(t->remove, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_REMOVE);
+        DoMethod(t->up, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_UP);
+        DoMethod(t->down, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, base + SHELL_TABLE_DOWN);
         for (c = 0; c < t->rows.ncols; c++) {
             ULONG s = 0;
             GetAttr(UPA_Field_String, t->field[c], &s);
@@ -2202,7 +2231,7 @@ static int shell_main(void) {
     {
         ULONG auth_str = 0;
         GetAttr(UPA_Field_String, g_authors_field, &auth_str);
-        if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_AUTHORS);
+        /* its Contents notify is the credits table's EDIT one; the table branch turns every credits event into ID_AUTHORS */
         if (auth_str != 0) DoMethod((Object *)auth_str, MUIM_Notify, MUIA_String_Acknowledge, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CREATORS_ACK);
         DoMethod(g_authors_field, MUIM_Notify, UPA_Field_Key, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CREATORS_KEY);
     }
@@ -2266,6 +2295,16 @@ static int shell_main(void) {
             DoMethod(group_cycle, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_GROUP);
             shell_seed_status(status, &g_groups[0], code_field, format_cycle);
         }
+        if (id >= ID_TABLE && id < ID_TABLE + SHELL_TABLE_COUNT * SHELL_TABLE_ACTIONS) {
+            ULONG ti = (id - ID_TABLE) / SHELL_TABLE_ACTIONS;
+            Object *f = shell_table_event(&g_tables[ti], (int)((id - ID_TABLE) % SHELL_TABLE_ACTIONS));
+            ULONG inner = 0;
+            if (f != NULL) {
+                GetAttr(UPA_Field_String, f, &inner);
+                SetAttrs(win, MUIA_Window_ActiveObject, inner != 0 ? inner : (ULONG)f, TAG_DONE);
+            }
+            if (ti == SHELL_TABLE_CREDITS) id = ID_AUTHORS; /* credits changed: creators preview and name popup follow */
+        }
         if (id == ID_AUTHORS) {
             ULONG ga = 0;
             GetAttr(UPA_Cycle_Active, group_cycle, &ga);
@@ -2282,14 +2321,6 @@ static int shell_main(void) {
             ULONG row = 0;
             GetAttr(UPA_List_Picked, g_creators_list, &row);
             shell_creators_pick(win, (LONG)row);
-        }
-        if (id >= ID_TABLE && id < ID_TABLE + SHELL_TABLE_COUNT * SHELL_TABLE_ACTIONS) {
-            Object *f = shell_table_event(&g_tables[(id - ID_TABLE) / SHELL_TABLE_ACTIONS], (int)((id - ID_TABLE) % SHELL_TABLE_ACTIONS));
-            ULONG inner = 0;
-            if (f != NULL) {
-                GetAttr(UPA_Field_String, f, &inner);
-                SetAttrs(win, MUIA_Window_ActiveObject, inner != 0 ? inner : (ULONG)f, TAG_DONE);
-            }
         }
         if (id == ID_FOCUS) {
             ULONG ao = 0, inner = 0;

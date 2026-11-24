@@ -43,12 +43,14 @@ size_t rp_parse_credits(const char *text, rp_credit *out, size_t max) {
     size_t n = 0;
     const char *p = text;
     while (*p && n < max) {
-        const char *end = p, *colon = NULL, *role, *q;
+        const char *end = p, *colon = NULL, *bar = NULL, *role, *q;
         size_t rlen;
         while (*end && *end != ';' && *end != '\n' && *end != '\r') {
             if (*end == ':' && !colon) colon = end;
+            if (*end == '|' && !bar) bar = end;
             end++;
         }
+        if (bar) colon = bar; /* a credits table row "Role | Name": the role may hold a ':' */
         if (colon) {
             rlen = trim_span(p, colon, &role);
             q = colon + 1;

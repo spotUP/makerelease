@@ -42,6 +42,13 @@ int main(void) {
     CHECK(strcmp(c[2].role, "Graphics") == 0 && strcmp(c[2].name, "C") == 0);
     CHECK(strcmp(c[3].role, "Music") == 0 && strcmp(c[3].name, "D") == 0);
 
+    /* parse: credits table rows split on '|', so a role may hold ':'; a row missing role or name is dropped */
+    n = rp_parse_credits("Code: Gfx | A, B\nMusic\n | C\nText | T", c, RP_CREDITS_MAX);
+    CHECK(n == 3);
+    CHECK(strcmp(c[0].role, "Code: Gfx") == 0 && strcmp(c[0].name, "A") == 0);
+    CHECK(strcmp(c[1].role, "Code: Gfx") == 0 && strcmp(c[1].name, "B") == 0);
+    CHECK(strcmp(c[2].role, "Text") == 0 && strcmp(c[2].name, "T") == 0);
+
     /* parse: a row needs role and name; no colon, empty role, empty names dropped */
     n = rp_parse_credits("Code; : X; Music: ; Gfx: , ; Text: T", c, RP_CREDITS_MAX);
     CHECK(n == 1);

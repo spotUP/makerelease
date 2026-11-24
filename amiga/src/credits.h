@@ -24,7 +24,8 @@ typedef enum { RP_ROLE_CODER, RP_ROLE_DESIGN } rp_role_kind;
 /* Single-line entry format (the desktop only has a table of role/name rows,
  * so this is defined here): "Role: Name, Name; Role: Name". ';' or a newline
  * ends a group, ':' splits role from names, ',' separates names sharing the
- * role. Like the desktop table, a row needs both role and name, so empty
+ * role. A credits table row "Role | Name, Name" splits on its first '|'
+ * instead of ':'. Like the desktop table, a row needs both role and name, so empty
  * pieces and groups without ':' are dropped. Order is kept; fields longer
  * than the buffers are cut. Returns the number of credits written (<= max). */
 size_t rp_parse_credits(const char *text, rp_credit *out, size_t max);
