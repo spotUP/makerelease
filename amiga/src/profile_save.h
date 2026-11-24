@@ -16,7 +16,7 @@ int rp_group_serialize(const rp_group *g, char *out, size_t cap, char *err, size
 /* Validates g (by parsing the serialized text with rp_parse_group), then
  * writes dir/<id>/profile.json via profile.json.tmp + rename. diz_or_null /
  * nfo_or_null: template text written as-is (Latin-1 bytes) to file_id.diz /
- * release.nfo; NULL leaves the file alone; remove_nfo deletes release.nfo.
+ * release.nfo; NULL leaves the file alone (an empty nfo writes no release.nfo); remove_nfo deletes release.nfo.
  * is_new requires the drawer to be absent, otherwise it must exist. */
 int rp_group_save(const char *dir, const rp_group *g, int is_new, const char *diz_or_null, const char *nfo_or_null,
                   int remove_nfo, char *err, size_t errcap);

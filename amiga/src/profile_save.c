@@ -179,7 +179,8 @@ static int save_checked(const char *dir, const rp_group *g, int is_new, const ch
         if (write_text(path, diz_or_null, err, errcap)) goto fail;
     }
     snprintf(path, sizeof path, "%s/" NFO_FILE, folder);
-    if (nfo_or_null) {
+    /* the NFO template is optional: an empty text writes no file (never a 0-byte release.nfo) */
+    if (nfo_or_null && nfo_or_null[0] != '\0') {
         if (write_text(path, nfo_or_null, err, errcap)) goto fail;
     } else if (remove_nfo) {
         remove(path);

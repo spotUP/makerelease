@@ -53,6 +53,7 @@ extern struct IntuitionBase *IntuitionBase;
 #define EID_IMPORT 108
 #define EID_OK 109
 #define EID_CANCEL 110
+#define EID_DIRTY 111
 
 static const char *const ed_renderer_labels[] = {"Up Rough", "X Innovations", "Placeholder", NULL};
 static const char *const ed_backend_labels[] = {"none", "doorserver", NULL};
@@ -67,6 +68,9 @@ static const char *g_dir;
 static char g_status_buf[512];
 static char g_members_buf[ED_MEMBERS_MAX + 1];
 static int g_is_new, g_diz_locked, g_nfo_locked, g_changed;
+static int g_dirty, g_row = -1; /* unsaved edits; the list row the form shows (-1 = new group) */
+static Object *g_app;
+static char g_asl_drawer[512], g_asl_file[128]; /* the template requester remembers where it was */
 
 static Object *g_win, *g_list, *g_status, *g_tabs, *g_pages;
 static Object *g_f_label, *g_f_id, *g_f_url, *g_f_prefix, *g_f_code, *g_c_renderer, *g_c_backend, *g_f_base, *g_f_key;
@@ -105,6 +109,20 @@ static int ed_choice(const char *text, const char *gadgets) {
     CloseLibrary((struct Library *)ib);
     IntuitionBase = prev;
     return (int)r;
+}
+
+/* Programmatic fills fire the edit notifications too: drain the queued ids so only real edits set the flag. */
+static void ed_clean(void) {
+    ULONG sigs = 0, id, other = 0;
+    while ((id = DoMethod(g_app, MUIM_Application_NewInput, (ULONG)&sigs)) != 0) {
+        if (id != EID_DIRTY && id != EID_SELECT) other = id;
+    }
+    if (other != 0) DoMethod(g_app, MUIM_Application_ReturnID, other);
+    g_dirty = 0;
+}
+
+static int ed_confirm_discard(void) {
+    return !g_dirty || ed_choice("Discard the unsaved changes?", "Discard|Cancel") == 1;
 }
 
 static Object *ed_button(const char *caption, ULONG role) {
@@ -205,12 +223,15 @@ static void ed_select(int row) {
     }
     g_diz_locked = d > 0;
     g_nfo_locked = n > 0;
+    g_row = row;
+    ed_clean();
     snprintf(note, sizeof note, "Editing %s.%s%s", g_ids[row], g_diz_locked ? " file_id.diz is too long for this editor and is kept as it is." : "",
              g_nfo_locked ? " release.nfo is too long for this editor and is kept as it is." : "");
     ed_status(note);
 }
 
 static void ed_new(void) {
+    if (!ed_confirm_discard()) return;
     memset(&g_cur, 0, sizeof g_cur);
     SetAttrs(g_list, UPA_List_Active, (ULONG)-1, TAG_DONE);
     ed_set_mode_new(1);
@@ -219,6 +240,8 @@ static void ed_new(void) {
     SetAttrs(g_a_diz, UPA_TextArea_Text, (ULONG) "", TAG_DONE);
     SetAttrs(g_a_nfo, UPA_TextArea_Text, (ULONG) "", TAG_DONE);
     g_diz_locked = g_nfo_locked = 0;
+    g_row = -1;
+    ed_clean();
     ed_status("New group: fill the fields, import a file_id.diz on the Templates tab, then Save.");
 }
 
@@ -331,10 +354,13 @@ static int ed_ask(Object *app, const char *title, const char *prompt, char *out,
 }
 
 static int ed_pick_file(char *out, size_t cap) {
-    struct FileRequester *req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG) "Import a template", ASLFR_RejectIcons, TRUE, TAG_DONE);
+    struct FileRequester *req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG) "Import a template", ASLFR_RejectIcons, TRUE,
+                                                    ASLFR_InitialDrawer, (ULONG)g_asl_drawer, ASLFR_InitialFile, (ULONG)g_asl_file, TAG_DONE);
     int ok = 0;
     if (req == NULL) return 0;
     if (AslRequest(req, NULL) && req->rf_File != NULL && req->rf_File[0] != '\0') {
+        strncpy(g_asl_drawer, (const char *)req->rf_Dir, sizeof g_asl_drawer - 1);
+        strncpy(g_asl_file, (const char *)req->rf_File, sizeof g_asl_file - 1);
         strncpy(out, (const char *)req->rf_Dir, cap - 1);
         out[cap - 1] = '\0';
         ok = AddPart((STRPTR)out, req->rf_File, (ULONG)cap) ? 1 : 0;
@@ -374,6 +400,7 @@ static void ed_duplicate(Object *app) {
         ed_status("Select a saved group to duplicate.");
         return;
     }
+    if (!ed_confirm_discard()) return;
     if (!ed_ask(app, "Duplicate group", "Id of the new group", newid, sizeof newid)) return;
     if (rp_editor_check_id(newid, err, sizeof err) != 0 || rp_group_duplicate(g_dir, g_ids[row], newid, err, sizeof err) != 0) {
         ed_status(err);
@@ -416,6 +443,7 @@ static void ed_reload(void) {
     GetAttr(UPA_List_Active, g_list, &row);
     id[0] = '\0';
     if (!g_is_new && (LONG)row >= 0 && (LONG)row < g_nlist) strcpy(id, g_ids[row]);
+    if (id[0] != '\0' && !ed_confirm_discard()) return;
     ed_select(ed_refresh_list(id[0] ? id : NULL));
     if (id[0] == '\0') ed_status("Reloaded the list.");
 }
@@ -425,6 +453,9 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     Object *page_group, *page_tpl, *left, *right, *bottom, *content;
     ULONG opened = 0, id;
     g_dir = dir;
+    g_app = app;
+    g_dirty = 0;
+    g_row = -1;
     g_changed = 0;
     g_win = NULL;
     *(void **)&g_row_hook.h_Entry = (void *)rp_editor_row_tramp;
@@ -496,6 +527,21 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
     DoMethod(g_win, MUIM_Notify, MUIA_Window_CloseRequest, TRUE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_CLOSE);
     DoMethod(g_tabs, MUIM_Notify, UPA_Tabs_Active, MUIV_EveryTime, (ULONG)g_pages, 3UL, MUIM_Set, MUIA_Group_ActivePage, MUIV_TriggerValue);
     DoMethod(g_list, MUIM_Notify, UPA_List_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_SELECT);
+    {
+        Object *fields[] = {g_f_label, g_f_id, g_f_url, g_f_prefix, g_f_code, g_f_base, g_f_key};
+        Object *areas[] = {g_a_members, g_a_diz, g_a_nfo};
+        size_t i;
+        for (i = 0; i < sizeof fields / sizeof fields[0]; i++) {
+            ULONG str = 0;
+            GetAttr(UPA_Field_String, fields[i], &str);
+            if (str != 0) DoMethod((Object *)str, MUIM_Notify, MUIA_String_Contents, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
+        }
+        for (i = 0; i < sizeof areas / sizeof areas[0]; i++)
+            DoMethod(areas[i], MUIM_Notify, UPA_TextArea_Text, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
+        DoMethod(g_c_renderer, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
+        DoMethod(g_c_backend, MUIM_Notify, UPA_Cycle_Active, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
+        DoMethod(g_k_nfo_remove, MUIM_Notify, MUIA_Selected, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)EID_DIRTY);
+    }
     ed_notify(app, new_btn, EID_NEW);
     ed_notify(app, dup_btn, EID_DUPLICATE);
     ed_notify(app, del_btn, EID_DELETE);
@@ -521,13 +567,17 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
             if (id == EID_SELECT) {
                 ULONG row = (ULONG)-1;
                 GetAttr(UPA_List_Active, g_list, &row);
-                if ((LONG)row >= 0) ed_select((int)row);
+                if ((LONG)row >= 0 && (int)row != g_row) {
+                    if (ed_confirm_discard()) ed_select((int)row);
+                    else SetAttrs(g_list, UPA_List_Active, (ULONG)g_row, TAG_DONE);
+                }
             } else if (id == EID_NEW) ed_new();
             else if (id == EID_DUPLICATE) ed_duplicate(app);
             else if (id == EID_DELETE) ed_delete();
             else if (id == EID_SAVE) ed_save();
             else if (id == EID_RELOAD) ed_reload();
             else if (id == EID_IMPORT) ed_import();
+            else if (id == EID_DIRTY) g_dirty = 1;
         }
         SetAttrs(g_win, MUIA_Window_Open, FALSE, TAG_DONE);
     }

@@ -193,6 +193,15 @@ static void test_overlong_field(void) {
     CHECK_STR(err, "\"members[0].role\" is too long (max 31)");
 }
 
+static void test_new_group_empty_nfo(void) {
+    rp_group g;
+    fill_demo(&g, "nonfo");
+    CHECK(rp_group_save(g_dir, &g, 1, "diz\n", "", 0, err, sizeof err) == 0);
+    CHECK(exists("nonfo/file_id.diz"));
+    CHECK(!exists("nonfo/release.nfo"));
+    CHECK(rp_group_delete(g_dir, "nonfo", err, sizeof err) == 0);
+}
+
 static void test_edit_template_removal(void) {
     rp_group g;
     fill_full(&g, "uprough");
@@ -236,6 +245,7 @@ int main(void) {
     test_refusals();
     test_validation_leaves_folder_untouched();
     test_overlong_field();
+    test_new_group_empty_nfo();
     test_edit_template_removal();
     test_duplicate_and_delete();
     {
