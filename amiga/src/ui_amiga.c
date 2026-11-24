@@ -313,6 +313,7 @@ static Object *g_news_field;
 /* The Release tab authors field: "Role: Name, Name; Role: Name", parsed by rp_parse_credits. */
 static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
+static Object *g_also_aminet_chk;
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
 static Object *g_number_field, *g_number_row;
@@ -1149,12 +1150,13 @@ static void shell_preview_nfo(Object *status, const rp_group *groups, Object *gr
 /* Publish / Revoke / Door repository. Synchronous: the status line says
  * "Working..." and MUI gets one input pump to draw it, then the call blocks the
  * window until the server answers (no cancel; the transport has its own limits). */
-static void shell_online(Object *app, Object *status, int action, const rp_group *groups, Object *group_cycle,
+static int shell_online(Object *app, Object *status, int action, const rp_group *groups, Object *group_cycle,
                          Object *name_field, Object *code_field, Object *platform_field, Object *desc_field,
                          Object *format_cycle) {
     ULONG gactive = 0, active = 0, sigs = 0;
     const rp_group *g;
     char code[40], base[64], packed[72], archive[160], diz[160], msg[400], pub_creators[256];
+    int rc = -1;
     struct DateStamp ds;
     unsigned long seed;
     GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
@@ -1169,21 +1171,21 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
     seed = (unsigned long)ds.ds_Days * 4321UL + (unsigned long)ds.ds_Minute * 3000UL + (unsigned long)ds.ds_Tick;
     if (action == ID_REVOKE && (code[0] == '\0' || !shell_confirm_revoke(code))) {
         SetAttrs(status, UPA_Text_Contents, (ULONG)(code[0] ? "Revoke cancelled." : "Enter the code of the release to revoke."), TAG_DONE);
-        return;
+        return -1;
     }
     SetAttrs(status, UPA_Text_Contents, (ULONG) "Working...", TAG_DONE);
     DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
     if (action == ID_PUBLISH || action == ID_DOOR) {
         if (!rp_gate_open(&g_gate, shell_form_state(group_cycle, name_field, code_field, platform_field, desc_field, format_cycle))) {
             SetAttrs(status, UPA_Text_Contents, (ULONG)(g_gate.built ? "The form changed since Build - press Build again first." : "Press Build first: Publish unlocks after a Build in this session."), TAG_DONE);
-            return;
+            return -1;
         }
     }
     if (action == ID_PUBLISH) {
         rp_online_publish_args a;
         if (shell_roster_read(g, msg, sizeof(msg)) != 0) {
             SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
-            return;
+            return -1;
         }
         memset(&a, 0, sizeof a);
         a.members = g_rows_members; /* n_members 0 = the group's own list */
@@ -1210,13 +1212,14 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
         a.image_path = g_cover;
         a.seed = seed;
         a.http = rp_http_amiga;
-        rp_online_publish(&a, msg, sizeof(msg));
+        rc = rp_online_publish(&a, msg, sizeof(msg));
     } else if (action == ID_REVOKE) {
         rp_online_revoke(g, code, rp_http_amiga, NULL, msg, sizeof(msg));
     } else {
         rp_online_door(g, archive, seed, rp_http_amiga, NULL, msg, sizeof(msg));
     }
     SetAttrs(status, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
+    return rc;
 }
 
 /* Aminet upload (preview_only: show the readme and problems in the Readme box, upload nothing): the readme comes from the form (Aminet tab) and the group, the archive is the one
@@ -1469,6 +1472,7 @@ static int shell_main(void) {
                                 (ULONG)UPV_Button_Role_Accent, TAG_DONE);
     revoke_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Revoke", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     door_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Door repo", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    g_also_aminet_chk = MUI_NewObject((char *)"UP-Checkmark.mcc", UPA_Checkmark_Label, (ULONG) "Also upload to Aminet", TAG_DONE);
     aminet_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Aminet", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     shell_type_labels_init();
     shell_category_labels_init();
@@ -1506,7 +1510,7 @@ static int shell_main(void) {
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
-        aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
+        aminet_btn == NULL || g_also_aminet_chk == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
         g_date_field == NULL || g_released_field == NULL || g_diz_line_field == NULL || g_number_row == NULL || g_platform_row == NULL || g_short_field == NULL || g_readme_view == NULL || aminet_preview_btn == NULL || g_nfo_view == NULL || nfo_preview_btn == NULL) {
         shell_requester("The window objects could not be created.\nFree some memory and check the UP-MCC install, then start again.");
         CloseLibrary(MUIMasterBase);
@@ -1530,7 +1534,7 @@ static int shell_main(void) {
                                         shell_row(remove_file_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
                                           shell_row(row_label("Cover"), cover_text),
-                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
+                                          shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, g_also_aminet_chk), NULL, NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
                                                                      row_label("Short"), g_short_field,
@@ -1699,8 +1703,15 @@ static int shell_main(void) {
         if (id == ID_EMBED_PICK) shell_embed_pick();
         if (id == ID_COVER && shell_pick_cover()) SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
-            shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,
-                         format_cycle);
+            int ok = shell_online(app, status, (int)id, g_groups, group_cycle, name_field, code_field, platform_field, desc_field,
+                                  format_cycle);
+            ULONG also = 0;
+            GetAttr(MUIA_Selected, g_also_aminet_chk, &also);
+            /* "Also upload to Aminet": only after the publish was accepted; the Aminet result replaces the status line */
+            if (id == ID_PUBLISH && ok == 0 && also) {
+                shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,
+                             uname_field, email_field, 0);
+            }
         }
         if (id == ID_NFO_PREVIEW) {
             shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
