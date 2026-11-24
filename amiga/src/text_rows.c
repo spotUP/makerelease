@@ -299,3 +299,89 @@ char *rp_embed_append_image(const char *text, const char *path) {
     *w = '\0';
     return out;
 }
+
+/* ---- row table ---- */
+
+void rp_rtab_free(rp_rtab *t) {
+    size_t i;
+    for (i = 0; i < t->n; i++) free(t->row[i]);
+    free(t->row);
+    t->row = NULL;
+    t->n = t->cap = 0;
+}
+
+static int rtab_push(rp_rtab *t, char *s) {
+    if (!s) return -1;
+    if (t->n == t->cap) {
+        size_t cap = t->cap ? t->cap * 2 : 16;
+        char **r = realloc(t->row, cap * sizeof *r);
+        if (!r) { free(s); return -1; }
+        t->row = r;
+        t->cap = cap;
+    }
+    t->row[t->n++] = s;
+    return (int)t->n - 1;
+}
+
+static char *dup_range(const char *s, const char *e) {
+    char *o = malloc((size_t)(e - s) + 1);
+    if (o) { memcpy(o, s, (size_t)(e - s)); o[e - s] = '\0'; }
+    return o;
+}
+
+int rp_rtab_set_text(rp_rtab *t, const char *text) {
+    const char *p = text ? text : "", *ls, *le;
+    rp_rtab_free(t);
+    while (next_line(&p, &ls, &le))
+        if (rtab_push(t, dup_range(ls, le)) < 0) { rp_rtab_free(t); return -1; }
+    return 0;
+}
+
+char *rp_rtab_text(const rp_rtab *t) {
+    strbuf b = {0};
+    int bad = 0;
+    size_t i;
+    for (i = 0; i < t->n && !bad; i++) bad = sb_puts(&b, t->row[i]) || sb_puts(&b, "\n");
+    return finish(&b, bad);
+}
+
+void rp_rtab_cell(const rp_rtab *t, size_t row, int col, char *out, size_t cap) {
+    const char *s, *e;
+    int c;
+    if (!cap) return;
+    out[0] = '\0';
+    if (row >= t->n || col < 0 || col >= t->ncols) return;
+    s = t->row[row];
+    for (c = 0; c < col; c++) {
+        s = strchr(s, '|');
+        if (!s) return;
+        s++;
+    }
+    e = col == t->ncols - 1 ? s + strlen(s) : s + strcspn(s, "|");
+    while (s < e && isspace((unsigned char)*s)) s++;
+    while (e > s && isspace((unsigned char)e[-1])) e--;
+    if ((size_t)(e - s) >= cap) e = s + cap - 1;
+    memcpy(out, s, (size_t)(e - s));
+    out[e - s] = '\0';
+}
+
+int rp_rtab_set_row(rp_rtab *t, size_t row, const char *const *v) {
+    strbuf b = {0};
+    char *s;
+    if (row >= t->n || put_row(&b, v, t->ncols)) { free(b.data); return -1; }
+    s = finish(&b, 0);
+    if (!s) return -1;
+    s[strcspn(s, "\n")] = '\0';
+    free(t->row[row]);
+    t->row[row] = s;
+    return 0;
+}
+
+int rp_rtab_add(rp_rtab *t) { return rtab_push(t, strdup("")); }
+
+void rp_rtab_remove(rp_rtab *t, size_t row) {
+    if (row >= t->n) return;
+    free(t->row[row]);
+    memmove(t->row + row, t->row + row + 1, (t->n - row - 1) * sizeof *t->row);
+    t->n--;
+}

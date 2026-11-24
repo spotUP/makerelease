@@ -71,4 +71,26 @@ char *rp_format_embed_rows(const rp_embed_row *rows, size_t n);
  * cut to RP_EMBED_CAPTION_MAX. */
 char *rp_embed_append_image(const char *text, const char *path);
 
+/* ---- row table: a rows text held as one raw line per row, for the list editors ----
+ * Row i is text line i + 1, blank rows included, so a parser's error line names the row. The
+ * text goes through the same parsers as before; the table only splits and joins lines. */
+typedef struct {
+    int ncols; /* the last column shows the rest of the line, extra '|' fields included */
+    size_t n, cap;
+    char **row;
+} rp_rtab;
+/* Replaces the rows with the lines of text (LF, CRLF or CR). 0, or -1 out of memory (rows emptied). */
+int rp_rtab_set_text(rp_rtab *t, const char *text);
+/* The rows joined, one per line, as a malloc'd text ("" for none); NULL out of memory. */
+char *rp_rtab_text(const rp_rtab *t);
+/* Column col of row as trimmed text, cut to cap - 1 bytes; "" past the row's fields. */
+void rp_rtab_cell(const rp_rtab *t, size_t row, int col, char *out, size_t cap);
+/* Rewrites row from ncols column texts ('|' becomes '/', line breaks spaces, trailing empty
+ * columns dropped). 0, or -1 for a bad row or out of memory (row unchanged). */
+int rp_rtab_set_row(rp_rtab *t, size_t row, const char *const *v);
+/* Appends an empty row; its index, or -1 out of memory. */
+int rp_rtab_add(rp_rtab *t);
+void rp_rtab_remove(rp_rtab *t, size_t row);
+void rp_rtab_free(rp_rtab *t);
+
 #endif

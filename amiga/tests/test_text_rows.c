@@ -110,6 +110,39 @@ int main(void) {
         free(t);
     }
 
+    /* row table: one raw line per row, row i is parser line i + 1 */
+    {
+        rp_rtab t = {2, 0, 0, NULL};
+        const char *v[2];
+        char cell[8], *s;
+        CHECK(rp_rtab_set_text(&t, "Ace | code\r\n\nBob\rCy | gfx | extra") == 0 && t.n == 4);
+        rp_rtab_cell(&t, 0, 0, cell, sizeof cell);
+        CHECK(strcmp(cell, "Ace") == 0);
+        rp_rtab_cell(&t, 0, 1, cell, sizeof cell);
+        CHECK(strcmp(cell, "code") == 0);
+        rp_rtab_cell(&t, 2, 1, cell, sizeof cell);
+        CHECK(cell[0] == '\0');
+        rp_rtab_cell(&t, 3, 1, cell, sizeof cell); /* last column: rest of the line, cut to cap */
+        CHECK(strcmp(cell, "gfx | e") == 0);
+        rp_rtab_cell(&t, 9, 0, cell, sizeof cell);
+        CHECK(cell[0] == '\0');
+        s = rp_rtab_text(&t);
+        CHECK(s && strcmp(s, "Ace | code\n\nBob\nCy | gfx | extra\n") == 0);
+        CHECK(rp_parse_member_rows(s, m, 8, &err) < 0 && err.line == 4);
+        free(s);
+        v[0] = "Cy";
+        v[1] = "gfx|extra";
+        CHECK(rp_rtab_set_row(&t, 3, v) == 0);
+        v[1] = "";
+        CHECK(rp_rtab_set_row(&t, 0, v) == 0 && rp_rtab_set_row(&t, 9, v) < 0);
+        rp_rtab_remove(&t, 1);
+        CHECK(rp_rtab_add(&t) == 3);
+        CHECK_STR(rp_rtab_text(&t), "Cy\nBob\nCy | gfx/extra\n\n");
+        CHECK(rp_rtab_set_text(&t, "") == 0 && t.n == 0);
+        CHECK_STR(rp_rtab_text(&t), "");
+        rp_rtab_free(&t);
+    }
+
     if (failures) { printf("%d failure(s)\n", failures); return 1; }
     printf("test_text_rows ok\n");
     return 0;
