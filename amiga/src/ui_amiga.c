@@ -34,6 +34,7 @@
 #include "archive.h"
 #include "build_gate.h"
 #include "last_choice.h"
+#include "paths_list.h"
 #include "platform_tag.h"
 #include "aminet_short.h"
 #include "aminet.h"
@@ -188,10 +189,12 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_EDIT_GROUPS 16
 #define ID_FORMAT 17
 #define ID_EMBED_PICK 18
+#define ID_ADDFILE 19
+#define ID_REMOVEFILE 20
 
 #define RP_MAX_FILES_PATH 511
 
-static char g_files[RP_MAX_FILES_PATH + 1];
+static rp_paths g_paths;
 static char g_cover[RP_MAX_FILES_PATH + 1];
 
 /* The ASL file requester for an image. Puts the full path in out (cap bytes). Returns 1 when a file was picked. */
@@ -234,12 +237,13 @@ static int shell_confirm_revoke(const char *code) {
     return r == 1;
 }
 
-/* The ASL drawer requester. Returns 1 when a drawer was picked. */
-static int shell_pick_drawer(void) {
+/* The ASL requester for a drawer or a file: the pick joins g_paths. Returns 1 when the list changed. */
+static int shell_pick_path(int drawers_only) {
     struct FileRequester *req;
-    size_t n;
-    req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG) "Pick the files drawer",
-                              ASLFR_DrawersOnly, TRUE, ASLFR_RejectIcons, TRUE, TAG_DONE);
+    char path[RP_PATH_CAP];
+    int added;
+    req = AllocAslRequestTags(ASL_FileRequest, ASLFR_TitleText, (ULONG)(drawers_only ? "Add a drawer" : "Add a file"),
+                              ASLFR_DrawersOnly, (ULONG)(drawers_only ? TRUE : FALSE), ASLFR_RejectIcons, TRUE, TAG_DONE);
     if (req == NULL) {
         shell_requester("The file requester could not open.\nFree some memory and try again.");
         return 0;
@@ -248,13 +252,15 @@ static int shell_pick_drawer(void) {
         FreeAslRequest(req);
         return 0;
     }
-    strncpy(g_files, req->rf_Dir, sizeof(g_files) - 1);
-    g_files[sizeof(g_files) - 1] = '\0';
-    /* rf_Dir ends in / or : — drop a redundant slash, keep the colon. */
-    n = strlen(g_files);
-    if (n >= 2 && g_files[n - 1] == '/' && g_files[n - 2] != ':') g_files[n - 1] = '\0';
+    snprintf(path, sizeof(path), "%s", req->rf_Dir);
+    if (!drawers_only && req->rf_File != NULL && req->rf_File[0] != '\0' && !AddPart((STRPTR)path, req->rf_File, sizeof(path))) {
+        FreeAslRequest(req);
+        return 0;
+    }
     FreeAslRequest(req);
-    return 1;
+    added = rp_paths_add(&g_paths, path);
+    if (added < 0) shell_requester("The list is full or the path is too long.\nRemove an entry first.");
+    return added > 0;
 }
 
 static const char *base_name_of(const char *path) {
@@ -288,7 +294,16 @@ extern void rp_preview_row_tramp(void);
 __asm__(".text\n.even\n.globl _rp_preview_row_tramp\n_rp_preview_row_tramp:\n"
         "\tmove.l %a1,-(%sp)\n\tjsr _rp_preview_row_c\n\taddq.l #4,%sp\n\trts\n");
 
-static struct Hook g_preview_hook;
+ULONG rp_paths_row_c(UP_ListCell *cell);
+ULONG rp_paths_row_c(UP_ListCell *cell) {
+    if (cell->row < 0 || (size_t)cell->row >= g_paths.n) return (ULONG) "";
+    return (ULONG)g_paths.path[cell->row];
+}
+extern void rp_paths_row_tramp(void);
+__asm__(".text\n.even\n.globl _rp_paths_row_tramp\n_rp_paths_row_tramp:\n"
+        "\tmove.l %a1,-(%sp)\n\tjsr _rp_paths_row_c\n\taddq.l #4,%sp\n\trts\n");
+
+static struct Hook g_preview_hook, g_paths_hook;
 
 /* The Release tab notes field; read by Build, Publish and Aminet. */
 static Object *g_notes_field;
@@ -533,7 +548,10 @@ static unsigned long shell_form_state(Object *group_cycle, Object *name_field, O
     h = rp_gate_add(h, shell_field_text(g_date_field));
     h = rp_gate_add(h, shell_field_text(g_released_field));
     h = rp_gate_add(h, shell_field_text(g_number_field));
-    h = rp_gate_add(h, g_files);
+    {
+        size_t gi;
+        for (gi = 0; gi < g_paths.n; gi++) h = rp_gate_add(h, g_paths.path[gi]);
+    }
     h = rp_gate_add(h, shell_area_raw(g_notes_field));
     h = rp_gate_add(h, shell_area_raw(g_news_field));
     h = rp_gate_add(h, shell_area_raw(g_members_field));
@@ -637,16 +655,17 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
                                   Object *group_cycle, Object *code_field, Object *status) {
     ULONG gactive = 0;
     char code[40], base[64], errmsg[256];
-    const char *paths[1];
+    const char *paths[RP_PATHS_MAX];
+    size_t pi;
     rp_preview_free(&g_prev);
     SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
     {
         GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
         rp_upper(shell_field_text(code_field), code, sizeof(code));
         rp_base_name(groups[gactive].file_prefix, code, base, sizeof(base));
-        paths[0] = g_files;
-        /* no drawer picked: zero paths still lists file_id.diz, <REL>/ and <REL>/<REL>.NFO */
-        if (rp_preview_archive(base, paths, g_files[0] != '\0' ? 1 : 0, &g_prev, errmsg, sizeof(errmsg)) != 0) {
+        for (pi = 0; pi < g_paths.n; pi++) paths[pi] = g_paths.path[pi];
+        /* nothing picked: zero paths still lists file_id.diz, <REL>/ and <REL>/<REL>.NFO */
+        if (rp_preview_archive(base, paths, g_paths.n, &g_prev, errmsg, sizeof(errmsg)) != 0) {
             SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         } else if (g_prev.nnested > 0) {
             snprintf(g_warn, sizeof(g_warn), "Extra nested folder: %s only wraps %s", g_prev.nested[0].path,
@@ -955,9 +974,9 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             return;
         }
     }
-    if (g_files[0] == '\0') {
+    if (g_paths.n == 0) {
         shell_err_at(SHELL_TAB_FILES, NULL);
-        SetAttrs(status, UPA_Text_Contents, (ULONG) "Files: choose a drawer on the Files tab first.", TAG_DONE);
+        SetAttrs(status, UPA_Text_Contents, (ULONG) "Files: add a drawer or file on the Files tab first.", TAG_DONE);
         return;
     }
     if (shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, &r,
@@ -991,33 +1010,37 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             free(nfo);
             nfo = NULL;
         }
-        /* The files drawer, if one was picked. A picked drawer that is
-         * itself called BASE is the release the user already assembled by
+        /* The picked files and drawers. A picked drawer that is itself
+         * called BASE is the release the user already assembled by
          * hand: its contents belong directly in the release drawer. */
-        if (g_files[0] != '\0') {
+        if (g_paths.n > 0) {
+            size_t pi;
             shell_phase(app, status, "Copying the files...");
-            if (same_name_fold(base_name_of(g_files), base)) {
-                DIR *scan = opendir(g_files);
-                struct dirent *e;
-                if (scan == NULL) {
-                    snprintf(errmsg, sizeof(errmsg), "%s: could not be read", g_files);
-                    goto build_fail;
-                }
-                while ((e = readdir(scan)) != NULL) {
-                    char s[576], t[576];
-                    if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
-                    snprintf(s, sizeof(s), "%s/%s", g_files, e->d_name);
-                    snprintf(t, sizeof(t), "%s/%s", inner, e->d_name);
-                    if (rp_copy_tree(s, t, errmsg, sizeof(errmsg)) != 0) {
-                        closedir(scan);
+            for (pi = 0; pi < g_paths.n; pi++) {
+                const char *src = g_paths.path[pi];
+                if (same_name_fold(base_name_of(src), base)) {
+                    DIR *scan = opendir(src);
+                    struct dirent *e;
+                    if (scan == NULL) {
+                        snprintf(errmsg, sizeof(errmsg), "%s: could not be read", src);
                         goto build_fail;
                     }
+                    while ((e = readdir(scan)) != NULL) {
+                        char s[576], t[576];
+                        if (strcmp(e->d_name, ".") == 0 || strcmp(e->d_name, "..") == 0) continue;
+                        snprintf(s, sizeof(s), "%s/%s", src, e->d_name);
+                        snprintf(t, sizeof(t), "%s/%s", inner, e->d_name);
+                        if (rp_copy_tree(s, t, errmsg, sizeof(errmsg)) != 0) {
+                            closedir(scan);
+                            goto build_fail;
+                        }
+                    }
+                    closedir(scan);
+                } else {
+                    char t[576];
+                    snprintf(t, sizeof(t), "%s/%s", inner, base_name_of(src));
+                    if (rp_copy_tree(src, t, errmsg, sizeof(errmsg)) != 0) goto build_fail;
                 }
-                closedir(scan);
-            } else {
-                char t[576];
-                snprintf(t, sizeof(t), "%s/%s", inner, base_name_of(g_files));
-                if (rp_copy_tree(g_files, t, errmsg, sizeof(errmsg)) != 0) goto build_fail;
             }
         }
         if (rp_make_dirs("PROGDIR:releases", errmsg, sizeof(errmsg)) != 0) goto build_fail;
@@ -1369,7 +1392,7 @@ static int shell_main(void) {
     Object *group_slot, *edit_groups_btn;
     Object *group_cycle, *name_field, *code_field, *platform_field, *desc_field, *format_cycle;
     ULONG open_group = 0;
-    Object *files_text, *pick_btn, *build_btn, *status;
+    Object *files_list, *add_file_btn, *remove_file_btn, *pick_btn, *build_btn, *status;
     Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
     Object *tabs, *pages, *preview_btn, *quit_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
@@ -1411,8 +1434,13 @@ static int shell_main(void) {
     desc_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "One-line description", TAG_DONE);
     format_cycle =
         MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)formats, TAG_DONE);
-    files_text = shell_label("(no files drawer picked)", UPV_Text_Tone_Muted);
-    pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Pick...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    *(void **)&g_paths_hook.h_Entry = (void *)rp_paths_row_tramp;
+    files_list = MUI_NewObject((char *)"UP-List.mcc", UPA_List_RowHook, (ULONG)&g_paths_hook, UPA_List_MaxRows, 4UL,
+                               UPA_List_Count, 4UL, /* height from the row count at open, emptied after open */
+                               TAG_DONE);
+    add_file_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Add file...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    remove_file_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Remove selected", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    pick_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Add drawer...", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     build_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Build", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, UPA_Button_Role,
                               (ULONG)UPV_Button_Role_Accent, TAG_DONE);
     preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
@@ -1458,7 +1486,7 @@ static int shell_main(void) {
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
     status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || platform_field == NULL ||
-        desc_field == NULL || format_cycle == NULL || files_text == NULL || pick_btn == NULL ||
+        desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || status == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
         cover_btn == NULL || embed_pick_btn == NULL || publish_btn == NULL || revoke_btn == NULL || door_btn == NULL || cover_text == NULL ||
         aminet_btn == NULL || type_field == NULL || arch_field == NULL || uname_field == NULL || email_field == NULL || g_notes_field == NULL || g_news_field == NULL || g_members_field == NULL || g_boards_field == NULL || g_embeds_field == NULL || g_authors_field == NULL || g_category_cycle == NULL ||
@@ -1481,8 +1509,8 @@ static int shell_main(void) {
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(area_label("Text"), g_nfo_view,
                                                                         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
-        Object *page_files = shell_card("Files to include", shell_row(row_label("Drawer"), files_text),
-                                        shell_row(pick_btn, preview_btn), warn_row, preview_list, NULL, NULL, NULL);
+        Object *page_files = shell_card("Files to include", shell_row(pick_btn, add_file_btn), files_list,
+                                        shell_row(remove_file_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
                                           shell_row(row_label("Cover"), cover_text),
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, NULL), NULL, NULL);
@@ -1544,6 +1572,8 @@ static int shell_main(void) {
     DoMethod(quit_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID,
              (ULONG)MUIV_Application_ReturnID_Quit);
     DoMethod(build_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BUILD);
+    DoMethod(add_file_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_ADDFILE);
+    DoMethod(remove_file_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_REMOVEFILE);
     DoMethod(pick_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PICK);
     DoMethod(preview_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PREVIEW);
     DoMethod(flatten_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_FLATTEN);
@@ -1602,6 +1632,7 @@ static int shell_main(void) {
         return 20;
     }
     SetAttrs(preview_list, UPA_List_Count, 0UL, TAG_DONE);
+    SetAttrs(files_list, UPA_List_Count, 0UL, TAG_DONE);
     shell_seed_status(status, &g_groups[open_group], code_field, format_cycle);
     for (;;) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
@@ -1661,16 +1692,21 @@ static int shell_main(void) {
             shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,
                          uname_field, email_field, id == ID_AMINET_PREVIEW);
         }
-        if (id == ID_PICK && shell_pick_drawer()) {
-            SetAttrs(files_text, UPA_Text_Contents, (ULONG)g_files, TAG_DONE);
-            id = ID_PREVIEW;
+        if ((id == ID_PICK && shell_pick_path(1)) || (id == ID_ADDFILE && shell_pick_path(0))) id = ID_PREVIEW;
+        if (id == ID_REMOVEFILE) {
+            ULONG row = (ULONG)-1;
+            GetAttr(UPA_List_Active, files_list, &row);
+            if ((LONG)row >= 0 && row < g_paths.n) {
+                rp_paths_remove(&g_paths, row);
+                id = ID_PREVIEW;
+            }
         }
         if (id == ID_FLATTEN && g_prev.nnested > 0) {
-            strncpy(g_files, g_prev.nested[0].flatten_to, sizeof(g_files) - 1);
-            g_files[sizeof(g_files) - 1] = '\0';
-            SetAttrs(files_text, UPA_Text_Contents, (ULONG)g_files, TAG_DONE);
+            int at = rp_paths_find(&g_paths, g_prev.nested[0].path);
+            if (at >= 0) rp_paths_replace(&g_paths, (size_t)at, g_prev.nested[0].flatten_to);
             id = ID_PREVIEW;
         }
+        if (id == ID_PREVIEW) SetAttrs(files_list, UPA_List_Count, (ULONG)g_paths.n, UPA_List_Active, (ULONG)-1, TAG_DONE);
         if (id == ID_PREVIEW) {
             shell_refresh_preview(preview_list, warn_row, warn_text, g_groups, group_cycle, code_field, status);
         }
