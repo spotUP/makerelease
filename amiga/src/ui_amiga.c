@@ -36,6 +36,7 @@
 #include "last_choice.h"
 #include "paths_list.h"
 #include "phase_progress.h"
+#include "sections.h"
 #include "platform_tag.h"
 #include "aminet_short.h"
 #include "aminet.h"
@@ -315,6 +316,7 @@ static Object *g_news_field;
 static Object *g_authors_field;
 /* The Release tab date (printed in the NFO, prefilled with today) and Released at (the diz line's "at ..."); the Aminet tab readme preview. */
 static Object *g_also_aminet_chk;
+static Object *g_sec_boards[2], *g_sec_media[3], *g_sec_publish[5], *g_sec_door[1]; /* parts hidden per group, see rp_sections_for */
 static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
@@ -619,10 +621,25 @@ static void shell_number_status(Object *status, const rp_group *g, Object *code_
     SetAttrs(status, UPA_Text_Contents, (ULONG)ok, TAG_DONE);
 }
 
+static void shell_show_all(Object **objs, size_t n, int show) {
+    size_t i;
+    for (i = 0; i < n; i++) SetAttrs(objs[i], MUIA_ShowMe, (ULONG)show, TAG_DONE);
+}
+
+/* Hides the boards, media, Publish and Door parts the group does not have (desktop visibleSections); a label hides with its field. */
+static void shell_apply_sections(const rp_group *g) {
+    rp_sections s = rp_sections_for(g);
+    shell_show_all(g_sec_boards, 2, s.boards);
+    shell_show_all(g_sec_media, 3, s.media);
+    shell_show_all(g_sec_publish, 5, s.publish);
+    shell_show_all(g_sec_door, 1, s.door);
+}
+
 /* On open and on a group change: load the seed, fill the Roster tab, and show the seed's warnings (or the failure) in the status line. */
 static void shell_seed_status(Object *status, const rp_group *g, Object *code_field, Object *format_cycle) {
     char msg[400];
     g_seed_ok = 0;
+    shell_apply_sections(g);
     SetAttrs(g_number_row, MUIA_ShowMe, (ULONG)!RP_ONLINE_HAS_SERVER(g), TAG_DONE);
     if (!RP_ONLINE_HAS_SERVER(g)) {
         shell_roster_prefill(g, 0);
@@ -1533,21 +1550,27 @@ static int shell_main(void) {
                                                                   row_label("Release date"), g_date_field, row_label("Released at"), g_released_field), g_number_row, g_platform_row, NULL, NULL, NULL, NULL);
         Object *page_notes = shell_card("Notes and news", shell_form(area_label("Notes"), g_notes_field, area_label("News"), g_news_field,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), NULL, NULL, NULL, NULL, NULL, NULL);
-        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, area_label("Boards"), g_boards_field,
-                                                                                 area_label("Media embeds"), g_embeds_field,
+        Object *boards_lbl = area_label("Boards"), *embeds_lbl = area_label("Media embeds"), *cover_lbl = row_label("Cover");
+        Object *cover_row = shell_row(cover_lbl, cover_text);
+        Object *page_roster = shell_card("Members, boards and media", shell_form(area_label("Members"), g_members_field, boards_lbl, g_boards_field,
+                                                                                 embeds_lbl, g_embeds_field,
                                                                                  NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(embed_pick_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_nfo = shell_card("NFO and file_id.diz", shell_form(row_label("Diz line"), g_diz_line_field, area_label("Text"), g_nfo_view,
                                                                         NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(nfo_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
         Object *page_files = shell_card("Files to include", shell_row(pick_btn, add_file_btn), files_list,
                                         shell_row(remove_file_btn, preview_btn), warn_row, preview_list, NULL, NULL);
         Object *page_publish = shell_card("Build and publish", shell_row(build_btn, NULL),
-                                          shell_row(row_label("Cover"), cover_text),
+                                          cover_row,
                                           shell_row(cover_btn, publish_btn), shell_row(revoke_btn, door_btn), shell_row(aminet_btn, g_also_aminet_chk), NULL, NULL);
         Object *page_aminet = shell_card("Aminet upload", shell_form(row_label("Directory"), type_field, row_label("Architecture"), arch_field,
                                                                      row_label("Uploader"), uname_field, row_label("Email"), email_field,
                                                                      row_label("Short"), g_short_field,
                                                                      area_label("Readme"), g_readme_view,
                                                                      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL), shell_row(aminet_preview_btn, NULL), NULL, NULL, NULL, NULL, NULL);
+        g_sec_boards[0] = boards_lbl, g_sec_boards[1] = g_boards_field;
+        g_sec_media[0] = embeds_lbl, g_sec_media[1] = g_embeds_field, g_sec_media[2] = embed_pick_btn;
+        g_sec_publish[0] = cover_row, g_sec_publish[1] = cover_btn, g_sec_publish[2] = publish_btn, g_sec_publish[3] = revoke_btn, g_sec_publish[4] = g_also_aminet_chk;
+        g_sec_door[0] = door_btn;
         static const char *const tab_captions[] = { "Release", "Notes", "Roster", "Preview", "Files", "Publish", "Aminet", NULL };
         Object *content;
         tabs = MUI_NewObject((char *)"UP-Tabs.mcc", UPA_Tabs_Captions, (ULONG)tab_captions, TAG_DONE);
