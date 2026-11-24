@@ -258,3 +258,19 @@ describe('replacement patterns in user text', () => {
     expect(nfo).toContain('[$$        ]');
   });
 });
+
+describe('releaseNameLine never cuts the name', () => {
+  it('keeps "Test release name" whole on one framed row', () => {
+    const out = releaseNameLine('Test release name');
+    expect(out.split('\n')).toHaveLength(1);
+    expect(out).toContain('<<-- Test release name -->>');
+  });
+  it('wraps a name longer than the field onto more framed rows', () => {
+    const name = 'A much longer release name that goes on and on past sixty columns of field width';
+    const rows = releaseNameLine(name).split('\n');
+    expect(rows.length).toBeGreaterThan(1);
+    for (const row of rows) expect(row).toHaveLength(frameLine().length);
+    const words = rows.map((r) => r.slice(9, 9 + FIELD_WIDTH).trim()).join(' ');
+    expect(words).toBe(`<<-- ${name} -->>`);
+  });
+});

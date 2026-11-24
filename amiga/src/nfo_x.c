@@ -221,21 +221,26 @@ static int entry_rule(strbuf *b) {
 /* Release name line, "<<-- name -->>", left-heavy centred. */
 static int name_line(strbuf *b, const char *name) {
     strbuf t = { NULL, 0, 0 };
-    size_t n, pad, left;
-    int rc;
+    rp_lines w;
+    size_t i;
+    int rc = 0;
     if (sb_puts(&t, "<<-- ") || sb_puts(&t, name) || sb_puts(&t, " -->>")) {
         free(t.data);
         return -1;
     }
-    n = t.len > FIELD_WIDTH ? FIELD_WIDTH : t.len;
-    pad = FIELD_WIDTH - n;
-    left = (pad + 1) / 2;
-    {
+    /* A name too long for one field row wraps onto further centred rows rather than being cut;
+     * a single word wider than the field is the only clip left. */
+    w = rp_wrap_words(t.data, FIELD_WIDTH, FIELD_WIDTH);
+    free(t.data);
+    if (w.n == 0) return -1;
+    for (i = 0; i < w.n && rc == 0; i++) {
+        size_t len = strlen(w.lines[i]), n = len > FIELD_WIDTH ? FIELD_WIDTH : len, pad = FIELD_WIDTH - n,
+               left = (pad + 1) / 2;
         strbuf f = { NULL, 0, 0 };
-        rc = sb_pad(&f, left) || sb_putn(&f, t.data, n) || sb_pad(&f, pad - left) || frame(b, f.data ? f.data : "");
+        rc = sb_pad(&f, left) || sb_putn(&f, w.lines[i], n) || sb_pad(&f, pad - left) || frame(b, f.data ? f.data : "");
         free(f.data);
     }
-    free(t.data);
+    rp_free_lines(&w);
     return rc;
 }
 

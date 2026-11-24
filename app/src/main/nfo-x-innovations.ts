@@ -3,6 +3,7 @@ import { DIVISIONS } from '../shared/divisions';
 import { memberSkills } from '../shared/members';
 import { applyReleaseLines } from '../shared/diz-release-line';
 import { X_INNOVATIONS_NFO_TEMPLATE } from './x-innovations-template';
+import { wrapWords } from '../shared/text-wrap';
 
 /**
  * The /X Innovations NFO is a fixed drawing with a few regions a release
@@ -45,10 +46,16 @@ export function centerInField(text: string): string {
  * one rule that matches neither.
  */
 export function releaseNameLine(releaseName: string): string {
-  const text = `<<-- ${releaseName} -->>`.slice(0, FIELD_WIDTH);
-  const pad = FIELD_WIDTH - text.length;
-  const left = Math.ceil(pad / 2);
-  return frameLine(' '.repeat(left) + text + ' '.repeat(pad - left));
+  // A name too long for one field row wraps onto further centred rows rather
+  // than being cut; a single word wider than the field is the only clip left.
+  return wrapWords(`<<-- ${releaseName} -->>`, FIELD_WIDTH, FIELD_WIDTH)
+    .map((line) => {
+      const text = line.slice(0, FIELD_WIDTH);
+      const pad = FIELD_WIDTH - text.length;
+      const left = Math.ceil(pad / 2);
+      return frameLine(' '.repeat(left) + text + ' '.repeat(pad - left));
+    })
+    .join('\n');
 }
 
 /**
