@@ -191,6 +191,7 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_EMBED_PICK 18
 #define ID_ADDFILE 19
 #define ID_REMOVEFILE 20
+#define ID_REFRESH 21 /* redraw the file lists; ID_PREVIEW (the button) also runs the dry run */
 
 #define RP_MAX_FILES_PATH 511
 
@@ -937,14 +938,16 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
 }
 
 static void shell_build(Object *app, Object *status, const rp_group *groups, Object *group_cycle, Object *name_field,
-                        Object *code_field, Object *platform_field, Object *desc_field, Object *format_cycle) {
+                        Object *code_field, Object *platform_field, Object *desc_field, Object *format_cycle, int dry) {
     shell_rendered r;
     char errmsg[256];
     const rp_group *g;
     const char *base = r.base, *packed = r.packed, *number;
     char *nfo, *rendered;
     int active;
-    rp_gate_clear(&g_gate);
+    /* A dry run (desktop buildRelease dryRun) writes the same archive and drawer into PROGDIR:dry-run, replacing the last one, and never touches the publish gate. */
+    const char *root = dry ? "PROGDIR:dry-run" : "PROGDIR:releases";
+    if (!dry) rp_gate_clear(&g_gate);
     /* desktop main.ts: the release needs a name and at least one file or folder */
     if (shell_field_text(name_field)[0] == '\0') {
         shell_err_at(SHELL_TAB_RELEASE, name_field);
@@ -1044,27 +1047,35 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
                 }
             }
         }
-        if (rp_make_dirs("PROGDIR:releases", errmsg, sizeof(errmsg)) != 0) goto build_fail;
-        snprintf(archive, sizeof(archive), "PROGDIR:releases/%s", packed);
+        if (rp_make_dirs(root, errmsg, sizeof(errmsg)) != 0) goto build_fail;
+        if (dry) {
+            /* a preview is disposable: the newest replaces the last instead of refusing it */
+            char old[384];
+            snprintf(old, sizeof(old), "%s/%s", root, packed);
+            remove(old);
+            snprintf(old, sizeof(old), "%s/%s", root, base);
+            if (rp_remove_tree(old, errmsg, sizeof(errmsg)) != 0) goto build_fail;
+        }
+        snprintf(archive, sizeof(archive), "%s/%s", root, packed);
         if (stat(archive, &st) == 0) {
             snprintf(errmsg, sizeof(errmsg), "%s already exists - move it away first", packed);
             goto build_fail;
         }
         {
             char finaldir[384];
-            snprintf(finaldir, sizeof(finaldir), "PROGDIR:releases/%s", base);
+            snprintf(finaldir, sizeof(finaldir), "%s/%s", root, base);
             if (stat(finaldir, &st) == 0) {
-                snprintf(errmsg, sizeof(errmsg), "%s already exists in PROGDIR:releases", base);
+                snprintf(errmsg, sizeof(errmsg), "%s already exists in %s", base, root);
                 goto build_fail;
             }
         }
         {
             /* PROGDIR: belongs to each process: the archiver would resolve it to its own drawer. */
             char abs_archive[384];
-            BPTR rl = Lock((STRPTR) "PROGDIR:releases", ACCESS_READ);
+            BPTR rl = Lock((STRPTR)root, ACCESS_READ);
             if (rl == 0 || !NameFromLock(rl, (STRPTR)abs_archive, sizeof(abs_archive) - strlen(packed) - 1)) {
                 if (rl != 0) UnLock(rl);
-                snprintf(errmsg, sizeof(errmsg), "PROGDIR:releases: could not be resolved");
+                snprintf(errmsg, sizeof(errmsg), "%s: could not be resolved", root);
                 goto build_fail;
             }
             UnLock(rl);
@@ -1086,15 +1097,19 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         }
         free(cmd);
         /* The whole outer drawer (DIZ next to BASE/) becomes
-         * PROGDIR:releases/BASE, exactly like the desktop finalize. */
+         * PROGDIR:releases/BASE (PROGDIR:dry-run/BASE for a dry run), exactly like the desktop finalize. */
         {
             char finaldir[384];
-            snprintf(finaldir, sizeof(finaldir), "PROGDIR:releases/%s", base);
+            snprintf(finaldir, sizeof(finaldir), "%s/%s", root, base);
             if (rp_move_dir(outer, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
         }
-        rp_gate_mark(&g_gate, shell_form_state(group_cycle, name_field, code_field, platform_field, desc_field, format_cycle));
-        if (RP_ONLINE_HAS_SERVER(g)) snprintf(done, sizeof(done), "Built %s (release %s)", archive, number);
-        else snprintf(done, sizeof(done), "Built %s", archive);
+        if (dry) {
+            snprintf(done, sizeof(done), "Dry run: %s written, nothing published", archive);
+        } else {
+            rp_gate_mark(&g_gate, shell_form_state(group_cycle, name_field, code_field, platform_field, desc_field, format_cycle));
+            if (RP_ONLINE_HAS_SERVER(g)) snprintf(done, sizeof(done), "Built %s (release %s)", archive, number);
+            else snprintf(done, sizeof(done), "Built %s", archive);
+        }
         SetAttrs(status, UPA_Text_Contents, (ULONG)done, TAG_DONE);
         goto build_end;
     build_fail:
@@ -1640,7 +1655,7 @@ static int shell_main(void) {
         ULONG id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break;
         if (id == ID_BUILD) {
-            shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+            shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 0);
         }
         if (id == ID_EDIT_GROUPS && rp_editor_run(app, win, "PROGDIR:groups") == 1) {
             /* The cycle entries are fixed at creation, so swap in a new cycle built from the reloaded groups. */
@@ -1694,24 +1709,26 @@ static int shell_main(void) {
             shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,
                          uname_field, email_field, id == ID_AMINET_PREVIEW);
         }
-        if ((id == ID_PICK && shell_pick_path(1)) || (id == ID_ADDFILE && shell_pick_path(0))) id = ID_PREVIEW;
+        if ((id == ID_PICK && shell_pick_path(1)) || (id == ID_ADDFILE && shell_pick_path(0))) id = ID_REFRESH;
         if (id == ID_REMOVEFILE) {
             ULONG row = (ULONG)-1;
             GetAttr(UPA_List_Active, files_list, &row);
             if ((LONG)row >= 0 && row < g_paths.n) {
                 rp_paths_remove(&g_paths, row);
-                id = ID_PREVIEW;
+                id = ID_REFRESH;
             }
         }
         if (id == ID_FLATTEN && g_prev.nnested > 0) {
             int at = rp_paths_find(&g_paths, g_prev.nested[0].path);
             if (at >= 0) rp_paths_replace(&g_paths, (size_t)at, g_prev.nested[0].flatten_to);
-            id = ID_PREVIEW;
+            id = ID_REFRESH;
         }
-        if (id == ID_PREVIEW) SetAttrs(files_list, UPA_List_Count, (ULONG)g_paths.n, UPA_List_Active, (ULONG)-1, TAG_DONE);
-        if (id == ID_PREVIEW) {
+        if (id == ID_PREVIEW || id == ID_REFRESH) SetAttrs(files_list, UPA_List_Count, (ULONG)g_paths.n, UPA_List_Active, (ULONG)-1, TAG_DONE);
+        if (id == ID_PREVIEW || id == ID_REFRESH) {
             shell_refresh_preview(preview_list, warn_row, warn_text, g_groups, group_cycle, code_field, status);
         }
+        /* the Preview button also writes the real archive to PROGDIR:dry-run, once the lists show the files */
+        if (id == ID_PREVIEW) shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 1);
         if (g_err_tab != (ULONG)-1) {
             /* the failed check names a field: show its tab and put the cursor there (inner string gadget for UP-Field) */
             ULONG inner = 0;
