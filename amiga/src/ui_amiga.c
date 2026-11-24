@@ -459,8 +459,8 @@ static size_t shell_credits(void) {
 
 /* The Creators preview under Authors (desktop creators-preview) with the member names that match the name being typed
  * (desktop creators-autocomplete, shown as text because the Amiga form has no popup list). */
-static Object *g_creators_text, *g_creators_row;
-static char g_creators_buf[480];
+static Object *g_creators_text, *g_creators_row, *g_x_credits_text;
+static char g_creators_buf[480], g_x_credits_buf[200];
 static rp_member g_creators_members[RP_MEMBERS_MAX];
 
 /* The roster's nicknames; a Members line that does not parse leaves none (Build names the line). */
@@ -475,7 +475,10 @@ static void shell_creators_refresh(int x_group) {
     const char *hit[RP_CREATORS_SUGGEST_MAX];
     size_t n = shell_credits(), nm = shell_creators_members(), k, i, len;
     rp_creators_token(shell_field_text(g_authors_field), tok, sizeof tok);
-    rp_creators_preview(g_credits, n, x_group, g_creators_buf, sizeof g_creators_buf);
+    rp_creators_preview(g_credits, n, g_creators_buf, sizeof g_creators_buf);
+    /* the /X NFO header line sits on the System row, which only /X shows */
+    rp_x_credits_preview(g_credits, n, g_x_credits_buf, sizeof g_x_credits_buf);
+    SetAttrs(g_x_credits_text, UPA_Text_Contents, (ULONG)(x_group ? g_x_credits_buf : ""), TAG_DONE);
     k = rp_creators_matches(tok, g_creators_members, nm, hit, RP_CREATORS_SUGGEST_MAX);
     for (i = 0; i < k && g_sections.creators; i++) { /* member hits need a release server (desktop creatorsAutocomplete) */
         len = strlen(g_creators_buf);
@@ -1634,7 +1637,9 @@ static int shell_main(void) {
                                   UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted, TAG_DONE);
     g_creators_row = g_creators_text ? shell_row(row_label("Creators"), g_creators_text) : NULL;
     g_system_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "aMiEXPRESS", MUIA_String_MaxLen, (ULONG)(sizeof(g_system_prefill) - 1), TAG_DONE);
-    g_system_row = g_system_field ? shell_row(row_label("System"), g_system_field) : NULL;
+    g_x_credits_text = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG) "", UPA_Text_Widest, (ULONG) "NFO header: cODER [Name]  dESIGN [Name]",
+                                     UPA_Text_Ellipsis, (ULONG)TRUE, UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted, TAG_DONE);
+    g_system_row = g_system_field && g_x_credits_text ? shell_row(row_label("System"), shell_row(g_system_field, g_x_credits_text)) : NULL;
     g_date_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "2026-09-21", MUIA_String_MaxLen, 15UL, TAG_DONE);
     g_diz_line_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Banner release line (optional; blank = name at Released at)", MUIA_String_MaxLen, 100UL, TAG_DONE);
     g_released_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "Mysdata 2026 (optional)", MUIA_String_MaxLen, 100UL, TAG_DONE);
