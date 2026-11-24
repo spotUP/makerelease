@@ -32,6 +32,7 @@
 #include <proto/asl.h>
 
 #include "archive.h"
+#include "build_gate.h"
 #include "aminet.h"
 #include "aminet_preview.h"
 #include "release_preview.h"
@@ -315,6 +316,19 @@ static rp_board_row g_rows_boards[RP_ONLINE_BOARDS_MAX];
 static rp_embed_row g_rows_embeds[RP_ONLINE_EMBEDS_MAX];
 static size_t g_nrows_members, g_nrows_boards, g_nrows_embeds;
 
+/* The field a failed check names (desktop field-errors.ts marks it): its tab and object, focused by the main loop.
+ * NULL when the failure belongs to no single field. */
+#define SHELL_TAB_RELEASE 0
+#define SHELL_TAB_ROSTER 2
+#define SHELL_TAB_FILES 4
+static Object *g_err_obj;
+static ULONG g_err_tab = (ULONG)-1; /* -1: no failed field to show */
+
+static void shell_err_at(ULONG tab, Object *obj) {
+    g_err_tab = tab;
+    g_err_obj = obj;
+}
+
 static const char *shell_area_raw(Object *area) {
     ULONG ptr = 0;
     GetAttr(UPA_TextArea_Text, area, &ptr);
@@ -328,16 +342,16 @@ static int shell_roster_read(const rp_group *g, char *msg, size_t cap) {
     int n;
     g_nrows_members = g_nrows_boards = g_nrows_embeds = 0;
     n = rp_parse_member_rows(shell_area_raw(g_members_field), g_rows_members, RP_MEMBERS_MAX, &err);
-    if (n < 0) { snprintf(msg, cap, "Members: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+    if (n < 0) { shell_err_at(SHELL_TAB_ROSTER, g_members_field); snprintf(msg, cap, "Members: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
     g_nrows_members = (size_t)n;
     if (g->renderer == R_XINNOVATIONS) {
         n = rp_parse_board_rows(shell_area_raw(g_boards_field), g_rows_boards, RP_ONLINE_BOARDS_MAX, &err);
-        if (n < 0) { snprintf(msg, cap, "Boards: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+        if (n < 0) { shell_err_at(SHELL_TAB_ROSTER, g_boards_field); snprintf(msg, cap, "Boards: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
         g_nrows_boards = (size_t)n;
     }
     if (RP_ONLINE_HAS_SERVER(g)) {
         n = rp_parse_embed_rows(shell_area_raw(g_embeds_field), g_rows_embeds, RP_ONLINE_EMBEDS_MAX, &err);
-        if (n < 0) { snprintf(msg, cap, "Media embeds: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
+        if (n < 0) { shell_err_at(SHELL_TAB_ROSTER, g_embeds_field); snprintf(msg, cap, "Media embeds: Line %lu: %s", (unsigned long)err.line, err.msg); return -1; }
         g_nrows_embeds = (size_t)n;
     }
     return 0;
@@ -411,6 +425,35 @@ static const char *shell_category(void) {
     ULONG a = 0;
     GetAttr(UPA_Cycle_Active, g_category_cycle, &a);
     return a > 0 && a <= (ULONG)RP_RELEASE_CATEGORY_COUNT ? rp_release_categories[a - 1] : "";
+}
+
+/* Publish and Aminet upload need a Build of the CURRENT form, made in this run (desktop: Publish unlocks after Build). */
+static rp_build_gate g_gate;
+
+/* Hash of every field that goes into the archive, the NFO or the server entry. */
+static unsigned long shell_form_state(Object *group_cycle, Object *name_field, Object *code_field, Object *platform_field,
+                                      Object *desc_field, Object *format_cycle) {
+    ULONG ga = 0, pa = 0, fa = 0;
+    char num[48];
+    unsigned long h = RP_GATE_BEGIN;
+    GetAttr(UPA_Cycle_Active, group_cycle, &ga);
+    GetAttr(UPA_Cycle_Active, platform_field, &pa);
+    GetAttr(UPA_Cycle_Active, format_cycle, &fa);
+    snprintf(num, sizeof num, "%lu/%lu/%lu", (unsigned long)ga, (unsigned long)pa, (unsigned long)fa);
+    h = rp_gate_add(h, num);
+    h = rp_gate_add(h, shell_category());
+    h = rp_gate_add(h, shell_field_text(name_field));
+    h = rp_gate_add(h, shell_field_text(code_field));
+    h = rp_gate_add(h, shell_field_text(desc_field));
+    h = rp_gate_add(h, shell_field_text(g_authors_field));
+    h = rp_gate_add(h, shell_field_text(g_date_field));
+    h = rp_gate_add(h, shell_field_text(g_released_field));
+    h = rp_gate_add(h, g_files);
+    h = rp_gate_add(h, shell_area_raw(g_notes_field));
+    h = rp_gate_add(h, shell_area_raw(g_news_field));
+    h = rp_gate_add(h, shell_area_raw(g_members_field));
+    h = rp_gate_add(h, shell_area_raw(g_boards_field));
+    return rp_gate_add(h, shell_area_raw(g_embeds_field));
 }
 
 /* AmigaOS clock (days since 1978-01-01) as Unix seconds, for the seed's stale-draft ages. */
@@ -597,6 +640,7 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
     rp_upper(code_txt, code, sizeof(code));
     if ((int)strlen(code) != g->code_length) {
         snprintf(errmsg, sizeof(errmsg), "Code must be exactly %d letters or digits.", g->code_length);
+        shell_err_at(SHELL_TAB_RELEASE, code_field);
         return shell_fail(err, errcap, errmsg);
     }
     if (shell_roster_read(g, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
@@ -611,7 +655,8 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
         /* the history entry needs the server's next number and a category */
         category = shell_category();
         if (category[0] == '\0') {
-            return shell_fail(err, errcap, "Choose a category on the Release tab first.");
+            shell_err_at(SHELL_TAB_RELEASE, g_category_cycle);
+            return shell_fail(err, errcap, "Category: choose one on the Release tab first.");
         }
         if (shell_seed_load(g, errmsg, sizeof(errmsg)) != 0) return shell_fail(err, errcap, errmsg);
         if (g_seed.number_text[0]) number = g_seed.number_text;
@@ -779,6 +824,18 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
     const char *base = r.base, *packed = r.packed, *number;
     char *nfo, *rendered;
     int active;
+    rp_gate_clear(&g_gate);
+    /* desktop main.ts: the release needs a name and at least one file or folder */
+    if (shell_field_text(name_field)[0] == '\0') {
+        shell_err_at(SHELL_TAB_RELEASE, name_field);
+        SetAttrs(status, UPA_Text_Contents, (ULONG) "Name: enter the release name on the Release tab first.", TAG_DONE);
+        return;
+    }
+    if (g_files[0] == '\0') {
+        shell_err_at(SHELL_TAB_FILES, NULL);
+        SetAttrs(status, UPA_Text_Contents, (ULONG) "Files: choose a drawer on the Files tab first.", TAG_DONE);
+        return;
+    }
     if (shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, &r,
                              errmsg, sizeof(errmsg)) != 0) {
         SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
@@ -887,6 +944,7 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             snprintf(finaldir, sizeof(finaldir), "PROGDIR:releases/%s", base);
             if (rp_move_dir(outer, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
         }
+        rp_gate_mark(&g_gate, shell_form_state(group_cycle, name_field, code_field, platform_field, desc_field, format_cycle));
         if (RP_ONLINE_HAS_SERVER(g)) snprintf(done, sizeof(done), "Built %s (release %s)", archive, number);
         else snprintf(done, sizeof(done), "Built %s", archive);
         SetAttrs(status, UPA_Text_Contents, (ULONG)done, TAG_DONE);
@@ -952,6 +1010,12 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
     }
     SetAttrs(status, UPA_Text_Contents, (ULONG) "Working...", TAG_DONE);
     DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
+    if (action == ID_PUBLISH || action == ID_DOOR) {
+        if (!rp_gate_open(&g_gate, shell_form_state(group_cycle, name_field, code_field, platform_field, desc_field, format_cycle))) {
+            SetAttrs(status, UPA_Text_Contents, (ULONG)(g_gate.built ? "The form changed since Build - press Build again first." : "Press Build first: Publish unlocks after a Build in this session."), TAG_DONE);
+            return;
+        }
+    }
     if (action == ID_PUBLISH) {
         rp_online_publish_args a;
         if (shell_roster_read(g, msg, sizeof(msg)) != 0) {
@@ -996,7 +1060,7 @@ static void shell_online(Object *app, Object *status, int action, const rp_group
 /* Aminet upload (preview_only: show the readme and problems in the Readme box, upload nothing): the readme comes from the form (Aminet tab) and the group, the archive is the one
  * Build wrote. Synchronous like shell_online. */
 static void shell_aminet(Object *app, Object *status, const rp_group *groups, Object *group_cycle,
-                         Object *code_field, Object *desc_field, Object *format_cycle, Object *type_field,
+                         Object *name_field, Object *platform_field, Object *code_field, Object *desc_field, Object *format_cycle, Object *type_field,
                          Object *arch_field, Object *uname_field, Object *email_field, int preview_only) {
     ULONG gactive = 0, active = 0, sigs = 0;
     const rp_group *g;
@@ -1083,6 +1147,10 @@ static void shell_aminet(Object *app, Object *status, const rp_group *groups, Ob
         SetAttrs(g_readme_view, UPA_TextArea_Text, (ULONG)(view ? view : ""), TAG_DONE);
         free(view);
         snprintf(msg, sizeof(msg), prev.n_problems > 0 ? "Aminet readme: %d problem(s) - see the Readme box." : "Aminet readme looks fine - see the Readme box.", prev.n_problems);
+        goto done;
+    }
+    if (!rp_gate_open(&g_gate, shell_form_state(group_cycle, name_field, code_field, platform_field, desc_field, format_cycle))) {
+        snprintf(msg, sizeof(msg), "%s", g_gate.built ? "Not uploaded - the form changed since Build, press Build again first." : "Not uploaded - press Build first: the upload needs a Build in this session.");
         goto done;
     }
     if (prev.n_problems > 0) {
@@ -1403,7 +1471,7 @@ static int shell_main(void) {
             shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
         if (id == ID_AMINET || id == ID_AMINET_PREVIEW) {
-            shell_aminet(app, status, g_groups, group_cycle, code_field, desc_field, format_cycle, type_field, arch_field,
+            shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,
                          uname_field, email_field, id == ID_AMINET_PREVIEW);
         }
         if (id == ID_PICK && shell_pick_drawer()) {
@@ -1418,6 +1486,17 @@ static int shell_main(void) {
         }
         if (id == ID_PREVIEW) {
             shell_refresh_preview(preview_list, warn_row, warn_text, g_groups, group_cycle, code_field, status);
+        }
+        if (g_err_tab != (ULONG)-1) {
+            /* the failed check names a field: show its tab and put the cursor there (inner string gadget for UP-Field) */
+            ULONG inner = 0;
+            SetAttrs(tabs, UPA_Tabs_Active, g_err_tab, TAG_DONE);
+            if (g_err_obj != NULL) {
+                GetAttr(UPA_Field_String, g_err_obj, &inner);
+                SetAttrs(win, MUIA_Window_ActiveObject, inner != 0 ? inner : (ULONG)g_err_obj, TAG_DONE);
+            }
+            g_err_tab = (ULONG)-1;
+            g_err_obj = NULL;
         }
         if (sigs != 0) Wait(sigs | SIGBREAKF_CTRL_C);
     }
