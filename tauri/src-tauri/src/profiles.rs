@@ -461,15 +461,46 @@ pub async fn load_seed_state(app: AppHandle, profile_id: String) -> Result<Value
 
 #[tauri::command]
 pub async fn pick_paths(app: AppHandle, folders: bool) -> Result<Value, String> {
+    #[cfg(target_os = "macos")]
+    {
+        // NSOpenPanel picks files and folders in one dialog, so the Files tab shows one button here.
+        let _ = folders;
+        return Ok(json!(pick_mixed_mac(&app)?));
+    }
     // Windows and GTK dialogs pick files or folders, never both: the Files tab has a button for each.
-    let picked = if folders {
-        app.dialog().file().blocking_pick_folders().unwrap_or_default()
-    } else {
-        app.dialog().file().blocking_pick_files().unwrap_or_default()
-    };
-    let paths: Result<Vec<String>, String> = picked.into_iter()
-        .map(|f| f.into_path().map(|p| p.display().to_string()).map_err(|e| e.to_string())).collect();
-    Ok(json!(paths?))
+    #[cfg(not(target_os = "macos"))]
+    {
+        let picked = if folders {
+            app.dialog().file().blocking_pick_folders().unwrap_or_default()
+        } else {
+            app.dialog().file().blocking_pick_files().unwrap_or_default()
+        };
+        let paths: Result<Vec<String>, String> = picked.into_iter()
+            .map(|f| f.into_path().map(|p| p.display().to_string()).map_err(|e| e.to_string())).collect();
+        Ok(json!(paths?))
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn pick_mixed_mac(app: &AppHandle) -> Result<Vec<String>, String> {
+    use objc2::MainThreadMarker;
+    use objc2_app_kit::{NSModalResponseOK, NSOpenPanel};
+    let (tx, rx) = std::sync::mpsc::channel();
+    // AppKit panels only run on the main thread; commands run on a worker.
+    app.run_on_main_thread(move || {
+        let Some(mtm) = MainThreadMarker::new() else { let _ = tx.send(Vec::new()); return };
+        let panel = NSOpenPanel::openPanel(mtm);
+        panel.setCanChooseFiles(true);
+        panel.setCanChooseDirectories(true);
+        panel.setAllowsMultipleSelection(true);
+        let paths: Vec<String> = if panel.runModal() == NSModalResponseOK {
+            panel.URLs().iter().filter_map(|u| u.path()).map(|p| p.to_string()).collect()
+        } else {
+            Vec::new()
+        };
+        let _ = tx.send(paths);
+    }).map_err(|e| e.to_string())?;
+    rx.recv().map_err(|e| e.to_string())
 }
 
 #[tauri::command]

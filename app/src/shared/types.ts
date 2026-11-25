@@ -267,8 +267,10 @@ export interface ReleaseDropperApi {
   /** Lets the user pick a template file; null when cancelled. */
   importTemplate(): Promise<{ text: string; name: string } | null>;
   loadSeedState(profileId: string): Promise<SeedState>;
-  /** One native dialog picks files or folders (no platform dialog offers both); picks add up. */
+  /** Native picker; picks add up. macOS picks files and folders together and ignores `folders`. */
   pickPaths(folders: boolean): Promise<string[]>;
+  /** Subscribes to files and folders dragged onto the window; returns the unsubscribe function. */
+  onDragDrop(callback: (event: { type: 'enter' | 'over' | 'drop' | 'leave'; paths?: string[] }) => void): () => void;
   checkCodeAvailability(profileId: string, code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
   /** Subscribes to stage updates of a running build; returns the unsubscribe function. */

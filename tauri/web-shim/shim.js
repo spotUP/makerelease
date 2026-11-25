@@ -11,6 +11,10 @@ window.api = {
   importTemplate: () => call('import_template'),
   loadSeedState: (profileId) => call('load_seed_state', { profileId }),
   pickPaths: (folders) => call('pick_paths', { folders }),
+  onDragDrop: (callback) => {
+    const pending = window.__TAURI__.webview.getCurrentWebview().onDragDropEvent((e) => callback(e.payload));
+    return () => { void pending.then((unlisten) => unlisten()); };
+  },
   checkCodeAvailability: (profileId, code) => call('check_code_availability', { profileId, code }),
   buildRelease: (form, dryRun) => call('build_release', { form, dryRun }),
   onBuildProgress: (callback) => {

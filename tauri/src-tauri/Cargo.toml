@@ -14,6 +14,12 @@ tauri-plugin-dialog = "2"
 trash = "5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
 
+# Same versions tauri already pulls in; only the mixed files-and-folders open panel needs them.
+[target.'cfg(target_os = "macos")'.dependencies]
+objc2 = "0.6"
+objc2-foundation = { version = "0.3", default-features = false, features = ["std", "NSArray", "NSString", "NSURL"] }
+objc2-app-kit = { version = "0.3", default-features = false, features = ["std", "NSApplication", "NSOpenPanel", "NSPanel", "NSResponder", "NSSavePanel", "NSWindow"] }
+
 [dev-dependencies]
 tempfile = "3"
 

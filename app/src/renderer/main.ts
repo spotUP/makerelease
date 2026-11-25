@@ -785,7 +785,9 @@ function checkCode(): void {
 }
 
 async function addPickedPaths(folders: boolean): Promise<void> {
-  const paths = await window.api.pickPaths(folders);
+  addPaths(await window.api.pickPaths(folders));
+}
+function addPaths(paths: string[]): void {
   for (const p of paths) {
     if (!selectedPaths.includes(p)) selectedPaths.push(p);
   }
@@ -793,6 +795,15 @@ async function addPickedPaths(folders: boolean): Promise<void> {
 }
 pickFilesBtn.addEventListener('click', () => void addPickedPaths(false));
 $<HTMLButtonElement>('pick-folders-btn').addEventListener('click', () => void addPickedPaths(true));
+// The macOS panel picks files and folders together, so one button covers both there.
+if (navigator.userAgent.includes('Mac')) {
+  pickFilesBtn.textContent = 'Add...';
+  $<HTMLButtonElement>('pick-folders-btn').hidden = true;
+}
+window.api.onDragDrop((e) => {
+  document.body.classList.toggle('drop-target', e.type === 'enter' || e.type === 'over');
+  if (e.type === 'drop' && e.paths) addPaths(e.paths);
+});
 
 /**
  * The NFO pane (and a placeholder profile's DIZ) shows what a build would
