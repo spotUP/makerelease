@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-  <!-- makerelease app icon: a 3.5" floppy disk, the medium Amiga releases ship on,
+  <!-- Release Dropper app icon: a 3.5" floppy disk, the medium Amiga releases ship on,
        in the app's accent orange on its dark background. Source for icon.png;
        regenerate with: rsvg-convert -w 1024 -h 1024 icon.svg -o icon.png -->
   <defs>

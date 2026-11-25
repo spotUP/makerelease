@@ -1,5 +1,5 @@
-Up Rough Release Maker - Linux
-==============================
+Up Rough Release Dropper - Linux
+================================
 
 1. REQUIRED TOOLS
 
@@ -14,8 +14,8 @@ Up Rough Release Maker - Linux
 
    AppImage - no install, just make it executable:
 
-       chmod +x makerelease_*.AppImage
-       ./makerelease_*.AppImage
+       chmod +x ./*.AppImage
+       ./*.AppImage
 
    If it refuses to start, your distro is probably missing FUSE 2:
 

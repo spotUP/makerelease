@@ -1,11 +1,11 @@
-# Release Maker
+# Release Dropper
 
 An Amiga (M68k, AmigaOS 3.x, MUI 3.8) release packer for the demoscene.
 It takes your group's templates and your release files and packs a finished,
 upload-ready scene release: the archive, the NFO, the `FILE_ID.DIZ` and the
 Aminet `.readme`.
 
-Sibling of `makerelease` (the desktop release baker): same pack logic, same
+Sibling of the Release Dropper desktop app: same pack logic, same
 templates, native Amiga UI. A `FILE_ID.DIZ` and NFO built here are
 byte-identical to the ones the desktop build makes from the same input.
 

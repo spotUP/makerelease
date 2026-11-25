@@ -335,7 +335,7 @@ pub fn output_root_for(app: &AppHandle, profile: &Value) -> Res<PathBuf> {
     )
 }
 
-/// Electron's userData: Application Support / %APPDATA% / ~/.config, joined with "makerelease".
+/// Electron's userData: Application Support / %APPDATA% / ~/.config, joined with "makerelease" (the old app name: kept so existing profiles survive the rename).
 fn user_data_dir(app: &AppHandle) -> Res<PathBuf> {
     let p = app.path();
     let base = if cfg!(target_os = "linux") { p.config_dir() } else { p.data_dir() };

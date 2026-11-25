@@ -1,4 +1,4 @@
-/* Release Maker MUI shell. A plain MUI 3.8 program built against the UP-MCC
+/* Release Dropper MUI shell. A plain MUI 3.8 program built against the UP-MCC
  * release headers only (vendor/up-mcc): every class opens by file name, so
  * the code here holds no class implementation. Needs UP-MCC 1.0 in
  * MUI:Libs/mui (UP-<Name>.mcc) with up-mcc.library in LIBS:, and at least
@@ -76,7 +76,7 @@ void shell_requester(const char *text) {
     IntuitionBase = ib;
     es.es_StructSize = sizeof es;
     es.es_Flags = 0;
-    es.es_Title = (UBYTE *)"Release Maker";
+    es.es_Title = (UBYTE *)"Release Dropper";
     es.es_TextFormat = (UBYTE *)"%s";
     es.es_GadgetFormat = (UBYTE *)"Ok";
     EasyRequest(NULL, &es, NULL, (APTR)text);
@@ -263,7 +263,7 @@ static int shell_confirm_revoke(const char *code) {
     IntuitionBase = ib;
     es.es_StructSize = sizeof es;
     es.es_Flags = 0;
-    es.es_Title = (UBYTE *)"Release Maker";
+    es.es_Title = (UBYTE *)"Release Dropper";
     es.es_TextFormat = (UBYTE *)"Revoke release %s?\nThis removes its catalog entry, frees its release number\nand code, and deletes the published archive.\nOnly the most recently created release can be revoked.";
     es.es_GadgetFormat = (UBYTE *)"Revoke|Cancel";
     r = EasyRequest(NULL, &es, NULL, (APTR)code);
@@ -2131,7 +2131,7 @@ static int shell_main(void) {
 
     MUIMasterBase = OpenLibrary((CONST_STRPTR) "muimaster.library", 19);
     if (MUIMasterBase == NULL) {
-        shell_requester("muimaster.library 19 (MUI 3.8) is not installed.\nInstall MUI 3.8, then start Release Maker again.");
+        shell_requester("muimaster.library 19 (MUI 3.8) is not installed.\nInstall MUI 3.8, then start Release Dropper again.");
         return 20;
     }
     if (shell_load_groups(broken, sizeof(broken)) < 0) {
@@ -2356,8 +2356,8 @@ static int shell_main(void) {
         CloseLibrary(MUIMasterBase);
         return 20;
     }
-    app = MUI_NewObject((char *)MUIC_Application, MUIA_Application_Title, (ULONG) "Release Maker",
-                        MUIA_Application_Base, (ULONG) "RLSPACK", MUIA_Application_Window, (ULONG)win, TAG_DONE);
+    app = MUI_NewObject((char *)MUIC_Application, MUIA_Application_Title, (ULONG) "Release Dropper",
+                        MUIA_Application_Base, (ULONG) "RLSDROP", MUIA_Application_Window, (ULONG)win, TAG_DONE);
     if (app == NULL) {
         shell_requester("The application could not be created.\nMUI did not start the application, or memory ran out. Check the MUI install, then start again.");
         MUI_DisposeObject(win);
@@ -2486,7 +2486,7 @@ static int shell_main(void) {
         if (id == ID_EDIT_GROUPS && rp_editor_run(app, win, "PROGDIR:groups") == 1) {
             /* The cycle entries are fixed at creation, so swap in a new cycle built from the reloaded groups. */
             if (shell_load_groups(broken, sizeof(broken)) < 0 || g_ngroups == 0) {
-                shell_requester(broken[0] ? broken : "No usable groups left.\nRestart Release Maker after fixing the group drawers.");
+                shell_requester(broken[0] ? broken : "No usable groups left.\nRestart Release Dropper after fixing the group drawers.");
                 break;
             }
             DoMethod(group_slot, MUIM_Group_InitChange);
@@ -2495,7 +2495,7 @@ static int shell_main(void) {
             MUI_DisposeObject(group_cycle);
             group_cycle = MUI_NewObject((char *)"UP-Cycle.mcc", UPA_Cycle_Entries, (ULONG)g_group_labels, TAG_DONE);
             if (group_cycle == NULL) {
-                shell_requester("The Group cycle could not be rebuilt.\nRestart Release Maker.");
+                shell_requester("The Group cycle could not be rebuilt.\nRestart Release Dropper.");
                 break;
             }
             DoMethod(group_slot, OM_ADDMEMBER, (ULONG)group_cycle);

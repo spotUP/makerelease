@@ -1,4 +1,4 @@
-# makerelease
+# Release Dropper
 
 A desktop app that packs a demoscene release: it writes the NFO and the
 `file_id.diz` from your group's own templates, packs everything into an LHA

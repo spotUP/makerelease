@@ -1,7 +1,7 @@
 {
-  "name": "makerelease",
+  "name": "release-dropper",
   "version": "0.1.0",
-  "description": "Renderer and shared code for makerelease (the Tauri app in ../tauri loads the compiled renderer)",
+  "description": "Renderer and shared code for Release Dropper (the Tauri app in ../tauri loads the compiled renderer)",
   "private": true,
   "homepage": "https://github.com/spotUP/makerelease",
   "author": {

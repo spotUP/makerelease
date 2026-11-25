@@ -1,6 +1,6 @@
-# makerelease rules
+# Release Dropper rules
 
-Project rules for makerelease, the Tauri app that packs demoscene releases
+Project rules for Release Dropper (repo makerelease), the Tauri app that packs demoscene releases
 from per-group profiles, and numbers and publishes Up Rough and /X Innovations
 releases through their server. Global rules in
 `~/.claude/CLAUDE.md` apply unless overridden here. `CLAUDE.md` is a pointer

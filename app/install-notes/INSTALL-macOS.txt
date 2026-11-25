@@ -1,5 +1,5 @@
-Up Rough Release Maker - macOS
-==============================
+Up Rough Release Dropper - macOS
+================================
 
 1. REQUIRED TOOLS
 
@@ -12,7 +12,7 @@ Up Rough Release Maker - macOS
 
 2. INSTALL
 
-   Unzip and drag makerelease.app to Applications. One app runs natively
+   Unzip and drag Release Dropper.app to Applications. One app runs natively
    on both Apple Silicon and Intel Macs.
 
 3. FIRST LAUNCH
@@ -24,7 +24,7 @@ Up Rough Release Maker - macOS
 
    If macOS still blocks it, clear the quarantine flag:
 
-       xattr -cr /Applications/makerelease.app
+       xattr -cr "/Applications/Release Dropper.app"
 
 4. WHERE YOUR BUILDS GO
 

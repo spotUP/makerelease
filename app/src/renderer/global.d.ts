@@ -1,7 +1,7 @@
-import { MakereleaseApi } from '../shared/types';
+import { ReleaseDropperApi } from '../shared/types';
 
 declare global {
   interface Window {
-    api: MakereleaseApi;
+    api: ReleaseDropperApi;
   }
 }

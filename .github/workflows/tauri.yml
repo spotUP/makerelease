@@ -73,7 +73,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: makerelease-tauri-${{ runner.os }}
+          name: release-dropper-tauri-${{ runner.os }}
           path: tauri/src-tauri/target/release/bundle/
           if-no-files-found: error
 
@@ -81,6 +81,6 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: runner.os == 'Windows'
         with:
-          name: makerelease-tauri-Windows-exe
-          path: tauri/src-tauri/target/release/makerelease.exe
+          name: release-dropper-tauri-Windows-exe
+          path: tauri/src-tauri/target/release/release-dropper.exe
           if-no-files-found: error

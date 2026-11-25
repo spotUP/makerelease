@@ -7,7 +7,7 @@ const DEFAULT_ROW = DIVISIONS.uprough.editableDizRows[0].row;
 
 // The file_id.diz banner art is fixed: it is inherited verbatim from the last
 // published release (SeedState.currentDizText, falling back to
-// DEFAULT_DIZ_BANNER) and the release maker deliberately gives nobody a way to
+// DEFAULT_DIZ_BANNER) and Release Dropper deliberately gives nobody a way to
 // retype it - hand-editing the 45x10 grid is how the art got mangled before.
 // Exactly one line changes per release, the one naming the release, and this
 // module is the only code that writes it.

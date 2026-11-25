@@ -1,4 +1,4 @@
-# makerelease: developer notes
+# Release Dropper: developer notes
 
 User documentation is in the [root README](../README.md). This page is for
 working on the app itself.

@@ -17,7 +17,7 @@ for d in DH0:Packer DH0:Packer/groups $(for g in $G; do echo DH0:Packer/groups/$
 # AmiSSL: for the packer's TLS (same line as RIG_LIBS in UP-Term vtcon rig.py); a fresh rig has none after go
 $P exec "Assign >NIL: AmiSSL: DH0:AmiSSL" >/dev/null 2>&1
 # quit every running packer and flush: MUI keeps the old .mcc in memory, so a new instance would reuse it
-for i in 1 2 3 4; do timeout 20 $P rexx "address 'RLSPACK.1'; 'QUIT'" 2>&1 | grep -q '^rc 10' && break; sleep 2; done
+for i in 1 2 3 4; do timeout 20 $P rexx "address 'RLSDROP.1'; 'QUIT'" 2>&1 | grep -q '^rc 10' && break; sleep 2; done
 $P exec "avail flush >NIL:" >/dev/null 2>&1
 for f in "$U"/UP-*.mcc; do $P put "$f" "MUI:Libs/mui/$(basename "$f")" >/dev/null || { echo "put fail $f"; fail=1; }; done
 $P put "$U/up-mcc.library" VTCX:ixp6/up-mcc.library >/dev/null || { echo "put fail up-mcc.library"; fail=1; }

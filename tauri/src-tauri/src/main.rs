@@ -1,4 +1,4 @@
-// Tauri shell for makerelease. Each module mirrors one slice of app/src/main (Electron).
+// Tauri shell for Release Dropper. Each module mirrors one slice of app/src/main (Electron).
 // Command names are the snake_case of the preload bridge calls (app/src/preload).
 mod build;
 mod net;
@@ -31,5 +31,5 @@ fn main() {
             net::delete_release,
         ])
         .run(tauri::generate_context!())
-        .expect("error while running makerelease");
+        .expect("error while running Release Dropper");
 }

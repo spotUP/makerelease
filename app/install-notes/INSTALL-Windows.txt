@@ -1,5 +1,5 @@
-Up Rough Release Maker - Windows
-================================
+Up Rough Release Dropper - Windows
+==================================
 
 1. REQUIRED TOOLS
 
@@ -30,7 +30,7 @@ Up Rough Release Maker - Windows
 
 3. RUN
 
-       makerelease.exe
+       release-dropper.exe
 
    Portable: nothing to install. Keep the .exe anywhere and run it.
    It uses the Microsoft Edge WebView2 runtime, which Windows 10 and 11

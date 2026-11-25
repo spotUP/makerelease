@@ -257,7 +257,7 @@ export interface ProfileEditState {
 /** Same shape as the publish outcomes: a refusal is returned, not thrown, so its message survives IPC. */
 export type ProfileEditOutcome = { ok: true } | { ok: false; error: string };
 
-export interface MakereleaseApi {
+export interface ReleaseDropperApi {
   listProfiles(): Promise<ProfileListEntry[]>;
   openProfilesFolder(): Promise<void>;
   newProfileDraft(): Promise<ProfileEditState>;

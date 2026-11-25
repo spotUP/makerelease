@@ -1019,7 +1019,7 @@ fn remove_path(p: &Path) -> Result<(), String> {
 fn make_temp_dir() -> Result<PathBuf, String> {
     let nanos = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_nanos());
     for attempt in 0..100u32 {
-        let dir = std::env::temp_dir().join(format!("makerelease-{:x}{attempt}", nanos ^ u128::from(std::process::id())));
+        let dir = std::env::temp_dir().join(format!("release-dropper-{:x}{attempt}", nanos ^ u128::from(std::process::id())));
         match fs::create_dir(&dir) {
             Ok(()) => return Ok(dir),
             Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
@@ -1221,7 +1221,7 @@ pub fn preview_outputs_core(env: &Env, sent: &Value) -> Result<Value, String> {
 // ---------------------------------------------------------------- Tauri commands
 
 pub(crate) fn profiles_dir(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    if let Some(dir) = std::env::var_os("MAKERELEASE_PROFILES_DIR") {
+    if let Some(dir) = std::env::var_os("RELEASE_DROPPER_PROFILES_DIR") {
         return Ok(PathBuf::from(dir));
     }
     crate::profiles::profiles_dir(app)
@@ -1885,8 +1885,8 @@ mod tests {
 
     #[test]
     fn run_tool_missing_binary_gets_install_hint() {
-        let e = run_tool("makerelease-no-such-tool", &[], None, "install it somehow").unwrap_err();
-        assert_eq!(e, "\"makerelease-no-such-tool\" was not found on your PATH — install it somehow.");
+        let e = run_tool("release-dropper-no-such-tool", &[], None, "install it somehow").unwrap_err();
+        assert_eq!(e, "\"release-dropper-no-such-tool\" was not found on your PATH — install it somehow.");
     }
 
     #[test]
