@@ -146,6 +146,13 @@ Object *shell_gap(ULONG w, ULONG h) {
                          h ? MUIA_FixHeight : TAG_IGNORE, h, TAG_DONE);
 }
 
+/* A w px gap in the bottom row that paints the card face over its whole box, row height included. The row relays out on its own
+ * (Cancel or the gauge shown or hidden, a button caption changed) and MUI redraws only that row; a FillArea FALSE Rectangle paints
+ * nothing then, so the gap kept the pixels of whatever sat there before (a button face, the gauge track). */
+static Object *shell_row_gap(ULONG w) {
+    return MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG) "", UPA_Text_FillHeight, (ULONG)TRUE, MUIA_FixWidth, w, TAG_DONE);
+}
+
 /* Each page scrolls vertically inside an UP-Scrollgroup, so the window's minimum height is the tabs and bottom bar only and it opens on a
  * 640x256 PAL screen; on a taller screen the window takes the page's full height and the bar stays hidden. */
 Object *top_page(Object *card) {
@@ -2258,8 +2265,10 @@ static int shell_main(void) {
     g_gauge = MUI_NewObject((char *)"UP-Progress.mcc", UPA_Progress_Value, 0UL, UPA_Progress_Max, 100UL, MUIA_ShowMe, (ULONG)FALSE, MUIA_FixWidth, 160UL, TAG_DONE);
     g_template_status = shell_label("", UPV_Text_Tone_Muted);
     g_diz_count = shell_label("", UPV_Text_Tone_Muted);
-    g_toast = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)"", UPA_Text_Timeout, 5000UL, MUIA_HorizWeight, 60UL, TAG_DONE);
-    status = shell_label(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build.", UPV_Text_Tone_Muted);
+    g_toast = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)"", UPA_Text_Timeout, 5000UL, UPA_Text_FillHeight, (ULONG)TRUE, MUIA_HorizWeight, 60UL, TAG_DONE);
+    /* FillHeight: status and toast take over the row's gap when the gauge or Cancel hides; erasing only their text height left the rows above and below stale */
+    status = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)(broken[0] ? broken : "Fill in the release, then open the Publish tab and press Build."),
+                           UPA_Text_Tone, (ULONG)UPV_Text_Tone_Muted, UPA_Text_FillHeight, (ULONG)TRUE, TAG_DONE);
     if (group_cycle == NULL || group_slot == NULL || edit_groups_btn == NULL || name_field == NULL || code_field == NULL || g_code_status == NULL || platform_field == NULL ||
         desc_field == NULL || format_cycle == NULL || files_list == NULL || add_file_btn == NULL || remove_file_btn == NULL || pick_btn == NULL ||
         build_btn == NULL || back_btn == NULL || next_btn == NULL || g_net_cancel_btn == NULL || status == NULL || g_template_status == NULL || g_diz_count == NULL || g_gauge == NULL || preview_btn == NULL || preview_list == NULL || warn_row == NULL ||
@@ -2314,8 +2323,8 @@ static int shell_main(void) {
         content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)(tabs_row = shell_row(tabs, quit_btn)),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
-                                                                          MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), MUIA_Group_Child, (ULONG)status, MUIA_Group_Child, (ULONG)g_toast,
-                                                                          MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)g_net_cancel_btn, MUIA_Group_Child, (ULONG)back_btn, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD, 0), MUIA_Group_Child, (ULONG)next_btn, MUIA_Group_Child, (ULONG)shell_gap(SHELL_PAD * 2, 0), TAG_DONE),
+                                                                          MUIA_Group_Child, (ULONG)shell_row_gap(SHELL_PAD * 2), MUIA_Group_Child, (ULONG)status, MUIA_Group_Child, (ULONG)g_toast,
+                                                                          MUIA_Group_Child, (ULONG)g_gauge, MUIA_Group_Child, (ULONG)shell_row_gap(SHELL_PAD), MUIA_Group_Child, (ULONG)g_net_cancel_btn, MUIA_Group_Child, (ULONG)back_btn, MUIA_Group_Child, (ULONG)shell_row_gap(SHELL_PAD), MUIA_Group_Child, (ULONG)next_btn, MUIA_Group_Child, (ULONG)shell_row_gap(SHELL_PAD * 2), TAG_DONE),
                                                   TAG_DONE)
                                   : NULL;
         /* Window padding: MUI adds 4 px (3 px top and bottom) itself, these bands bring every edge to 8. KeepSpacing stops UP-Panel
