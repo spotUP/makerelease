@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
 # Builds the three release zips on ~/Desktop: universal macOS app locally,
 # Windows exe and Linux AppImage from the latest green "Tauri build" run on tauri-ci.
-# --private: macOS only, with app/private-profiles (keys) bundled. Keys never go to
-# public CI, so there is no private Windows/Linux build.
+# --private: the same three zips with app/private-profiles (keys): bundled in the
+# macOS app, a private-profiles/ folder beside the CI exe and AppImage (profiles.rs
+# seeds from there). Keys never go to public CI.
 set -euo pipefail
 
 PRIVATE=0
@@ -16,9 +17,7 @@ trap 'rm -rf "$STAGE"' EXIT
 
 cd "$ROOT"
 NOTES=app/install-notes
-if [ "$PRIVATE" = 1 ]; then
-  node tauri/scripts/check-private-profiles.mjs
-else
+[ "$PRIVATE" = 1 ] && node tauri/scripts/check-private-profiles.mjs
 read -r RUN SHA < <(gh run list -R "$REPO" -b tauri-ci -w "Tauri build" -s success -L 1 --json databaseId,headSha -q '.[0] | "\(.databaseId) \(.headSha)"')
 [ -n "${RUN:-}" ] || { echo "no successful Tauri build run on tauri-ci" >&2; exit 1; }
 echo "CI run $RUN, commit $SHA"
@@ -34,6 +33,11 @@ APPIMAGE=$(find "$STAGE/dl-linux" -name '*.AppImage' | head -n1)
 cp "$APPIMAGE" "$STAGE/linux/"
 cp "$NOTES/INSTALL-Windows.txt" "$STAGE/win/INSTALL.txt"
 cp "$NOTES/INSTALL-Linux.txt" "$STAGE/linux/INSTALL.txt"
+if [ "$PRIVATE" = 1 ]; then
+  for d in win linux; do
+    cp -R app/private-profiles "$STAGE/$d/private-profiles"
+    printf '\nPRIVATE BUILD: keep the private-profiles folder next to the program\nfor the first start; it holds the group keys, do not share it.\n' >> "$STAGE/$d/INSTALL.txt"
+  done
 fi
 
 # macOS universal, built locally against the current renderer
@@ -48,7 +52,8 @@ mkdir "$STAGE/mac"
 ditto "tauri/src-tauri/target/universal-apple-darwin/release/bundle/macos/Release Dropper.app" "$STAGE/mac/Release Dropper.app"
 cp "$NOTES/INSTALL-macOS.txt" "$STAGE/mac/INSTALL.txt"
 
-if [ "$PRIVATE" = 1 ]; then PAIRS="macOS:mac"; SUFFIX="_-_private"; else PAIRS="macOS:mac Windows:win Linux:linux"; SUFFIX=""; fi
+SUFFIX=""; [ "$PRIVATE" = 1 ] && SUFFIX="_-_private"
+PAIRS="macOS:mac Windows:win Linux:linux"
 for pair in $PAIRS; do
   zip="$OUT/Up_Rough_Release_Dropper_-_${pair%%:*}${SUFFIX}.zip"
   rm -f "$zip"

@@ -347,8 +347,12 @@ pub fn profiles_dir(app: &AppHandle) -> Res<PathBuf> { Ok(user_data_dir(app)?.jo
 /// First-launch seeding, same as index.ts: private bundle when present, else the example.
 pub fn prepare_profiles(app: &AppHandle) -> Res<()> {
     let dir = profiles_dir(app)?;
+    // Private Windows/Linux zips ship private-profiles/ beside the exe or AppImage (keys never go to CI).
+    let beside = std::env::var_os("APPIMAGE").map(PathBuf::from).or_else(|| std::env::current_exe().ok())
+        .and_then(|p| p.parent().map(|d| d.join("private-profiles")));
     let bundled = std::env::var_os("PRIVATE_PROFILES_DIR").map(PathBuf::from)
-        .or_else(|| app.path().resource_dir().ok().map(|r| r.join("private-profiles")))
+        .or_else(|| app.path().resource_dir().ok().map(|r| r.join("private-profiles")).filter(|p| p.exists()))
+        .or(beside)
         .unwrap_or_default();
     if bundled.exists() { seed_private_profiles(&bundled, &dir).map(|_| ()) } else { ensure_example_profile(&dir) }
 }
