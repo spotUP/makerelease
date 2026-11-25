@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # usage: amiga/tools/release-lha.sh [--private] [packer-build-dir] [upmcc-build-dir]
-# Packs the Amiga Release Packer as an LHA on ~/Desktop (RELEASE_OUT overrides):
-#   Up_Rough_Release_Packer_-_Amiga[_-_private].lha
-#     ReleasePacker/ReleasePacker   (packer-cli)
-#     ReleasePacker/groups/<id>/    (--private only: app/private-profiles, keys included)
-#     ReleasePacker/UP-MCC/         (up_mcc_dist output with its Installer script)
-#     ReleasePacker/README, INSTALL.txt
+# Packs the Amiga Release Maker as an LHA on ~/Desktop (RELEASE_OUT overrides):
+#   Up_Rough_Release_Maker_-_Amiga[_-_private].lha
+#     ReleaseMaker/ReleaseMaker   (packer-cli)
+#     ReleaseMaker/groups/<id>/    (--private only: app/private-profiles, keys included)
+#     ReleaseMaker/UP-MCC/         (up_mcc_dist output with its Installer script)
+#     ReleaseMaker/README, INSTALL.txt
 # Builds nothing: build packer-cli and up_mcc_dist first. Keys never go to public CI,
 # so the private archive is made here only.
 set -euo pipefail
@@ -21,9 +21,9 @@ command -v lha >/dev/null || { echo "lha not found (brew install lha)" >&2; exit
 [ -f "$U/dist/UP-MCC/Install-UP-MCC" ] || { echo "no $U/dist/UP-MCC: build up_mcc_dist first" >&2; exit 1; }
 
 STAGE=$(mktemp -d); trap 'rm -rf "$STAGE"' EXIT
-D="$STAGE/ReleasePacker"
+D="$STAGE/ReleaseMaker"
 mkdir -p "$D/groups"
-cp "$B/packer-cli" "$D/ReleasePacker"
+cp "$B/packer-cli" "$D/ReleaseMaker"
 cp -R "$U/dist/UP-MCC" "$D/UP-MCC"
 cp "$A/README.md" "$D/README"
 if [ "$PRIVATE" = 1 ]; then
@@ -38,8 +38,8 @@ else
   SUFFIX=""
 fi
 cat > "$D/INSTALL.txt" <<'EOF'
-Up Rough Release Packer - Amiga
-===============================
+Up Rough Release Maker - Amiga
+==============================
 
 1. REQUIREMENTS
 
@@ -50,7 +50,7 @@ Up Rough Release Packer - Amiga
 
 2. INSTALL
 
-   Copy the ReleasePacker drawer anywhere, e.g. Work:ReleasePacker.
+   Copy the ReleaseMaker drawer anywhere, e.g. Work:ReleaseMaker.
    Run UP-MCC/Install-UP-MCC with Installer: it copies the UP- classes
    to MUI:Libs/mui, up-mcc.library, the Inter font and the themes.
 
@@ -58,17 +58,17 @@ Up Rough Release Packer - Amiga
 
    There is no Workbench icon yet. Start it from a Shell:
 
-       cd Work:ReleasePacker
+       cd Work:ReleaseMaker
        stack 49152
-       ReleasePacker
+       ReleaseMaker
 
-   Groups live in ReleasePacker/groups; builds land in
-   ReleasePacker/releases.
+   Groups live in ReleaseMaker/groups; builds land in
+   ReleaseMaker/releases.
 EOF
 # private archives hold write keys: owner-only permissions on the result
 umask 077
-NAME="Up_Rough_Release_Packer_-_Amiga$SUFFIX.lha"
+NAME="Up_Rough_Release_Maker_-_Amiga$SUFFIX.lha"
 rm -f "$OUT/$NAME"
-(cd "$STAGE" && lha -aq "$OUT/$NAME" ReleasePacker >/dev/null)
+(cd "$STAGE" && lha -aq "$OUT/$NAME" ReleaseMaker >/dev/null)
 lha -l "$OUT/$NAME" | tail -1
 echo "wrote $OUT/$NAME"

@@ -1,4 +1,4 @@
-# Release Packer
+# Release Maker
 
 An Amiga (M68k, AmigaOS 3.x, MUI 3.8) release packer for the demoscene.
 It takes your group's templates and your release files and packs a finished,
