@@ -30,11 +30,11 @@ static void setup(void) {
 }
 
 static void test_cmd(void) {
-    char *c = rp_archive_cmd("lha", "RAM:UP-X.LHA", "UP-X");
-    CHECK_STR(c, "\"lha\" -r a \"RAM:UP-X.LHA\" \"UP-X\"");
+    char *c = rp_archive_cmd("lha", "RAM:UP-X.LHA", "UP-X", 1);
+    CHECK_STR(c, "\"lha\" -r a \"RAM:UP-X.LHA\" \"file_id.diz\" \"UP-X.NFO\" \"UP-X\"");
     free(c);
-    c = rp_archive_cmd("zip", "RAM:UP-X.ZIP", "UP-X");
-    CHECK_STR(c, "\"zip\" -r \"RAM:UP-X.ZIP\" \"UP-X\"");
+    c = rp_archive_cmd("zip", "RAM:UP-X.ZIP", "UP-X", 0);
+    CHECK_STR(c, "\"zip\" -r \"RAM:UP-X.ZIP\" \"file_id.diz\" \"UP-X\"");
     free(c);
 }
 

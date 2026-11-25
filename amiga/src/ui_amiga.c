@@ -1249,7 +1249,7 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
         rp_upper(shell_field_text(code_field), code, sizeof(code));
         rp_base_name(groups[gactive].file_prefix, code, base, sizeof(base));
         for (pi = 0; pi < g_paths.n; pi++) paths[pi] = g_paths.path[pi];
-        /* nothing picked: zero paths still lists file_id.diz, <REL>/ and <REL>/<REL>.NFO */
+        /* nothing picked: zero paths still lists file_id.diz, <REL>.NFO and <REL>/ */
         if (rp_preview_archive(base, paths, g_paths.n, &g_prev, errmsg, sizeof(errmsg)) != 0) {
             SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         } else if (g_prev.nnested > 0) {
@@ -1589,9 +1589,9 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
     number = r.number;
     nfo = r.nfo;
     rendered = r.diz;
-    /* Staged like the desktop: one release drawer BASE/ (in a T: parent)
-     * holds file_id.diz, BASE.NFO and the files. Then the archive, then BASE/
-     * moves into PROGDIR:releases/BASE. */
+    /* Staged like the desktop: the T: drawer holds file_id.diz and BASE.NFO
+     * (the archive root) next to BASE/ with the files. Then the archive, then
+     * the whole drawer moves into PROGDIR:releases/BASE. */
     {
         char outer[288], inner[352], work[416], nfo_name[384], archive[384], *cmd, done[448];
         struct stat st;
@@ -1599,13 +1599,13 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
         snprintf(outer, sizeof(outer), "T:rp-%s", base);
         snprintf(inner, sizeof(inner), "%s/%s", outer, base);
         if (rp_make_dirs(inner, errmsg, sizeof(errmsg)) != 0) goto build_fail;
-        snprintf(work, sizeof(work), "%s/file_id.diz", inner);
+        snprintf(work, sizeof(work), "%s/file_id.diz", outer);
         if (rp_write_file(work, rendered, strlen(rendered), errmsg, sizeof(errmsg)) != 0) goto build_fail;
         free(rendered);
         rendered = NULL;
         if (nfo != NULL) {
             shell_phase(app, status, 2, "Writing the NFO...");
-            snprintf(nfo_name, sizeof(nfo_name), "%s/%s.NFO", inner, base);
+            snprintf(nfo_name, sizeof(nfo_name), "%s/%s.NFO", outer, base);
             if (rp_write_file(nfo_name, nfo, strlen(nfo), errmsg, sizeof(errmsg)) != 0) goto build_fail;
             free(nfo);
             nfo = NULL;
@@ -1673,7 +1673,8 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             }
             UnLock(rl);
             AddPart((STRPTR)abs_archive, (STRPTR)packed, sizeof(abs_archive));
-            cmd = rp_archive_cmd(active ? "zip" : "lha", abs_archive, base);
+            snprintf(nfo_name, sizeof(nfo_name), "%s/%s.NFO", outer, base);
+            cmd = rp_archive_cmd(active ? "zip" : "lha", abs_archive, base, stat(nfo_name, &st) == 0);
         }
         if (cmd == NULL) {
             snprintf(errmsg, sizeof(errmsg), "out of memory");
@@ -1689,13 +1690,13 @@ static void shell_build(Object *app, Object *status, const rp_group *groups, Obj
             goto build_fail;
         }
         free(cmd);
-        /* The release drawer BASE/ becomes
+        /* The staged drawer (diz, NFO, BASE/) becomes
          * PROGDIR:releases/BASE (PROGDIR:dry-run/BASE for a dry run), exactly like the desktop finalize. */
         {
             char finaldir[384];
             snprintf(finaldir, sizeof(finaldir), "%s/%s", root, base);
             shell_phase(app, status, 5, "Moving the release drawer...");
-            if (rp_move_dir(inner, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
+            if (rp_move_dir(outer, finaldir, errmsg, sizeof(errmsg)) != 0) goto build_fail;
         }
         if (dry) {
             snprintf(done, sizeof(done), "Dry run: %s written, nothing published", archive);
