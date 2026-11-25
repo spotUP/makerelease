@@ -267,7 +267,8 @@ export interface ReleaseDropperApi {
   /** Lets the user pick a template file; null when cancelled. */
   importTemplate(): Promise<{ text: string; name: string } | null>;
   loadSeedState(profileId: string): Promise<SeedState>;
-  pickFilesAndDirs(): Promise<string[]>;
+  /** One native dialog picks files or folders (no platform dialog offers both); picks add up. */
+  pickPaths(folders: boolean): Promise<string[]>;
   checkCodeAvailability(profileId: string, code: string): Promise<{ exists: boolean }>;
   buildRelease(form: ReleaseFormData, dryRun: boolean): Promise<BuildResult>;
   /** Subscribes to stage updates of a running build; returns the unsubscribe function. */

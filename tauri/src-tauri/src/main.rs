@@ -20,7 +20,7 @@ fn main() {
             profiles::delete_profile,
             profiles::import_template,
             profiles::load_seed_state,
-            profiles::pick_files_and_dirs,
+            profiles::pick_paths,
             profiles::pick_image,
             build::build_release,
             build::preview_outputs,

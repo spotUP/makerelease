@@ -784,13 +784,15 @@ function checkCode(): void {
   }, 300);
 }
 
-pickFilesBtn.addEventListener('click', async () => {
-  const paths = await window.api.pickFilesAndDirs();
+async function addPickedPaths(folders: boolean): Promise<void> {
+  const paths = await window.api.pickPaths(folders);
   for (const p of paths) {
     if (!selectedPaths.includes(p)) selectedPaths.push(p);
   }
   renderSelectedFiles();
-});
+}
+pickFilesBtn.addEventListener('click', () => void addPickedPaths(false));
+$<HTMLButtonElement>('pick-folders-btn').addEventListener('click', () => void addPickedPaths(true));
 
 /**
  * The NFO pane (and a placeholder profile's DIZ) shows what a build would
