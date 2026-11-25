@@ -2617,7 +2617,9 @@ static int shell_main(void) {
             GetAttr(UPA_Tabs_Active, tabs, &tab);
             SetAttrs(back_btn, MUIA_Disabled, (ULONG)(rp_page_step((int)tab, -1, NULL, SHELL_TAB_COUNT) < 0), TAG_DONE);
             SetAttrs(next_btn, MUIA_Disabled, (ULONG)(rp_page_step((int)tab, 1, NULL, SHELL_TAB_COUNT) < 0), TAG_DONE);
-            if (tab == SHELL_TAB_NFO) shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+            /* NFO only on a tab switch: the render disables the active Preview button, which moves ActiveObject and sends
+             * ID_FOCUS again, so rendering on ID_FOCUS loops forever; the NFO tab has no fields whose focus change matters */
+            if (tab == SHELL_TAB_NFO && id == ID_TAB) shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
             else if (tab == SHELL_TAB_AMINET) {
                 shell_aminet(app, status, g_groups, group_cycle, name_field, platform_field, code_field, desc_field, format_cycle, type_field, arch_field,
                              uname_field, email_field, 1);
