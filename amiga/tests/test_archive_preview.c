@@ -49,9 +49,9 @@ int main(void) {
     snprintf(want, sizeof(want), "%s/wrap/inner", g_dir);
     CHECK(r.nnested == 1 && strcmp(r.nested[0].path, a) == 0 && strcmp(r.nested[0].flatten_to, want) == 0);
     CHECK(has(&r, "REL/wrap/inner/a.txt"));
-    /* one release drawer holds the diz and NFO: no file_id.diz beside REL/ */
-    CHECK(strcmp(r.entries[0], "REL/") == 0 && strcmp(r.entries[1], "REL/file_id.diz") == 0 &&
-          strcmp(r.entries[2], "REL/REL.NFO") == 0 && !has(&r, "file_id.diz"));
+    /* diz and NFO at the archive root, the files in the one REL/ drawer */
+    CHECK(strcmp(r.entries[0], "file_id.diz") == 0 && strcmp(r.entries[1], "REL.NFO") == 0 &&
+          strcmp(r.entries[2], "REL/") == 0 && !has(&r, "REL/file_id.diz") && !has(&r, "REL/REL.NFO"));
     rp_preview_free(&r);
 
     /* real content beside the subfolder: no warning */
@@ -73,7 +73,7 @@ int main(void) {
 
     /* no drawer: the three fixed rows still list */
     CHECK(rp_preview_archive("REL", paths, 0, &r, err, sizeof(err)) == 0);
-    CHECK(r.nentries >= 3 && strcmp(r.entries[1], "REL/file_id.diz") == 0 && strcmp(r.entries[2], "REL/REL.NFO") == 0);
+    CHECK(r.nentries == 3 && strcmp(r.entries[0], "file_id.diz") == 0 && strcmp(r.entries[1], "REL.NFO") == 0);
     rp_preview_free(&r);
 
     rp_remove_tree(g_dir, err, sizeof(err));
