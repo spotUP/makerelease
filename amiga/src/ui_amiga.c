@@ -2588,7 +2588,11 @@ static int shell_main(void) {
             if (g_net_quit) break;
         }
         if (id == ID_NFO_PREVIEW) {
-            shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
+            ULONG tab = (ULONG)-1;
+            GetAttr(UPA_Tabs_Active, tabs, &tab);
+            /* clicks queued before a failed render jumped to the missing field arrive after the jump: a Preview NFO click
+             * that is handled while another tab is shown is stale, and rendering it would fail and jump again */
+            if (tab == SHELL_TAB_NFO) shell_preview_nfo(status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle);
         }
         if (id == ID_BACK || id == ID_NEXT) {
             ULONG cur = 0;
