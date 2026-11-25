@@ -423,7 +423,12 @@ static void shell_platform_row(Object *platform_field) {
 /* The multi-line fields as NFO-ready text (rp_text_normalize) in static copies: the class returns its own live buffer. */
 #define SHELL_NOTES_MAX 2000
 #define SHELL_NEWS_MAX 1000
-#define SHELL_README_MAX 4000
+/* The Readme box holds rp_aminet_preview_view: "Problems: " + problems + a blank line + the whole readme. The readme has no cap of its own;
+ * it is bounded by the form: release notes, up to RP_MEMBERS_MAX credit lines ("  role: name"), and the header/description/signature
+ * fields (each under 256 bytes, 2048 covers them). Doubled for rp_aminet_normalize_readme folding one byte to two and the 78-column
+ * re-wrap. A smaller cap cut the view mid-word at the class's MaxLen. */
+#define SHELL_README_MAX (sizeof(((rp_aminet_preview *)0)->problems) + 32 + \
+                          2 * (SHELL_NOTES_MAX + RP_MEMBERS_MAX * (RP_CREDIT_ROLE_MAX + RP_CREDIT_NAME_MAX + 5) + 2048))
 #define SHELL_NFO_VIEW_MAX 4000 /* the Preview tab box: the diz and the NFO together */
 static char g_notes_buf[SHELL_NOTES_MAX + 1], g_news_buf[SHELL_NEWS_MAX + 1];
 
