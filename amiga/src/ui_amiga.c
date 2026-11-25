@@ -24,6 +24,7 @@
 #endif
 #include <proto/dos.h>
 #include <proto/exec.h>
+#include <proto/graphics.h>
 #include <proto/intuition.h>
 #include <proto/muimaster.h>
 
@@ -359,7 +360,11 @@ static Object *g_net_app, *g_net_status, *g_net_pages, *g_net_cancel_btn;
 static int g_net_cancel, g_net_quit;
 static void shell_net_busy(int on);
 static unsigned long g_net_shown; /* last percent drawn, ~0UL = the waiting line */
-static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view;
+static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view, *g_nfo_btn;
+/* NFO art lines up only in a fixed bitmap font: the ROM topaz 8 (MUIA_Font makes UP-Textarea draw in it, not the TTF).
+ * shortcut: topaz 8 on every screen mode; the request is Topaz Pro on square pixel (RTG) modes, but no Amiga bitmap
+ * Topaz Pro ships (only TopazPlus_a1200 .ttf for the desktop). Upgrade: package one, pick it when the screen is RTG. */
+static struct TextFont *g_topaz;
 static Object *g_diz_count; /* "Release line: N/width characters" under the Diz line */
 static Object *g_template_status; /* desktop template-status: preview notes of a placeholder group, own line on the NFO tab */
 /* The manual release number (desktop release-number-text): its row shows only for a group without a release server. */
@@ -1732,6 +1737,34 @@ static void shell_diz_count(Object *name_field) {
     SetAttrs(g_diz_count, UPA_Text_Contents, (ULONG)msg, TAG_DONE);
 }
 
+/* Busy around the NFO render, which blocks MUI until it returns: the app sleeps (busy pointer, input ignored), the button is off
+ * and the status says so. Ending drains the clicks queued during the render while still asleep, so they never start a second
+ * render; a Quit among them is handed back to the main loop. */
+static void shell_nfo_busy(Object *status, int on) {
+    ULONG sigs = 0, id;
+    int quit = 0;
+    if (on) {
+        SetAttrs(g_net_app, MUIA_Application_Sleep, (ULONG)TRUE, TAG_DONE);
+        SetAttrs(g_nfo_btn, MUIA_Disabled, (ULONG)TRUE, TAG_DONE);
+        SetAttrs(status, UPA_Text_Contents, (ULONG) "Rendering the NFO...", TAG_DONE);
+    }
+    while ((id = DoMethod(g_net_app, MUIM_Application_NewInput, (ULONG)&sigs)) != 0) /* on: draws the line above */
+        if (id == (ULONG)MUIV_Application_ReturnID_Quit) quit = 1;
+    if (on) return;
+    SetAttrs(g_nfo_btn, MUIA_Disabled, (ULONG)FALSE, TAG_DONE);
+    SetAttrs(g_net_app, MUIA_Application_Sleep, (ULONG)FALSE, TAG_DONE);
+    if (quit) DoMethod(g_net_app, MUIM_Application_ReturnID, (ULONG)MUIV_Application_ReturnID_Quit);
+}
+
+static int shell_render_nfo(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field, Object *code_field,
+                            Object *platform_field, Object *desc_field, Object *format_cycle, shell_rendered *r, char *errmsg, size_t errcap) {
+    int rc;
+    shell_nfo_busy(status, 1);
+    rc = shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, r, errmsg, errcap);
+    shell_nfo_busy(status, 0);
+    return rc;
+}
+
 static void shell_preview_nfo(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field, Object *code_field,
                               Object *platform_field, Object *desc_field, Object *format_cycle) {
     shell_rendered r;
@@ -1739,8 +1772,8 @@ static void shell_preview_nfo(Object *status, const rp_group *groups, Object *gr
     size_t full;
     ULONG gactive = 0;
     GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
-    if (shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, &r, errmsg,
-                             sizeof(errmsg)) != 0) {
+    if (shell_render_nfo(status, groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, &r, errmsg,
+                         sizeof(errmsg)) != 0) {
         SetAttrs(status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         if (groups[gactive].renderer == R_PLACEHOLDER) SetAttrs(g_template_status, UPA_Text_Contents, (ULONG)errmsg, TAG_DONE);
         return;
@@ -2183,8 +2216,12 @@ static int shell_main(void) {
     g_number_field = MUI_NewObject((char *)"UP-Field.mcc", UPA_Field_Placeholder, (ULONG) "042", MUIA_String_MaxLen, (ULONG)(sizeof(g_number_text) - 1), TAG_DONE);
     g_number_row = g_number_field ? shell_row(row_label("Release number"), g_number_field) : NULL;
     g_readme_view = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_README_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview readme to see the readme and its problems here", TAG_DONE);
-    g_nfo_view = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NFO_VIEW_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview NFO to see the file_id.diz and the NFO here", TAG_DONE);
-    nfo_preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview NFO", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
+    {
+        struct TextAttr topaz8 = {(STRPTR) "topaz.font", 8, FS_NORMAL, 0};
+        g_topaz = OpenFont(&topaz8);
+    }
+    g_nfo_view = MUI_NewObject((char *)"UP-Textarea.mcc", MUIA_Font, (ULONG)g_topaz, UPA_TextArea_MaxLen, (ULONG)SHELL_NFO_VIEW_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview NFO to see the file_id.diz and the NFO here", TAG_DONE);
+    g_nfo_btn = nfo_preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview NFO", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     aminet_preview_btn = MUI_NewObject((char *)"UP-Button.mcc", UPA_Button_Caption, (ULONG) "Preview readme", UPA_Button_Align, (ULONG)UPV_Button_Align_Centre, TAG_DONE);
     g_notes_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NOTES_MAX, UPA_TextArea_Placeholder, (ULONG) "Release notes, one paragraph per line", TAG_DONE);
     g_news_field = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_NEWS_MAX, UPA_TextArea_Placeholder, (ULONG) "News", TAG_DONE);
@@ -2629,6 +2666,7 @@ static int shell_main(void) {
     }
     shell_code_timer_close();
     MUI_DisposeObject(app);
+    if (g_topaz != NULL) CloseFont(g_topaz);
     json_free(g_seed_tree);
     rp_preview_free(&g_prev);
     CloseLibrary(MUIMasterBase);
