@@ -2291,7 +2291,7 @@ static int shell_main(void) {
         win = content == NULL ? NULL
             : MUI_NewObject((char *)MUIC_Window, MUIA_Window_ID, 0x524C5350,
                         MUIA_Window_Borderless, (ULONG)TRUE, MUIA_Window_DragBar, (ULONG)FALSE, MUIA_Window_CloseGadget, (ULONG)FALSE,
-                        MUIA_Window_DepthGadget, (ULONG)FALSE,
+                        MUIA_Window_SizeGadget, (ULONG)FALSE, /* MUI defaults TRUE, which adds Intuition borders; UP-Panel draws the grip */ MUIA_Window_DepthGadget, (ULONG)FALSE,
                         MUIA_Window_Width, (ULONG)MUIV_Window_Width_Screen(70),
                         MUIA_Window_LeftEdge, (ULONG)MUIV_Window_LeftEdge_Centered,
                         MUIA_Window_RootObject,
