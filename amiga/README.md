@@ -80,17 +80,18 @@ The packer shells out to the archivers, so they must be in `PATH`:
 | ZIP | `zip` (Info-ZIP Amiga port) |
 
 A build writes the archive and the unpacked release folder into
-`PROGDIR:releases/`, named after the release. Pick the files drawer first
-with the Pick button (or build NFO + `FILE_ID.DIZ` only with no drawer
-picked). A build whose archive or folder already exists in `PROGDIR:releases`
+`PROGDIR:releases/`, named after the release. Add the files on the Files tab
+first with Add drawer... or Add file... (or build NFO + `FILE_ID.DIZ` only
+with no files added). A build whose archive or folder already exists in `PROGDIR:releases`
 stops instead of overwriting — move the old one away first.
 
 After a build, the Aminet drawer holds the archive plus a matching
 `.readme`, built from the short description (40 characters at most), the
 Aminet directory (e.g. `demo/aga`), the architecture, and your name and
-email. Uploading is manual in this version: send the two files to
-`ftp://main.aminet.net/new` with any FTP client. There is no test server:
-an upload is public once a moderator approves it.
+email. Press Aminet on the Publish tab to upload them (needs a TCP/IP
+stack), or send the two files to `ftp://main.aminet.net/new` with any FTP
+client. There is no test server: an upload is public once a moderator
+approves it.
 
 ## Interface
 
@@ -153,10 +154,8 @@ itself is not scripted.
 
 ## Scope
 
-This version packs on disk only: NFO, `FILE_ID.DIZ`, archive, Aminet
-`.readme`. Release numbering and publishing through the Up Rough release
-server, and direct Aminet FTP upload from the app, are later phases, not
-this one.
+The app builds the NFO, `FILE_ID.DIZ`, archive and Aminet `.readme` on
+disk, and uploads the archive to Aminet.
 
 ## Licence
 
