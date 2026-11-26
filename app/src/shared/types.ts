@@ -188,6 +188,31 @@ export interface AminetUploadOutcome {
   readmePath?: string;
 }
 
+/** What the renderer sends to publish a built release as an upkg (.ipk) package; main builds and checks it. */
+export interface UpkgPublishRequest {
+  package: string;
+  version: string;
+  revision: number;
+  description: string;
+  maintainer: string;
+  /** AmigaDOS drawer the release folder installs into, e.g. Work:Utilities. */
+  installDrawer: string;
+  /** GitHub repository (owner/name) whose release `tag` is the feed. */
+  repo: string;
+  tag: string;
+  /** Write the .ipk and Packages next to the archive only; upload nothing. */
+  dryRun: boolean;
+}
+
+/** Result of the upkg publish. Never a thrown error, like the Aminet upload. */
+export interface UpkgPublishOutcome {
+  ok: boolean;
+  message: string;
+  ipkPath?: string;
+  packagesPath?: string;
+  dryRun?: boolean;
+}
+
 export interface PublishToWebResult {
   archiveUrl: string;
   wordpressPostUrl: string;
@@ -287,5 +312,6 @@ export interface ReleaseDropperApi {
     embedImagePaths: string[],
   ): Promise<PublishToWebOutcome>;
   uploadToAminet(request: AminetUploadRequest, archivePath: string): Promise<AminetUploadOutcome>;
+  publishUpkg(request: UpkgPublishRequest, archivePath: string): Promise<UpkgPublishOutcome>;
   deleteRelease(profileId: string, code: string): Promise<DeleteReleaseOutcome>;
 }
