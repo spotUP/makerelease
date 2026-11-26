@@ -87,11 +87,15 @@ Up Rough Release Dropper - Amiga
       BetterString LGPL; licences in OpenMUI/LICENSE and OpenMUI/Docs).
    b) Then run UP-MCC/Install-UP-MCC with Installer: it copies the UP-
       classes to MUI:Libs/mui, up-mcc.library, the Inter font and the
-      themes. It also makes the Dark look the default for every MUI
-      program: ENVARC:OpenMUI/global.prefs is backed up once as
-      global.prefs.bak, then replaced by UP-MCC/Themes/OpenMUI/Dark.prefs
-      (copy Light.prefs to ENV: and ENVARC:OpenMUI/global.prefs for the
-      light look; programs started afterwards use it).
+      themes. It also makes the Dark look the default for every
+      OpenMUI program: ENVARC:OpenMUI/global.prefs is backed up once as
+      global.prefs.before-up, then replaced by
+      UP-MCC/Themes/OpenMUI/Dark.prefs (copy Light.prefs to ENV: and
+      ENVARC:OpenMUI/global.prefs for the light look, or the backup
+      to restore your own; programs started afterwards use it).
+      Workbench colours (palette.prefs, PublicScreens.iff, screen
+      pens) are never touched. MUI 3.8 ignores these colours and
+      shows the Light look.
 
 3. START
 
