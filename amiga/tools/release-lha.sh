@@ -6,6 +6,7 @@
 #     ReleaseDropper/ReleaseDropper.info (tool icon from the app's disk SVG, stack 49152)
 #     ReleaseDropper/groups/<id>/    (--private only: app/private-profiles, keys included)
 #     ReleaseDropper/UP-MCC/         (up_mcc_dist output with its Installer script)
+#     ReleaseDropper/Fonts/          (TopazPlus 16 bitmap font for the NFO preview on RTG screens, from mkfont.py)
 #     ReleaseDropper/README, INSTALL.txt
 # Builds nothing: build packer-cli and up_mcc_dist first. Keys never go to public CI,
 # so the private archive is made here only.
@@ -31,6 +32,14 @@ cp "$B/packer-cli" "$D/ReleaseDropper"
 python3 "$A/tools/mkicon.py" "$ROOT/tauri/src-tauri/icons/icon.svg" "$D/ReleaseDropper.info" --stack 49152
 cp -R "$U/dist/UP-MCC" "$D/UP-MCC"
 cp "$A/README.md" "$D/README"
+# PROGDIR:Fonts: the NFO preview opens it by path on RTG screens, so nothing goes to FONTS:
+python3 "$A/tools/mkfont.py" "$ROOT/app/src/renderer/fonts/TopazPlus_a1200_v1.0.ttf" "$D/Fonts" --check >/dev/null
+cat > "$D/Fonts/TopazPlus.txt" <<'EOF2'
+TopazPlus a600a1200a4000, converted to an Amiga bitmap font (16 px) for the NFO preview.
+Topaz is Copyright (c) AmigaInc. Truetype version is Copyright (c) 2009 by dMG of Trueschool
+and Divine Stylers, http://www.trueschool.org
+Licence: http://creativecommons.org/licenses/by-nc-sa/3.0/
+EOF2
 if [ "$PRIVATE" = 1 ]; then
   node "$ROOT/tauri/scripts/check-private-profiles.mjs"
   for g in "$ROOT"/app/private-profiles/*/; do
@@ -67,6 +76,9 @@ Up Rough Release Dropper - Amiga
 
        cd Work:ReleaseDropper
        ReleaseDropper
+
+   On an RTG screen the NFO preview uses Fonts/TopazPlus (topaz 8 on
+   chipset screens); keep the Fonts drawer next to the program.
 
    Groups live in ReleaseDropper/groups; builds land in
    ReleaseDropper/releases.

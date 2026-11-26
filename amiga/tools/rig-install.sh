@@ -13,7 +13,7 @@ timeout 12 $P ping >/dev/null 2>&1 || { echo "rig $UPTERM_RIG not answering; sta
 fail=0
 # one exec per dir: makedir aborts the rest of its chain when a dir exists
 G="${RIG_GROUPS:-$(cd "$A/scratch-rig/groups" && ls -d */ | tr -d /)}"  # RIG_GROUPS="uprough xinnovations" installs only real groups
-for d in DH0:Packer DH0:Packer/groups $(for g in $G; do echo DH0:Packer/groups/$g; done) ENVARC:UP-MCC ENV:UP-MCC; do $P exec "makedir $d" >/dev/null 2>&1; done
+for d in DH0:Packer DH0:Packer/Fonts DH0:Packer/Fonts/TopazPlus DH0:Packer/groups $(for g in $G; do echo DH0:Packer/groups/$g; done) ENVARC:UP-MCC ENV:UP-MCC; do $P exec "makedir $d" >/dev/null 2>&1; done
 # AmiSSL: for the packer's TLS (same line as RIG_LIBS in UP-Term vtcon rig.py); a fresh rig has none after go
 $P exec "Assign >NIL: AmiSSL: DH0:AmiSSL" >/dev/null 2>&1
 # quit every running packer and flush: MUI keeps the old .mcc in memory, so a new instance would reuse it
@@ -28,6 +28,10 @@ for g in $G; do
   for f in "$A"/scratch-rig/groups/$g/*; do $P put "$f" "DH0:Packer/groups/$g/$(basename "$f")" >/dev/null; done
   [ -f "$A/scratch-rig/groups/$g/file_id.diz" ] || $P exec "echo \"$g release\" >DH0:Packer/groups/$g/file_id.diz" >/dev/null 2>&1
 done
+# TopazPlus 16 for the NFO preview on RTG screens, opened as PROGDIR:Fonts/TopazPlus.font
+F=$(mktemp -d); python3 "$A/tools/mkfont.py" "$A/../app/src/renderer/fonts/TopazPlus_a1200_v1.0.ttf" "$F" --check >/dev/null || fail=1
+$P put "$F/TopazPlus.font" DH0:Packer/Fonts/TopazPlus.font >/dev/null && $P put "$F/TopazPlus/16" DH0:Packer/Fonts/TopazPlus/16 >/dev/null || { echo "put fail TopazPlus font"; fail=1; }
+rm -rf "$F"
 $P put "$B/packer-cli" DH0:Packer/packer-cli >/dev/null || { echo "put fail packer-cli"; fail=1; }
 $P exec "run >NIL: <NIL: DH0:Packer/packer-cli ; echo started" 2>&1 | tail -1
 sleep 10
