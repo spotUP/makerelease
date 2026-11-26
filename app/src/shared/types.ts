@@ -197,9 +197,6 @@ export interface UpkgPublishRequest {
   maintainer: string;
   /** AmigaDOS drawer the release folder installs into, e.g. Work:Utilities. */
   installDrawer: string;
-  /** GitHub repository (owner/name) whose release `tag` is the feed. */
-  repo: string;
-  tag: string;
   /** Write the .ipk and Packages next to the archive only; upload nothing. */
   dryRun: boolean;
 }

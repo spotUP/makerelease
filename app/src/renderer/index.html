@@ -268,7 +268,7 @@
 
   <section id="section-upkg" hidden>
     <h2>Publish as an upkg package</h2>
-    <p class="hint">Packs the built release folder as a .ipk for UP-Term's upkg and adds it to a feed (a GitHub release, written with the gh command line tool and its own login). Dry run writes the package and the feed lists next to the archive and uploads nothing.</p>
+    <p class="hint">Packs the built release folder as a .ipk for UP-Term's upkg and adds it to the third-party upkg feed, the release feed of the GitHub repository spotUP/upkg-feed. Uploads use the gh command line tool and its login (gh auth login) or the GH_TOKEN environment variable. Package names are at most 20 characters and never start with up- (that prefix is UP-Term's own); the package file name and every file and drawer name in the release are at most 30 characters. Dry run writes the package and the feed lists next to the archive and uploads nothing.</p>
     <div class="aminet-grid">
       <label>Package name (lower case, for example openmui)
         <input type="text" id="upkg-package" />
@@ -287,12 +287,6 @@
       </label>
       <label>Maintainer
         <input type="text" id="upkg-maintainer" />
-      </label>
-      <label>Feed repository on GitHub (owner/name)
-        <input type="text" id="upkg-repo" />
-      </label>
-      <label>Feed release tag
-        <input type="text" id="upkg-tag" />
       </label>
     </div>
     <label><input type="checkbox" id="upkg-dry-run" checked /> Dry run: write the package locally, upload nothing</label>

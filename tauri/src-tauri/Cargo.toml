@@ -14,7 +14,7 @@ tauri-plugin-dialog = "2"
 trash = "5"
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "multipart", "rustls-tls"] }
 # Already in the tree through tauri; the upkg .ipk builder (src/upkg.rs) gzips and checksums with them.
-flate2 = "1"
+flate2 = { version = "1", features = ["zlib"] }
 sha2 = "0.10"
 
 # Same versions tauri already pulls in; only the mixed files-and-folders open panel needs them.

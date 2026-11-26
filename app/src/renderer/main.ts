@@ -1114,7 +1114,7 @@ const upkgBtn = $<HTMLButtonElement>('upkg-publish-btn');
 const upkgStatus = $<HTMLDivElement>('upkg-status');
 const upkgInput = (id: string): HTMLInputElement => $<HTMLInputElement>(`upkg-${id}`);
 const UPKG_STORAGE_KEY = 'upkg-target';
-const UPKG_REMEMBERED = ['drawer', 'maintainer', 'repo', 'tag'] as const;
+const UPKG_REMEMBERED = ['drawer', 'maintainer'] as const;
 
 try {
   const saved: unknown = JSON.parse(localStorage.getItem(UPKG_STORAGE_KEY) ?? '{}');
@@ -1147,8 +1147,6 @@ async function publishLastBuildToUpkg(): Promise<void> {
     description: upkgInput('description').value.trim(),
     maintainer: upkgInput('maintainer').value.trim(),
     installDrawer: upkgInput('drawer').value.trim(),
-    repo: upkgInput('repo').value.trim(),
-    tag: upkgInput('tag').value.trim(),
     dryRun: upkgInput('dry-run').checked,
   };
   try {
