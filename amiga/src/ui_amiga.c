@@ -371,8 +371,8 @@ static void shell_net_busy(int on);
 static unsigned long g_net_shown; /* last percent drawn, ~0UL = the waiting line */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view, *g_nfo_btn;
 /* NFO art lines up only in a fixed bitmap font (MUIA_Font makes UP-Textarea draw in it, not the TTF): the ROM topaz 8
- * on chipset screens, whose pixels are twice as tall as wide, and on an RTG screen (square pixels) the 8x16 TopazPlus
- * that amiga/tools/mkfont.py makes from the desktop TTF into PROGDIR:Fonts; missing, it falls back to topaz 8. */
+ * on chipset screens, whose pixels are twice as tall as wide, and on an RTG screen (square pixels) the owner's Topaz Pro
+ * 16 (MIT, amiga/fonts, packaged into PROGDIR:Fonts); missing, it falls back to topaz 8. */
 static struct TextFont *g_topaz;
 /* diskfont stays open while g_topaz may be a disk font; NULL when diskfont.library is missing */
 #define DiskfontBase shell_DiskfontBase
@@ -2246,9 +2246,9 @@ static int shell_main(void) {
     g_readme_view = MUI_NewObject((char *)"UP-Textarea.mcc", UPA_TextArea_MaxLen, (ULONG)SHELL_README_MAX, UPA_TextArea_Placeholder, (ULONG) "Press Preview readme to see the readme and its problems here", TAG_DONE);
     {
         struct TextAttr topaz8 = {(STRPTR) "topaz.font", 8, FS_NORMAL, 0};
-        struct TextAttr plus16 = {(STRPTR) "PROGDIR:Fonts/TopazPlus.font", 16, FS_NORMAL, FPF_DISKFONT};
+        struct TextAttr pro16 = {(STRPTR) "PROGDIR:Fonts/TopazPro.font", 16, FS_NORMAL, FPF_DISKFONT};
         if (shell_screen_is_rtg() && (DiskfontBase = OpenLibrary((CONST_STRPTR) "diskfont.library", 36)) != NULL) {
-            g_topaz = OpenDiskFont(&plus16);
+            g_topaz = OpenDiskFont(&pro16);
             /* OpenDiskFont hands back the nearest size of another font when the file is missing: only an exact 16 counts */
             if (g_topaz != NULL && g_topaz->tf_YSize != 16) { CloseFont(g_topaz); g_topaz = NULL; }
         }
