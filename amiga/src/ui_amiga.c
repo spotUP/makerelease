@@ -249,6 +249,8 @@ Object *shell_card(const char *title, Object *a, Object *b, Object *c, Object *d
 #define ID_CREATORS_KEY 29  /* Up, Down, Esc or Tab in the credit Name field: move in or close the member list */
 #define ID_CREATORS_PICK 30 /* a member was clicked in the list */
 #define ID_CREATORS_ACK 31  /* Return in the credit Name field: pick the highlighted member */
+#define ID_MENU_NFO 32      /* Release > Preview NFO: show the NFO tab, whose ID_TAB renders it, or render it there (ID_NFO_PREVIEW) */
+#define ID_ABOUT 33         /* Project > About */
 #define ID_TABLE 100   /* Row tables: ID_TABLE + table * SHELL_TABLE_ACTIONS + action, see shell_table_event */
 
 #define RP_MAX_FILES_PATH 511
@@ -390,6 +392,21 @@ static Object *g_gauge; /* Build/Preview progress bar, hidden between runs */
 static Object *g_net_app, *g_net_status, *g_net_pages, *g_net_cancel_btn;
 static int g_net_cancel, g_net_quit;
 static void shell_net_busy(int on);
+/* The menu bar: an invisible UP-Menustrip in the window (the window is borderless, so no Intuition menus); the right mouse button or a
+ * tap of the Right Amiga key opens it. Each pick goes to the handler of the matching button through a UPA_Menustrip_Trigger notify on
+ * SHELL_MENU_PICK(menu, item); item indices count the "-" separator rows. */
+#define SHELL_MENU_PICK(menu, item) (((ULONG)(menu) << 8) | (ULONG)(item))
+enum { SHELL_MENU_PROJECT, SHELL_MENU_RELEASE, SHELL_MENU_SETTINGS };
+enum { SHELL_PROJ_NEW, SHELL_PROJ_OPEN, SHELL_PROJ_SAVE, SHELL_PROJ_SEP1, SHELL_PROJ_ICONIFY, SHELL_PROJ_ABOUT, SHELL_PROJ_ABOUT_MUI, SHELL_PROJ_SEP2, SHELL_PROJ_QUIT };
+enum { SHELL_REL_NFO, SHELL_REL_BUILD, SHELL_REL_PUBLISH };
+/* New, Open and Save release stay disabled: the Amiga app has no saved release (draft) file to start, load or write yet. Publish has no
+ * shortcut so a stray key cannot send a live release. Amiga+C, X and V stay free for the text fields' clipboard keys. */
+static const UP_MenuItem g_menu_project[] = {{"New release", "N", UPV_MenuItem_Disabled, 0}, {"Open release...", "O", UPV_MenuItem_Disabled, 0},
+                                             {"Save release", "S", UPV_MenuItem_Disabled, 0}, {"-", NULL, 0, 0}, {"Iconify", "I", 0, 0},
+                                             {"About", "?", 0, 0}, {"About MUI", NULL, 0, 0}, {"-", NULL, 0, 0}, {"Quit", "Q", 0, 0}, {NULL, NULL, 0, 0}};
+static const UP_MenuItem g_menu_release[] = {{"Preview NFO", "P", 0, 0}, {"Build", "B", 0, 0}, {"Publish", NULL, 0, 0}, {NULL, NULL, 0, 0}};
+static const UP_MenuItem g_menu_settings[] = {{"MUI...", "M", 0, 0}, {NULL, NULL, 0, 0}};
+static Object *g_menu_rel; /* the Release menu: off during a transfer, Publish off for a group without a release server */
 static unsigned long g_net_shown; /* last percent drawn, ~0UL = the waiting line */
 static Object *g_date_field, *g_released_field, *g_diz_line_field, *g_readme_view, *g_nfo_view, *g_nfo_btn;
 /* NFO art lines up only in a fixed bitmap font (MUIA_Font makes UP-Textarea draw in it, not the TTF): the ROM topaz 8
@@ -1126,6 +1143,7 @@ static void shell_apply_sections(const rp_group *g) {
     shell_show_all(g_sec_system, 1, s.system);
     shell_show_all(g_sec_media, 1, s.media);
     shell_show_all(g_sec_publish, 5, s.publish);
+    if (g_menu_rel != NULL) SetAttrs(g_menu_rel, UPA_Menu_Disabled, s.publish ? 0UL : 1UL << SHELL_REL_PUBLISH, TAG_DONE); /* as its hidden button */
     shell_show_all(g_sec_door, 1, s.door);
     shell_show(g_template_status, s.diz_preview);
     shell_show(g_diz_count, s.diz_line); /* a placeholder diz has no release line row */
@@ -1803,7 +1821,7 @@ static void shell_diz_count(Object *name_field) {
 
 /* Busy around the NFO render, which blocks MUI until it returns: the app sleeps (busy pointer, input ignored), the button is off
  * and the status says so. Ending drains the clicks queued during the render while still asleep, so they never start a second
- * render. A Quit (close gadget, menu, ARexx QUIT) or CTRL-C seen in either drain sets g_net_quit, which the main loop
+ * render. A Quit (the x button, Project > Quit or Amiga+Q, ARexx QUIT) or CTRL-C seen in either drain sets g_net_quit, which the main loop
  * checks before it Waits: the drain ate the signal that would wake it, so a re-posted ReturnID would sit unread. */
 static void shell_nfo_busy(Object *status, int on) {
     ULONG sigs = 0, id;
@@ -1881,6 +1899,7 @@ static void shell_net_busy(int on) {
     if (on) g_net_cancel = 0, g_net_shown = ~0UL - 1;
     rp_net_pump = on ? shell_net_pump : NULL;
     SetAttrs(g_net_pages, MUIA_Disabled, (ULONG)on, TAG_DONE);
+    if (g_menu_rel != NULL) SetAttrs(g_menu_rel, UPA_Menu_Enabled, (ULONG)!on, TAG_DONE); /* the pump drops its picks anyway */
     SetAttrs(g_net_cancel_btn, MUIA_ShowMe, (ULONG)on, TAG_DONE);
     if (!on) SetAttrs(g_gauge, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
     if (!on && g_net_cancel)
@@ -2184,6 +2203,7 @@ static int shell_main(void) {
     Object *files_list, *add_file_btn, *remove_file_btn, *pick_btn, *build_btn, *status;
     Object *embed_pick_btn, *cover_btn, *publish_btn, *revoke_btn, *door_btn, *cover_text, *cover_image, *cover_thumb;
     Object *aminet_btn, *aminet_preview_btn, *nfo_preview_btn, *type_field, *arch_field, *uname_field, *email_field;
+    Object *menu_strip = NULL;
     Object *tabs, *tabs_row = NULL, *pages, *preview_btn, *quit_btn, *back_btn, *next_btn, *flatten_btn, *preview_list, *warn_text, *warn_row;
     ULONG sigs = 0, is_open = 0;
     unsigned tabs_done = 0; /* bit per tab: steps Next has left behind */
@@ -2388,7 +2408,15 @@ static int shell_main(void) {
         pages = MUI_NewObject((char *)MUIC_Group, MUIA_Group_PageMode, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE,
                               MUIA_Group_Child, (ULONG)top_page(page_release), MUIA_Group_Child, (ULONG)top_page(page_notes), MUIA_Group_Child, (ULONG)top_page(page_roster), MUIA_Group_Child, (ULONG)top_page(page_nfo), MUIA_Group_Child, (ULONG)top_page(page_files),
                               MUIA_Group_Child, (ULONG)top_page(page_publish), MUIA_Group_Child, (ULONG)top_page(page_aminet), TAG_DONE);
-        content = (tabs && pages) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)(tabs_row = shell_row(tabs, quit_btn)),
+        g_menu_rel = MUI_NewObject((char *)"UP-Menu.mcc", UPA_Menu_Title, (ULONG) "Release", UPA_Menu_Entries, (ULONG)g_menu_release, TAG_DONE);
+        menu_strip = MUI_NewObject((char *)"UP-Menustrip.mcc",
+                                   MUIA_Family_Child, (ULONG)MUI_NewObject((char *)"UP-Menu.mcc", UPA_Menu_Title, (ULONG) "Project", UPA_Menu_Entries, (ULONG)g_menu_project, TAG_DONE),
+                                   MUIA_Family_Child, (ULONG)g_menu_rel,
+                                   MUIA_Family_Child, (ULONG)MUI_NewObject((char *)"UP-Menu.mcc", UPA_Menu_Title, (ULONG) "Settings", UPA_Menu_Entries, (ULONG)g_menu_settings, TAG_DONE),
+                                   TAG_DONE);
+        if (menu_strip == NULL) g_menu_rel = NULL; /* the window is not made then; no later SetAttrs on a menu without a strip */
+        /* the strip is invisible and takes no room; it sits at the top of the content, outside tabs_row, which Next rebuilds */
+        content = (tabs && pages && menu_strip) ? MUI_NewObject((char *)MUIC_Group, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL, MUIA_Group_Child, (ULONG)menu_strip, MUIA_Group_Child, (ULONG)(tabs_row = shell_row(tabs, quit_btn)),
                                                   MUIA_Group_Child, (ULONG)pages, MUIA_Group_Child, (ULONG)shell_gap(0, SHELL_PAD * 2),
                                                   MUIA_Group_Child, (ULONG)MUI_NewObject((char *)MUIC_Group, MUIA_Group_Horiz, (ULONG)TRUE, MUIA_FillArea, (ULONG)FALSE, MUIA_UserData, (ULONG)UPV_Panel_KeepSpacing, MUIA_Group_Spacing, 0UL,
                                                                           MUIA_Group_Child, (ULONG)shell_row_gap(SHELL_PAD * 2), MUIA_Group_Child, (ULONG)status, MUIA_Group_Child, (ULONG)g_toast,
@@ -2436,6 +2464,16 @@ static int shell_main(void) {
              (ULONG)MUIV_Application_ReturnID_Quit);
     DoMethod(quit_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID,
              (ULONG)MUIV_Application_ReturnID_Quit);
+    /* Menu picks: the same ReturnIDs as the buttons (Build, Publish, the x button), or the standard MUI methods */
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_PROJECT, SHELL_PROJ_QUIT), (ULONG)app, 2UL, MUIM_Application_ReturnID,
+             (ULONG)MUIV_Application_ReturnID_Quit);
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_PROJECT, SHELL_PROJ_ICONIFY), (ULONG)app, 3UL, MUIM_Set, MUIA_Application_Iconified, (ULONG)TRUE);
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_PROJECT, SHELL_PROJ_ABOUT), (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_ABOUT);
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_PROJECT, SHELL_PROJ_ABOUT_MUI), (ULONG)app, 2UL, MUIM_Application_AboutMUI, (ULONG)win);
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_RELEASE, SHELL_REL_NFO), (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_MENU_NFO);
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_RELEASE, SHELL_REL_BUILD), (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BUILD);
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_RELEASE, SHELL_REL_PUBLISH), (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_PUBLISH);
+    DoMethod(menu_strip, MUIM_Notify, UPA_Menustrip_Trigger, SHELL_MENU_PICK(SHELL_MENU_SETTINGS, 0), (ULONG)app, 2UL, MUIM_Application_OpenConfigWindow, 0UL);
     DoMethod(build_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BUILD);
     DoMethod(back_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_BACK);
     DoMethod(next_btn, MUIM_Notify, MUIA_Pressed, FALSE, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_NEXT);
@@ -2548,6 +2586,15 @@ static int shell_main(void) {
         if (g_code_deferred != 0) id = g_code_deferred, g_code_deferred = 0, sigs = 0;
         else id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (g_net_quit || id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break; /* g_net_quit: Quit during a seed load */
+        if (id == ID_ABOUT)
+            MUI_RequestA(app, win, 0, (STRPTR) "About Release Dropper", (STRPTR) "*Ok",
+                         (STRPTR) "\33cRelease Dropper\n\nPacks demoscene releases from group profiles,\nnumbers them and publishes them through the release server.", NULL);
+        if (id == ID_MENU_NFO) {
+            ULONG tab = (ULONG)-1;
+            GetAttr(UPA_Tabs_Active, tabs, &tab);
+            if (tab != SHELL_TAB_NFO) SetAttrs(tabs, UPA_Tabs_Active, (ULONG)SHELL_TAB_NFO, TAG_DONE); /* its ID_TAB renders the NFO */
+            else id = ID_NFO_PREVIEW;
+        }
         if (id == ID_BUILD) {
             shell_build(app, status, g_groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, 0);
         }
