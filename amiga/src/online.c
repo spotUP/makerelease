@@ -255,3 +255,49 @@ int rp_online_door(const rp_group *g, const char *archive_path, unsigned long se
     snprintf(msg, cap, "%s%s", rc == 0 ? "Door repository: " : "Door repository refused: ", r.message);
     return rc;
 }
+
+void rp_online_release_list_free(rp_x_entry *e, size_t n) {
+    size_t i;
+    if (!e) return;
+    for (i = 0; i < n; i++) { free((char *)e[i].number); free((char *)e[i].art); }
+    free(e);
+}
+
+int rp_online_release_list(const rp_group *g, rp_http_fn http, void *http_ctx, long number, const char *diz,
+                           rp_x_entry **out, size_t *n, char *msg, size_t cap) {
+    rp_rel_cfg cfg;
+    const char *division;
+    rp_rel_err err;
+    jnode *man = NULL;
+    const jnode *hist;
+    rp_x_entry *e;
+    size_t i, k = 0, total;
+    char num[16];
+    *out = NULL;
+    *n = 0;
+    msg[0] = '\0';
+    if (!RP_ONLINE_HAS_SERVER(g) || g->renderer != R_XINNOVATIONS) return 0; /* no server: an empty list, like the desktop */
+    if (group_cfg(g, http, http_ctx, 0, &cfg, &division, msg, cap) != 0) return -1;
+    if (rp_rel_manifest(&cfg, division, &man, &err) != 0) { snprintf(msg, cap, "Release list: %s", err.message); return -1; }
+    hist = json_get(man, "history");
+    total = 1 + (hist && hist->type == J_ARR ? hist->n : 0);
+    e = calloc(total, sizeof *e);
+    if (!e) { json_free(man); snprintf(msg, cap, "out of memory"); return -1; }
+    /* formatReleaseNumber for /X: three digits, every 0 drawn as o (7 -> "oo7") */
+    snprintf(num, sizeof num, "%03ld", number < 0 ? 0L : number);
+    for (i = 0; num[i]; i++) if (num[i] == '0') num[i] = 'o';
+    e[k].number = strdup(num);
+    e[k].art = rp_x_list_art(diz);
+    k++;
+    for (i = 0; k < total; i++, k++) {
+        const jnode *rn = json_get(hist->items[i], "releaseNumber"), *dt = json_get(hist->items[i], "dizText");
+        e[k].number = strdup(rn && rn->type == J_STR ? rn->str : "");
+        e[k].art = rp_x_list_art(dt && dt->type == J_STR ? dt->str : "");
+    }
+    json_free(man);
+    for (i = 0; i < total; i++)
+        if (!e[i].number || !e[i].art) { rp_online_release_list_free(e, total); snprintf(msg, cap, "out of memory"); return -1; }
+    *out = e;
+    *n = total;
+    return 0;
+}

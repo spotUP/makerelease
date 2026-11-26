@@ -1479,8 +1479,8 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
     v.nscalars = 12;
     v.blocks = blocks;
     v.nblocks = 4;
-    /* The NFO: the group's own template, Up Rough's plain layout, or an
-     * honest stop for /X (its framed drawing needs the catalog: phase 2). */
+    /* The NFO: the group's own template or Up Rough's plain layout here; /X
+     * renders after the DIZ (below), its release list needs the final line. */
     if (g->renderer == R_PLACEHOLDER) {
         char nfo_path[256], *tpl = NULL;
         snprintf(nfo_path, sizeof(nfo_path), "PROGDIR:groups/%s/release.nfo", g->id);
@@ -1515,15 +1515,45 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
         nf.news = shell_news_text();
         nf.members = members;
         nf.nmembers = nmembers;
-        nfo = rp_render_nfo_uprough(g->file_prefix, &hist, 1, &nf, errmsg, sizeof(errmsg));
+        {   /* desktop preview(): this release, then the server's history (seeded by shell_seed_load above) */
+            static rp_history hall[256];
+            size_t nh = 1;
+            hall[0] = hist;
+            if (RP_ONLINE_HAS_SERVER(g)) nh = rp_seed_history(g_seed_tree, &hist, hall, 256);
+            nfo = rp_render_nfo_uprough(g->file_prefix, hall, nh, &nf, errmsg, sizeof(errmsg));
+        }
         if (nfo == NULL) {
             free(diz);
             return shell_fail(err, errcap, errmsg[0] ? errmsg : "out of memory");
         }
-    } else {
-        /* /X: the framed drawing. The release list comes from the catalog
-         * (phase 2), so it is empty here; the boards are the Roster tab's. */
+    }
+    rendered = rp_render_template(diz, &v, &errline, errmsg, sizeof(errmsg));
+    free(diz);
+    if (rendered == NULL) {
+        free(nfo);
+        return shell_fail(err, errcap, errmsg);
+    }
+    if (g->renderer != R_PLACEHOLDER) {
+        /* banner art: Released at turns the release line into "<name> at <place>" (placeholder groups use {{released_at}}) */
+        char *at = rp_diz_with_line(rendered, name_txt, shell_field_text(g_released_field), shell_field_text(g_diz_line_field));
+        free(rendered);
+        rendered = at;
+        if (rendered == NULL) {
+            free(nfo);
+            return shell_fail(err, errcap, "out of memory");
+        }
+    }
+    if (g->renderer == R_XINNOVATIONS) {
+        /* /X: the framed drawing, rendered last because its release list shows this release's final DIZ line
+         * (desktop release_list: list_art_from_banner(diz_banner_text)), then the server manifest's history. */
         rp_nfo_x_form xf;
+        rp_x_entry *xlist = NULL;
+        size_t nxlist = 0;
+        if (rp_online_release_list(g, rp_http_amiga, NULL, g_seed.next_number, rendered, &xlist, &nxlist, errmsg,
+                                   sizeof(errmsg)) != 0) {
+            free(rendered);
+            return shell_fail(err, errcap, errmsg);
+        }
         memset(&xf, 0, sizeof xf);
         xf.release_name = name_txt;
         xf.release_date = date;
@@ -1542,25 +1572,12 @@ static int shell_render_release(const rp_group *groups, Object *group_cycle, Obj
         }
         xf.boards = xboards;
         xf.nboards = g_nrows_boards;
+        xf.entries = xlist;
+        xf.nentries = nxlist;
         nfo = rp_render_nfo_x(&xf);
+        rp_online_release_list_free(xlist, nxlist);
         if (nfo == NULL) {
-            free(diz);
-            return shell_fail(err, errcap, "out of memory");
-        }
-    }
-    rendered = rp_render_template(diz, &v, &errline, errmsg, sizeof(errmsg));
-    free(diz);
-    if (rendered == NULL) {
-        free(nfo);
-        return shell_fail(err, errcap, errmsg);
-    }
-    if (g->renderer != R_PLACEHOLDER) {
-        /* banner art: Released at turns the release line into "<name> at <place>" (placeholder groups use {{released_at}}) */
-        char *at = rp_diz_with_line(rendered, name_txt, shell_field_text(g_released_field), shell_field_text(g_diz_line_field));
-        free(rendered);
-        rendered = at;
-        if (rendered == NULL) {
-            free(nfo);
+            free(rendered);
             return shell_fail(err, errcap, "out of memory");
         }
     }

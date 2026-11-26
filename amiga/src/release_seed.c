@@ -27,6 +27,23 @@ static void put(char *dst, size_t cap, const char *s) {
     snprintf(dst, cap, "%s", s);
 }
 
+size_t rp_seed_history(const jnode *seed, const rp_history *self, rp_history *out, size_t cap) {
+    const jnode *arr = json_get(seed, "history");
+    size_t i, n = 0;
+    if (cap == 0) return 0;
+    out[n++] = *self;
+    if (!arr || arr->type != J_ARR) return n;
+    for (i = 0; i < arr->n && n < cap; i++, n++) {
+        const jnode *e = arr->items[i];
+        out[n].number = str_of(e, "releaseNumber");
+        out[n].filenames = str_of(e, "filenames");
+        out[n].title = str_of(e, "title");
+        out[n].category = str_of(e, "category");
+        out[n].creators = str_of(e, "creators");
+    }
+    return n;
+}
+
 int rp_seed_parse(const jnode *seed, const jnode *numbering, long now_seconds,
                   const char *profile_id, int has_write_key, rp_seed_info *out) {
     const jnode *v, *arr;

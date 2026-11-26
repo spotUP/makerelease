@@ -192,6 +192,51 @@ int main(void) {
     CHECK(rp_online_door(&g, "online_t.lha", 1, fake_http, NULL, msg, sizeof msg) == 0);
     CHECK_STR(msg, "Door repository: Thanks");
 
+    /* /X release list: this release (formatted number, final DIZ line), then the manifest history */
+    {
+        rp_x_entry *xl = NULL;
+        size_t nx = 9;
+        const char *diz = "  uP rOUGH /X iNNOVATiONS pRESENTS:\n|  My Door at Board  |\n";
+        reply_status[0] = 200;
+        reply_body[0] = "{\"history\":[{\"releaseNumber\":\"oo6\",\"dizText\":\"x PRESENTS:\\n| Old Door |\"},{\"dizText\":3}]}";
+        reset();
+        CHECK(rp_online_release_list(&g, fake_http, NULL, 7, diz, &xl, &nx, msg, sizeof msg) == 0);
+        CHECK(strstr(log_, "GET https://rel.test/api/releases/manifest?division=xinnovations;") != NULL);
+        CHECK(nx == 3);
+        if (nx == 3) {
+            CHECK_STR(xl[0].number, "oo7");
+            CHECK(strstr(xl[0].art, "My Door at Board") != NULL);
+            CHECK_STR(xl[1].number, "oo6");
+            CHECK(strstr(xl[1].art, "Old Door") != NULL);
+            CHECK_STR(xl[2].number, "");
+        }
+        rp_online_release_list_free(xl, nx);
+        reply_status[0] = 500; reply_body[0] = "{\"error\":\"boom\"}";
+        reset();
+        CHECK(rp_online_release_list(&g, fake_http, NULL, 7, diz, &xl, &nx, msg, sizeof msg) == -1);
+        CHECK(xl == NULL && nx == 0 && strstr(msg, "boom") != NULL);
+        /* Up Rough has no release list and sends nothing */
+        g.renderer = R_UPROUGH;
+        reset();
+        CHECK(rp_online_release_list(&g, fake_http, NULL, 7, diz, &xl, &nx, msg, sizeof msg) == 0);
+        CHECK(nx == 0 && ncalls == 0);
+    }
+
+    /* Up Rough NFO history: this release, then the seed's */
+    {
+        char jerr[64];
+        jnode *seed = json_parse("{\"history\":[{\"releaseNumber\":\"216\",\"filenames\":\"up-old.lha\",\"title\":\"Old\"}]}", jerr, sizeof jerr);
+        rp_history self = { "217", "up-new.lha", "New", "Demo", "Zed" }, h[4];
+        CHECK(rp_seed_history(seed, &self, h, 4) == 2);
+        CHECK_STR(h[0].number, "217");
+        CHECK_STR(h[1].number, "216");
+        CHECK_STR(h[1].filenames, "up-old.lha");
+        CHECK_STR(h[1].category, "");
+        CHECK(rp_seed_history(seed, &self, h, 1) == 1);
+        CHECK(rp_seed_history(NULL, &self, h, 4) == 1);
+        json_free(seed);
+    }
+
     remove("online_t.lha"); remove("online_t.png"); remove("online_t.diz");
     if (failures == 0) puts("online: all passed");
     return failures != 0;
