@@ -563,9 +563,9 @@ mod tests {
         };
         assert!(with("package", "up-demo").unwrap_err()[0].contains("up-"));
         assert!(with("package", "a23456789012345678901").is_err(), "21 characters");
-        assert!(with("package", "a2345678901234567890").is_err(), "20 is allowed, but the file name is then 39");
+        assert!(with("package", "a2345678901234567890").is_err(), "20 is allowed, but the file name is then 41");
         let e = with("version", "1.0.0.0.0.0.0").unwrap_err();
-        assert!(e[0].contains("dropdemo_1.0.0.0.0.0.0_m68k-amigaos.ipk is 34 characters"), "{e:?}");
+        assert!(e[0].contains("dropdemo_1.0.0.0.0.0.0_m68k-amigaos.ipk is 39 characters"), "{e:?}");
         assert!(with("installDrawer", "Work:a234567890123456789012345678901").is_err(), "31-character drawer");
         assert_eq!(manifest_from_request(&req(true)).unwrap().ipk_name(), "dropdemo_1.0_m68k-amigaos.ipk");
     }
