@@ -155,7 +155,9 @@ itself is not scripted.
 ## Scope
 
 The app builds the NFO, `FILE_ID.DIZ`, archive and Aminet `.readme` on
-disk, and uploads the archive to Aminet.
+disk. From the Publish tab it publishes the release to the release
+server, revokes the most recent release, updates the Door repo, and uploads
+the archive to Aminet.
 
 ## Licence
 
