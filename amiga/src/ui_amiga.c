@@ -461,6 +461,8 @@ static void shell_fit_report(Object *win, Object *pages) {
         if (kid != NULL) GetAttr(UPA_Virtgroup_Width, kid, &cw), GetAttr(UPA_Virtgroup_Height, kid, &ch);
         Printf("RPFIT page %ld scroll min %ld x %ld, contents min %ld x %ld\n", (LONG)i++, (LONG)_minwidth(pg), (LONG)_minheight(pg), (LONG)cw, (LONG)ch);
     }
+    /* A file redirect (Run >file) is block-buffered and only written at exit; the app stays open (or freezes), so flush now. */
+    Flush(Output());
 }
 
 static void shell_platform_row(Object *platform_field) {
