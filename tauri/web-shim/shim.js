@@ -27,5 +27,6 @@ window.api = {
   publishToWeb: (profileId, code, archivePath, imagePath, embedImagePaths) =>
     call('publish_to_web', { profileId, code, archivePath, imagePath, embedImagePaths }),
   uploadToAminet: (request, archivePath) => call('upload_to_aminet', { request, archivePath }),
+  publishUpkg: (request, archivePath) => call('publish_upkg', { request, archivePath }),
   deleteRelease: (profileId, code) => call('delete_release', { profileId, code }),
 };

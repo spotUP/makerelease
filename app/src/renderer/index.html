@@ -265,6 +265,34 @@
     <button type="button" id="aminet-upload-btn" disabled>Upload to Aminet</button>
     <div id="aminet-status" class="status"></div>
   </section>
+
+  <section id="section-upkg" hidden>
+    <h2>Publish as an upkg package</h2>
+    <p class="hint">Packs the built release folder as a .ipk for UP-Term's upkg and adds it to the third-party upkg feed, the release feed of the GitHub repository spotUP/upkg-feed. Uploads use the gh command line tool and its login (gh auth login) or the GH_TOKEN environment variable. Package names are at most 20 characters and never start with up- (that prefix is UP-Term's own); the package file name and every file and drawer name in the release are at most 30 characters. Dry run writes the package and the feed lists next to the archive and uploads nothing.</p>
+    <div class="aminet-grid">
+      <label>Package name (lower case, for example openmui)
+        <input type="text" id="upkg-package" />
+      </label>
+      <label>Version (upstream, for example 1.0)
+        <input type="text" id="upkg-version" />
+      </label>
+      <label>Revision (raise it for a new package of the same version)
+        <input type="number" id="upkg-revision" min="1" value="1" />
+      </label>
+      <label>Description (one line, shown by upkg list)
+        <input type="text" id="upkg-description" />
+      </label>
+      <label>Install drawer on the Amiga (the release folder goes inside it)
+        <input type="text" id="upkg-drawer" placeholder="Work:Utilities" />
+      </label>
+      <label>Maintainer
+        <input type="text" id="upkg-maintainer" />
+      </label>
+    </div>
+    <label><input type="checkbox" id="upkg-dry-run" checked /> Dry run: write the package locally, upload nothing</label>
+    <button type="button" id="upkg-publish-btn" disabled>Publish to the upkg feed</button>
+    <div id="upkg-status" class="status"></div>
+  </section>
     </div>
 
   <dialog id="revoke-dialog">

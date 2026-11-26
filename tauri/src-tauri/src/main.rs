@@ -3,6 +3,7 @@
 mod build;
 mod net;
 mod profiles;
+mod upkg;
 
 fn main() {
     tauri::Builder::default()
@@ -29,6 +30,7 @@ fn main() {
             net::publish_to_web,
             net::upload_to_aminet,
             net::delete_release,
+            upkg::publish_upkg,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Release Dropper");

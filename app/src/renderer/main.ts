@@ -1,4 +1,4 @@
-import { AminetUploadRequest, ReleaseFormat, ReleaseFormData } from '../shared/types';
+import { AminetUploadRequest, ReleaseFormat, ReleaseFormData, UpkgPublishRequest } from '../shared/types';
 import type { ProfileSummary } from '../shared/profile';
 import { archiveFileName, releaseBaseName } from '../shared/naming.js';
 import {
@@ -460,6 +460,8 @@ function resetPublishState(): void {
   publishStatus.className = 'status';
   publishBtn.disabled = true;
   aminetSection.hidden = true;
+  upkgSection.hidden = true;
+  upkgBtn.disabled = true;
   aminetStatus.textContent = '';
   aminetStatus.className = 'status';
   aminetUploadBtn.disabled = true;
@@ -963,6 +965,7 @@ form.addEventListener('submit', async (e) => {
       built = { profileId: formData.profileId, code, archivePath: result.archivePath, embedImagePaths: [] };
       aminetSection.hidden = false;
       aminetUploadBtn.disabled = false;
+      showUpkg(result.archivePath);
       prefillAminetShort();
       refreshAminetPreview();
     } else {
@@ -987,6 +990,7 @@ form.addEventListener('submit', async (e) => {
       // Shown now so the readme can be filled in while the cover image is
       // picked; its Upload button waits for the website publish.
       aminetSection.hidden = false;
+      showUpkg(result.archivePath);
       aminetStatus.textContent = 'Upload to Aminet unlocks once the website publish has succeeded.';
       prefillAminetShort();
       refreshAminetPreview();
@@ -1098,6 +1102,77 @@ publishBtn.addEventListener('click', async () => {
   }
 });
 
+// ---- upkg ------------------------------------------------------------------
+//
+// Publishes the built release folder as an upkg (.ipk) package to a feed. The
+// package, the feed lists and the upload are all main's (tauri upkg.rs); the
+// feed target and install drawer hardly change, so they are remembered like
+// the Aminet uploader.
+
+const upkgSection = $<HTMLElement>('section-upkg');
+const upkgBtn = $<HTMLButtonElement>('upkg-publish-btn');
+const upkgStatus = $<HTMLDivElement>('upkg-status');
+const upkgInput = (id: string): HTMLInputElement => $<HTMLInputElement>(`upkg-${id}`);
+const UPKG_STORAGE_KEY = 'upkg-target';
+const UPKG_REMEMBERED = ['drawer', 'maintainer'] as const;
+
+try {
+  const saved: unknown = JSON.parse(localStorage.getItem(UPKG_STORAGE_KEY) ?? '{}');
+  for (const k of UPKG_REMEMBERED) {
+    const v = saved && typeof saved === 'object' ? (saved as Record<string, unknown>)[k] : undefined;
+    if (typeof v === 'string') upkgInput(k).value = v;
+  }
+} catch {
+  // Nothing remembered: the fields start empty.
+}
+
+/** Shows the upkg step for a fresh build, named after it. */
+function showUpkg(archivePath: string): void {
+  upkgSection.hidden = false;
+  upkgBtn.disabled = false;
+  upkgStatus.textContent = '';
+  upkgStatus.className = 'status';
+  const file = archivePath.split(/[\\/]/).pop() ?? '';
+  upkgInput('package').value = file.replace(/\.[^.]+$/, '').toLowerCase();
+  upkgInput('description').value = releaseNameText(releaseNameInput.value);
+}
+
+async function publishLastBuildToUpkg(): Promise<void> {
+  const release = builtReleaseFor(built, profileSelect.value);
+  if (!release) return;
+  const request: UpkgPublishRequest = {
+    package: upkgInput('package').value.trim(),
+    version: upkgInput('version').value.trim(),
+    revision: Number(upkgInput('revision').value) || 1,
+    description: upkgInput('description').value.trim(),
+    maintainer: upkgInput('maintainer').value.trim(),
+    installDrawer: upkgInput('drawer').value.trim(),
+    dryRun: upkgInput('dry-run').checked,
+  };
+  try {
+    localStorage.setItem(UPKG_STORAGE_KEY, JSON.stringify(Object.fromEntries(UPKG_REMEMBERED.map((k) => [k, upkgInput(k).value]))));
+  } catch {
+    // Storage full or disabled: the fields still work for this session.
+  }
+  upkgBtn.disabled = true;
+  upkgStatus.textContent = request.dryRun ? 'Building the upkg package (dry run)...' : 'Publishing to the upkg feed...';
+  upkgStatus.className = 'status';
+  try {
+    const result = await window.api.publishUpkg(request, release.archivePath);
+    upkgStatus.textContent = `upkg: ${result.message}.`;
+    upkgStatus.className = result.ok ? 'status ok' : 'status warn';
+    toast(result.ok ? 'ok' : 'error', result.ok ? `upkg: ${result.message}.` : `upkg publish failed: ${result.message}`);
+    // A real publish is done; a dry run or a failure can be run again.
+    upkgBtn.disabled = result.ok && !result.dryRun;
+  } catch (err) {
+    upkgStatus.textContent = `upkg publish failed: ${err instanceof Error ? err.message : String(err)}`;
+    upkgStatus.className = 'status warn';
+    toast('error', upkgStatus.textContent);
+    upkgBtn.disabled = false;
+  }
+}
+
+upkgBtn.addEventListener('click', () => void publishLastBuildToUpkg());
 aminetUploadBtn.addEventListener('click', () => void uploadLastBuildToAminet());
 
 deleteReleaseBtn.addEventListener('click', async () => {
@@ -1149,6 +1224,8 @@ deleteReleaseBtn.addEventListener('click', async () => {
         publishBtn.disabled = true;
         aminetSection.hidden = true;
         aminetUploadBtn.disabled = true;
+        upkgSection.hidden = true;
+        upkgBtn.disabled = true;
       }
       deleteReleaseBtn.disabled = false;
     } else if (result.status === 409) {

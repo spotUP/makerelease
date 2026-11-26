@@ -1,0 +1,19 @@
+Package: dropdemo
+Version: 1.0-r2
+Architecture: m68k-amigaos
+Maintainer: UpRough <https://github.com/spotUP>
+Installed-Size: 1
+Filename: dropdemo_1.0_m68k-amigaos.ipk
+Size: 914
+SHA256sum: 260539744708b35091fb59b78a382806d1a26a89a388aba8baa57740a4f359ce
+Description: Release Dropper demo package
+
+Package: hello
+Version: 1.0-r1
+Architecture: all
+Maintainer: UP-Term <https://github.com/spotUP/UP-Term>
+Installed-Size: 1
+Filename: hello_1.0_all.ipk
+Size: 616
+SHA256sum: 923bd3704341d36c3917e316998bac45adffa5a78df293d791ea4f80e5a75f88
+Description: Dry-run sample package
