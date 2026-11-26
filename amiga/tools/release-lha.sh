@@ -43,6 +43,9 @@ mkdir -p "$D/groups"
 cp "$B/packer-cli" "$D/ReleaseDropper"
 python3 "$A/tools/mkicon.py" "$ROOT/tauri/src-tauri/icons/icon.svg" "$D/ReleaseDropper.info" --stack 49152
 cp -R "$U/dist/UP-MCC" "$D/UP-MCC"
+# OpenMUI global.prefs per theme (colours only), installed by Install-UP-MCC; never palette.prefs
+mkdir -p "$D/UP-MCC/Themes/OpenMUI"
+for t in Dark Light; do python3 "$A/tools/theme2prefs.py" "$D/UP-MCC/Themes/$t.theme" > "$D/UP-MCC/Themes/OpenMUI/$t.prefs" || exit 1; done
 cp "$A/README.md" "$D/README"
 OM=$(mktemp -d "$STAGE/om.XXXXXX")
 (cd "$OM" && lha -xq "$OPENMUI_LHA")
@@ -84,7 +87,11 @@ Up Rough Release Dropper - Amiga
       BetterString LGPL; licences in OpenMUI/LICENSE and OpenMUI/Docs).
    b) Then run UP-MCC/Install-UP-MCC with Installer: it copies the UP-
       classes to MUI:Libs/mui, up-mcc.library, the Inter font and the
-      themes.
+      themes. It also makes the Dark look the default for every MUI
+      program: ENVARC:OpenMUI/global.prefs is backed up once as
+      global.prefs.bak, then replaced by UP-MCC/Themes/OpenMUI/Dark.prefs
+      (copy Light.prefs to ENV: and ENVARC:OpenMUI/global.prefs for the
+      light look; programs started afterwards use it).
 
 3. START
 
