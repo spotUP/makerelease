@@ -2570,8 +2570,8 @@ static int shell_main(void) {
         else id = DoMethod(app, MUIM_Application_NewInput, (ULONG)&sigs);
         if (g_net_quit || id == (ULONG)MUIV_Application_ReturnID_Quit || (SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) break; /* g_net_quit: Quit during a seed load */
         if (id == ID_ABOUT)
-            MUI_RequestA(app, win, 0, (CONST_STRPTR) "About Release Dropper", (CONST_STRPTR) "*Ok",
-                         (CONST_STRPTR) "\33cRelease Dropper\n\nPacks demoscene releases from group profiles,\nnumbers them and publishes them through the release server.", NULL);
+            MUI_RequestA(app, win, 0, (STRPTR) "About Release Dropper", (STRPTR) "*Ok",
+                         (STRPTR) "\33cRelease Dropper\n\nPacks demoscene releases from group profiles,\nnumbers them and publishes them through the release server.", NULL);
         if (id == ID_MENU_NFO) {
             ULONG tab = (ULONG)-1;
             GetAttr(UPA_Tabs_Active, tabs, &tab);
