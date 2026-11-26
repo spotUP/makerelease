@@ -15,6 +15,13 @@ target_include_directories(packer PUBLIC src)
 if(CMAKE_CROSSCOMPILING)
     add_executable(packer-cli src/main.c src/ui_amiga.c src/ui_editor.c src/archive_run.c)
     target_include_directories(packer-cli PRIVATE vendor/up-mcc/include)
+    # AmigaOS $VER string (main.c): version from the Tauri config, one source of truth.
+    set(TAURI_CONF ${CMAKE_CURRENT_SOURCE_DIR}/../tauri/src-tauri/tauri.conf.json)
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${TAURI_CONF})
+    file(READ ${TAURI_CONF} TAURI_CONF_JSON)
+    string(JSON APP_VERSION GET "${TAURI_CONF_JSON}" version)
+    string(TIMESTAMP APP_VER_DATE "%d.%m.%Y")
+    target_compile_definitions(packer-cli PRIVATE "APP_VER_STRING=\"$VER: ReleaseDropper ${APP_VERSION} (${APP_VER_DATE})\"")
     target_link_libraries(packer-cli PRIVATE mui http_amiga)
     # HTTP(S) transport: bsdsocket + AmiSSL (libraries opened by hand, no libamisslauto).
     add_library(http_amiga STATIC src/http_amiga.c)
