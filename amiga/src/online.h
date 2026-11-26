@@ -11,6 +11,7 @@
 #include "groups.h"
 #include "http.h"
 #include "json.h"
+#include "nfo_x.h"
 #include "release_seed.h"
 #include "text_rows.h"
 
@@ -64,5 +65,12 @@ int rp_online_revoke(const rp_group *g, const char *code, rp_http_fn http, void 
 /* Only /X Innovations submits to the door repository (submitsToDoorRepo). */
 int rp_online_door(const rp_group *g, const char *archive_path, unsigned long seed, rp_http_fn http,
                    void *http_ctx, char *msg, size_t cap);
+/* The /X NFO release list (desktop ServerBackend::release_list): this release first (number formatted like
+ * divisions.ts formatReleaseNumber, art from the final DIZ), then the manifest's history, newest first.
+ * Returns 0 with *out malloc'd (free with rp_online_release_list_free), or -1 + msg when the manifest call fails.
+ * Groups other than /X get 0 entries and no request. */
+int rp_online_release_list(const rp_group *g, rp_http_fn http, void *http_ctx, long number, const char *diz,
+                           rp_x_entry **out, size_t *n, char *msg, size_t cap);
+void rp_online_release_list_free(rp_x_entry *e, size_t n);
 
 #endif

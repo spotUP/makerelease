@@ -10,6 +10,7 @@
 
 #include "groups.h"
 #include "json.h"
+#include "nfo_uprough.h"
 #include "releases_client.h"
 
 /* The history entry category choices (index.html #entry-category), NULL ended. */
@@ -41,6 +42,11 @@ typedef struct {
  * object. */
 int rp_seed_parse(const jnode *seed, const jnode *numbering, long now_seconds,
                   const char *profile_id, int has_write_key, rp_seed_info *out);
+
+/* The seed's history after this release (desktop preview(): the synthesized entry, then seed.history). Fills out[0] with
+ * self and out[1..] with the seed's entries (strings point into the seed tree, "" for a missing field); returns the count,
+ * at most cap. A seed without a history array gives 1. */
+size_t rp_seed_history(const jnode *seed, const rp_history *self, rp_history *out, size_t cap);
 
 /* The "code already taken" check behind the Release tab. base_name is the
  * release's file base name (rp_base_name). Returns 1 taken (msg = the
