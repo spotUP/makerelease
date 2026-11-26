@@ -1747,27 +1747,32 @@ static void shell_diz_count(Object *name_field) {
 
 /* Busy around the NFO render, which blocks MUI until it returns: the app sleeps (busy pointer, input ignored), the button is off
  * and the status says so. Ending drains the clicks queued during the render while still asleep, so they never start a second
- * render; a Quit among them is handed back to the main loop. */
+ * render. A Quit (close gadget, menu, ARexx QUIT) or CTRL-C seen in either drain sets g_net_quit, which the main loop
+ * checks before it Waits: the drain ate the signal that would wake it, so a re-posted ReturnID would sit unread. */
 static void shell_nfo_busy(Object *status, int on) {
     ULONG sigs = 0, id;
-    int quit = 0;
     if (on) {
         SetAttrs(g_net_app, MUIA_Application_Sleep, (ULONG)TRUE, TAG_DONE);
         SetAttrs(g_nfo_btn, MUIA_Disabled, (ULONG)TRUE, TAG_DONE);
         SetAttrs(status, UPA_Text_Contents, (ULONG) "Rendering the NFO...", TAG_DONE);
     }
     while ((id = DoMethod(g_net_app, MUIM_Application_NewInput, (ULONG)&sigs)) != 0) /* on: draws the line above */
-        if (id == (ULONG)MUIV_Application_ReturnID_Quit) quit = 1;
+        if (id == (ULONG)MUIV_Application_ReturnID_Quit) g_net_quit = 1;
+    if ((SetSignal(0, 0) & SIGBREAKF_CTRL_C) != 0) g_net_quit = 1;
     if (on) return;
     SetAttrs(g_nfo_btn, MUIA_Disabled, (ULONG)FALSE, TAG_DONE);
     SetAttrs(g_net_app, MUIA_Application_Sleep, (ULONG)FALSE, TAG_DONE);
-    if (quit) DoMethod(g_net_app, MUIM_Application_ReturnID, (ULONG)MUIV_Application_ReturnID_Quit);
 }
 
 static int shell_render_nfo(Object *status, const rp_group *groups, Object *group_cycle, Object *name_field, Object *code_field,
                             Object *platform_field, Object *desc_field, Object *format_cycle, shell_rendered *r, char *errmsg, size_t errcap) {
     int rc;
     shell_nfo_busy(status, 1);
+    if (g_net_quit) { /* quitting: skip the render */
+        snprintf(errmsg, errcap, "Quitting.");
+        shell_nfo_busy(status, 0);
+        return -1;
+    }
     rc = shell_render_release(groups, group_cycle, name_field, code_field, platform_field, desc_field, format_cycle, r, errmsg, errcap);
     shell_nfo_busy(status, 0);
     return rc;
@@ -2678,6 +2683,7 @@ static int shell_main(void) {
             g_err_tab = (ULONG)-1;
             g_err_obj = NULL;
         }
+        if (g_net_quit) break; /* a pump took the Quit and the signal that came with it: Wait would never wake */
         if (sigs != 0) Wait(sigs | SIGBREAKF_CTRL_C | (g_code_port != NULL ? 1UL << g_code_port->mp_SigBit : 0UL));
     }
     shell_code_timer_close();
