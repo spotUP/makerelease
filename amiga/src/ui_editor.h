@@ -16,6 +16,7 @@ Object *shell_label(const char *text, ULONG tone);
 Object *row_label(const char *text);
 Object *area_label(const char *text);
 Object *shell_row(Object *a, Object *b);
+void shell_show(Object *obj, int show); /* ShowMe, then repaint the nearest UP-Panel (see ui_amiga.c) */
 Object *shell_form(Object *l1, Object *f1, Object *l2, Object *f2, Object *l3, Object *f3, Object *l4, Object *f4,
                    Object *l5, Object *f5, Object *l6, Object *f6, Object *l7, Object *f7, Object *l8, Object *f8,
                    Object *l9, Object *f9, Object *l10, Object *f10);

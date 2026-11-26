@@ -183,8 +183,8 @@ static void ed_apply_showkey(void) {
     ULONG on = 0;
     GetAttr(MUIA_Selected, g_k_showkey, &on);
     shell_set_field(on ? g_f_key_plain : g_f_key, shell_field_text(on ? g_f_key : g_f_key_plain));
-    SetAttrs(g_f_key, MUIA_ShowMe, (ULONG)!on, TAG_DONE);
-    SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)on, TAG_DONE);
+    shell_show(g_f_key, !on);
+    shell_show(g_f_key_plain, (int)on);
 }
 
 /* Desktop pe-server: the server fields and the "server list replaces this one" note show only for the doorserver backend. */
@@ -192,8 +192,8 @@ static void ed_apply_server(void) {
     ULONG a = 0;
     size_t i;
     GetAttr(UPA_Cycle_Active, g_c_backend, &a);
-    for (i = 0; i < sizeof g_server_ui / sizeof g_server_ui[0]; i++) SetAttrs(g_server_ui[i], MUIA_ShowMe, (ULONG)(a == 1), TAG_DONE);
-    SetAttrs(g_members_note, MUIA_ShowMe, (ULONG)(a == 1), TAG_DONE);
+    for (i = 0; i < sizeof g_server_ui / sizeof g_server_ui[0]; i++) shell_show(g_server_ui[i], a == 1);
+    shell_show(g_members_note, a == 1);
 }
 
 static void ed_fill_form(const rp_group *g) {
@@ -210,8 +210,8 @@ static void ed_fill_form(const rp_group *g) {
     shell_set_field(g_f_key, g->server_key);
     shell_set_field(g_f_key_plain, g->server_key);
     SetAttrs(g_k_showkey, MUIA_Selected, (ULONG)FALSE, TAG_DONE);
-    SetAttrs(g_f_key, MUIA_ShowMe, (ULONG)TRUE, TAG_DONE);
-    SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
+    shell_show(g_f_key, TRUE);
+    shell_show(g_f_key_plain, FALSE);
     g_members_buf[0] = '\0';
     rp_editor_members_format(g->members, g->nmembers, g_members_buf, sizeof g_members_buf);
     SetAttrs(g_a_members, UPA_TextArea_Text, (ULONG)g_members_buf, TAG_DONE);
@@ -550,7 +550,7 @@ int rp_editor_run(Object *app, Object *parent_win, const char *dir) {
         shell_requester("The group editor objects could not be created.\nAn UP-MCC class did not load, or memory ran out. Check the UP-MCC install.");
         return 0;
     }
-    SetAttrs(g_f_key_plain, MUIA_ShowMe, (ULONG)FALSE, TAG_DONE);
+    shell_show(g_f_key_plain, FALSE);
     g_members_note = shell_label("The server's member list replaces this one.", UPV_Text_Tone_Muted);
     g_server_ui[0] = row_label("Server base");
     g_server_ui[1] = g_f_base;

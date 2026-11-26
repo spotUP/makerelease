@@ -111,6 +111,28 @@ Object *shell_row(Object *a, Object *b) {
                          MUIA_Group_Child, (ULONG)a, MUIA_Group_Child, (ULONG)b, TAG_DONE);
 }
 
+/* Shows or hides obj, then repaints the nearest UP-Panel. MUI relays out and redraws only the lowest group whose box still fits
+ * the new layout, and that is usually a plain FillArea FALSE row or form inside a card: its gaps and the strip a hidden row leaves
+ * are painted by nobody, so old glyphs stay. The panel's face pass runs only when the panel itself draws (MADF_DRAWOBJECT).
+ * No change, or not set up yet (before the window opens): nothing to repaint. The footer row paints its own gaps (shell_row_gap). */
+void shell_show(Object *obj, int show) {
+    ULONG was = 0, p = 0, self = 0;
+    Object *o = obj;
+    int depth;
+    GetAttr(MUIA_ShowMe, obj, &was);
+    if (!was == !show) return;
+    SetAttrs(obj, MUIA_ShowMe, (ULONG)(show != 0), TAG_DONE);
+    for (depth = 0; depth < 12 && o != NULL; depth++) {
+        p = 0;
+        GetAttr(MUIA_Parent, o, &p);
+        o = (Object *)p;
+        if (o != NULL && GetAttr(UPA_Panel_Self, o, &self) && (Object *)self == o) {
+            if (muiRenderInfo(o) != NULL && _win(o) != NULL) MUI_Redraw(o, MADF_DRAWOBJECT);
+            return;
+        }
+    }
+}
+
 /* A label over a full-width body, hidden or shown as one object (see shell_apply_sections); the spacer keeps the fixed label from capping the width. */
 Object *shell_section(const char *label, Object *body) {
     return MUI_NewObject((char *)MUIC_Group, MUIA_Group_Child, (ULONG)shell_row(row_label(label), MUI_NewObject((char *)MUIC_Rectangle, TAG_DONE)),
@@ -444,7 +466,7 @@ static void shell_fit_report(Object *win, Object *pages) {
 static void shell_platform_row(Object *platform_field) {
     ULONG pa = 0;
     GetAttr(UPA_Cycle_Active, platform_field, &pa);
-    SetAttrs(g_platform_row, MUIA_ShowMe, (ULONG)rp_platform_wants_text((int)pa), TAG_DONE);
+    shell_show(g_platform_row, rp_platform_wants_text((int)pa));
 }
 
 /* The multi-line fields as NFO-ready text (rp_text_normalize) in static copies: the class returns its own live buffer. */
@@ -1087,7 +1109,7 @@ static void shell_number_status(Object *status, const rp_group *g, Object *code_
 
 static void shell_show_all(Object **objs, size_t n, int show) {
     size_t i;
-    for (i = 0; i < n; i++) SetAttrs(objs[i], MUIA_ShowMe, (ULONG)show, TAG_DONE);
+    for (i = 0; i < n; i++) shell_show(objs[i], show);
 }
 
 /* Hides the boards, media, Publish and Door parts the group does not have (desktop visibleSections); a label hides with its field.
@@ -1103,9 +1125,9 @@ static void shell_apply_sections(const rp_group *g) {
     shell_show_all(g_sec_media, 1, s.media);
     shell_show_all(g_sec_publish, 5, s.publish);
     shell_show_all(g_sec_door, 1, s.door);
-    SetAttrs(g_template_status, MUIA_ShowMe, (ULONG)s.diz_preview, TAG_DONE);
-    SetAttrs(g_diz_count, MUIA_ShowMe, (ULONG)s.diz_line, TAG_DONE); /* a placeholder diz has no release line row */
-    SetAttrs(g_number_row, MUIA_ShowMe, (ULONG)s.number, TAG_DONE);
+    shell_show(g_template_status, s.diz_preview);
+    shell_show(g_diz_count, s.diz_line); /* a placeholder diz has no release line row */
+    shell_show(g_number_row, s.number);
     if (!s.number) shell_set_field(g_number_field, ""); /* a server counts releases: a hidden typed number must not linger to confuse the status */
 }
 
@@ -1258,7 +1280,7 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
     const char *paths[RP_PATHS_MAX];
     size_t pi;
     rp_preview_free(&g_prev);
-    SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
+    shell_show(warn_row, FALSE);
     {
         GetAttr(UPA_Cycle_Active, group_cycle, &gactive);
         rp_upper(shell_field_text(code_field), code, sizeof(code));
@@ -1271,7 +1293,7 @@ static void shell_refresh_preview(Object *list, Object *warn_row, Object *warn_t
             snprintf(g_warn, sizeof(g_warn), "Extra nested folder: %s only wraps %s", g_prev.nested[0].path,
                      base_name_of(g_prev.nested[0].flatten_to));
             SetAttrs(warn_text, UPA_Text_Contents, (ULONG)g_warn, TAG_DONE);
-            SetAttrs(warn_row, MUIA_ShowMe, TRUE, TAG_DONE);
+            shell_show(warn_row, TRUE);
         }
     }
     SetAttrs(list, UPA_List_Count, (ULONG)g_prev.nentries, UPA_List_Active, (ULONG)-1, TAG_DONE);
@@ -2468,7 +2490,7 @@ static int shell_main(void) {
         DoMethod(g_authors_field, MUIM_Notify, UPA_Field_Key, MUIV_EveryTime, (ULONG)app, 2UL, MUIM_Application_ReturnID, (ULONG)ID_CREATORS_KEY);
     }
     shell_tabs_notify(tabs, app, pages);
-    SetAttrs(warn_row, MUIA_ShowMe, FALSE, TAG_DONE);
+    shell_show(warn_row, FALSE);
     {
         rp_aminet_prefs pr;
         if (rp_aminet_prefs_load(RP_AMINET_PREFS_PATH, &pr) == 0) {
@@ -2597,7 +2619,7 @@ static int shell_main(void) {
             SetAttrs(cover_text, UPA_Text_Contents, (ULONG)g_cover, TAG_DONE);
             /* the class copies at most 255 characters of the path; a longer one shows an empty outline, the upload still uses g_cover */
             SetAttrs(cover_image, UPA_Image_File, (ULONG)g_cover, TAG_DONE);
-            SetAttrs(cover_thumb, MUIA_ShowMe, (ULONG)TRUE, TAG_DONE);
+            shell_show(cover_thumb, TRUE);
         }
         if (id == ID_PUBLISH || id == ID_REVOKE || id == ID_DOOR) {
             int ok;
