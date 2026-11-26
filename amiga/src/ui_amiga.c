@@ -2289,7 +2289,7 @@ static int shell_main(void) {
                                  UPA_List_Count, 6UL, /* the list asks its height from the row count at open: start at 6 rows, emptied after open */
                                  TAG_DONE);
     warn_row = (warn_text && flatten_btn) ? shell_row(warn_text, flatten_btn) : NULL;
-    g_gauge = MUI_NewObject((char *)"UP-Progress.mcc", UPA_Progress_Value, 0UL, UPA_Progress_Max, 100UL, MUIA_ShowMe, (ULONG)FALSE, MUIA_FixWidth, 160UL, TAG_DONE);
+    g_gauge = MUI_NewObject((char *)"UP-Progress.mcc", UPA_Progress_Value, 0UL, UPA_Progress_Max, 100UL, MUIA_ShowMe, (ULONG)FALSE, MUIA_FixWidth, 160UL, UPA_Progress_FillHeight, (ULONG)TRUE, TAG_DONE); /* own the whole row box so status glyphs do not linger above or below the track */
     g_template_status = shell_label("", UPV_Text_Tone_Muted);
     g_diz_count = shell_label("", UPV_Text_Tone_Muted);
     g_toast = MUI_NewObject((char *)"UP-Text.mcc", UPA_Text_Contents, (ULONG)"", UPA_Text_Timeout, 5000UL, UPA_Text_FillHeight, (ULONG)TRUE, MUIA_HorizWeight, 60UL, TAG_DONE);
